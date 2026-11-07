@@ -75,8 +75,11 @@ def _display_locale(locale: str, point_size: int = 9) -> Iterator[None]:
     # Admit the installed system font for this synthetic rendering context;
     # otherwise a geometry pass can consist entirely of missing-glyph boxes.
     admitted_font: int | None = None
-    if not QFontDatabase.families():
-        installed = Path("C:/Windows/Fonts/segoeui.ttf")
+    installed = Path("C:/Windows/Fonts/segoeui.ttf")
+    if installed.is_file():
+        # Canvas content registers a Latin export font. Use the same known
+        # Latin/Arabic UI face for both comparison locales; nonempty families
+        # alone neither guarantee Arabic coverage nor isolate RTL geometry.
         admitted_font = QFontDatabase.addApplicationFont(str(installed))
         assert admitted_font >= 0, "A real font is required for localized widget rendering"
         families = QFontDatabase.applicationFontFamilies(admitted_font)
@@ -207,7 +210,11 @@ def test_pseudo_workflow_dialogs_keep_critical_controls_reachable(
                     + 12
                 ), (kind, button.objectName(), button.text())
             for footer in dialog.findChildren(QDialogButtonBox):
-                assert footer.orientation() is Qt.Orientation.Vertical
+                visible = [action for action in footer.buttons() if action.isVisible()]
+                for index, action in enumerate(visible):
+                    assert footer.rect().contains(action.geometry())
+                    for other in visible[index + 1 :]:
+                        assert not action.geometry().intersects(other.geometry())
 
 
 def _tab_names(window: QWidget) -> tuple[str, ...]:

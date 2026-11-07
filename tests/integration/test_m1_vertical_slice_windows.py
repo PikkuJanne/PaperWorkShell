@@ -131,6 +131,15 @@ _VERIFIED_CHECKS = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_worker_access_journal(
+    owned_production_worker_code: Path,
+) -> None:
+    """Keep recovery and severe-fault receipts inside this synthetic test only."""
+
+    assert owned_production_worker_code.is_dir()
+
+
 @dataclass(frozen=True, slots=True)
 class _VerticalSliceStack:
     manager: CaseWorkspaceManager

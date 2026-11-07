@@ -261,7 +261,7 @@ def test_textual_status_guidance_and_controls_are_accessible_without_private_nam
     app = _application()
     with _dialog(_mixed_state()) as dialog:
         assert dialog.isModal()
-        assert dialog.windowTitle() == "Review checklist assignments"
+        assert dialog.windowTitle() == "Document checklist"
         assert "Cancel is the safe default" in dialog.accessibleDescription()
 
         requirement_view = _list(dialog, "checklistRequirementList")

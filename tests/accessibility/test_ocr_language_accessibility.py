@@ -70,7 +70,7 @@ def _widget(dialog: OcrLanguageDialog, widget_type: type[QWidget], name: str) ->
 
 def test_dialog_controls_have_names_descriptions_and_safe_initial_focus() -> None:
     with _dialog() as dialog:
-        assert dialog.accessibleName() == "Manage OCR languages"
+        assert dialog.accessibleName() == "OCR languages"
         assert "does not download" in dialog.accessibleDescription()
         for widget_type, name in (
             (QCheckBox, "ocrLanguageChoiceENG"),

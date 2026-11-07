@@ -306,7 +306,7 @@ def _copy_manifest(document: Mapping[str, object]) -> dict[str, object]:
     except ManifestRepositoryError:
         reject_redaction(RedactionErrorCode.MANIFEST_INVALID, "redaction.manifest")
     version = copied.get("schema_version")
-    if type(version) is not int or version != CURRENT_MANIFEST_SCHEMA_VERSION:
+    if type(version) is not int or version not in {3, CURRENT_MANIFEST_SCHEMA_VERSION}:
         reject_redaction(RedactionErrorCode.VERSION_UNSUPPORTED, "redaction.manifest_version")
     return copied
 

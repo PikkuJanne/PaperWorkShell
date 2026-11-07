@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -106,6 +106,7 @@ from paperworkshell.domain.case_lifecycle import (
     CaseLifecycleErrorCode,
     CaseSummary,
     reject_case_lifecycle,
+    require_case_name,
 )
 from paperworkshell.domain.checklist import (
     ChecklistErrorCode,
@@ -178,6 +179,10 @@ from paperworkshell.domain.redaction import (
     require_redaction_export_allowed,
 )
 from paperworkshell.domain.redaction_export import RedactionExportReport
+from paperworkshell.domain.searchable_pdf_export import (
+    SearchablePdfExportOutcome,
+    SearchablePdfVerificationReport,
+)
 from paperworkshell.domain.signature_images import (
     SignatureImageCleanupResult,
     SignatureImageCleanupStatus,
@@ -195,6 +200,7 @@ from paperworkshell.domain.source_ingest import SourceImportResult
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.localization.catalog import tr
 from paperworkshell.overlays.commands import OverlayCommandHistory
+from paperworkshell.overlays.exporting import FlattenedPdfExportOutcome
 from paperworkshell.overlays.models import (
     MAX_OVERLAYS,
     OverlayCollection,
@@ -220,7 +226,7 @@ class _CaseLifecyclePort(Protocol):
     @property
     def active_case(self) -> CaseSummary | None: ...
 
-    def create_case(self) -> CaseSummary: ...
+    def create_case(self, case_name: str = "") -> CaseSummary: ...
 
     def list_cases(self) -> CaseIndex: ...
 
@@ -251,7 +257,8 @@ class _PagesPdfExportPort(Protocol):
         deadline: Callable[[], bool],
         cancellation: Callable[[], bool],
         progress: PdfExportProgressSink,
-    ) -> PdfExportOutcome: ...
+        make_searchable: bool = False,
+    ) -> PdfExportOutcome | FlattenedPdfExportOutcome | SearchablePdfExportOutcome: ...
 
 
 class _RemovalPdfExportPort(Protocol):
@@ -330,8 +337,11 @@ class OrganizerPageView:
     crop: NormalizedPageBox | None = None
     overlay_summaries: tuple[OrganizerOverlaySummary, ...] = ()
     removal_mark_count: int = 0
+    source_display_name: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
+        if type(self.source_display_name) is not str or len(self.source_display_name) > 512:
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.source_name")
         if type(self.page_id) is not UUID or self.page_id.version != 4:
             reject_page_operation(PageOperationErrorCode.IDENTIFIER_INVALID, "organizer.page_id")
         if type(self.position) is not int or not 1 <= self.position <= MAX_PAGE_COUNT:
@@ -391,8 +401,11 @@ class OrganizerViewState:
     autosave_pending: bool
     recovery_review_required: bool = False
     removal_page_ids: tuple[UUID, ...] = ()
+    case_name: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
+        if require_case_name(self.case_name, allow_empty=True) != self.case_name:
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.case_name")
         flags = (
             self.can_undo,
             self.can_redo,
@@ -511,6 +524,7 @@ class OrganizerPagesPdfExportOutcome:
     committed_export: PdfExportOutcome
     state: OrganizerViewState
     refresh_required: bool
+    searchable_report: SearchablePdfVerificationReport | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -519,12 +533,31 @@ class OrganizerPagesPdfExportOutcome:
             or type(self.refresh_required) is not bool
             or self.state.case_id != self.committed_export.history_retry.case_id
             or self.state.autosave_pending
+            or (
+                self.searchable_report is not None
+                and (
+                    type(self.searchable_report) is not SearchablePdfVerificationReport
+                    or self.searchable_report.base_report != self.committed_export.report
+                )
+            )
         ):
             reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "export.organizer_outcome")
 
     @property
     def safe_message(self) -> str:
         message = self.committed_export.safe_message
+        report = self.searchable_report
+        if report is not None:
+            message += tr(
+                " Searchable text added to {value1} pages; existing text preserved on {value2} pages.",
+                value1=report.ocr_text_page_count,
+                value2=report.existing_text_page_count,
+            )
+            if report.needs_review_page_count:
+                message += tr(
+                    " No text was recognized on {value1} pages. Needs review.",
+                    value1=report.needs_review_page_count,
+                )
         if self.refresh_required:
             message += tr(
                 " Close and reopen the case before continuing so the organizer can refresh."
@@ -604,6 +637,7 @@ class _OrganizerSession:
     history: PageCommandHistory
     autosave: ManifestAutosaveService
     load_status: ManifestLoadStatus
+    pending_case_name: str | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -654,6 +688,7 @@ class OrganizerBackend:
         "_active_scan_review",
         "_active_signature_draft_id",
         "_close_resources",
+        "_release_case_resources",
         "_checklist",
         "_lifecycle",
         "_ocr_languages",
@@ -685,6 +720,7 @@ class OrganizerBackend:
         thumbnails: _PagePreviewServicePort,
         *,
         close_resources: Callable[[], None] = _close_nothing,
+        release_case_resources: Callable[[], None] = _close_nothing,
         startup_recovery: StartupRecoveryResult | None = None,
         ocr_languages: OcrLanguageManager | None = None,
         quality_analysis: _QualityAnalysisServicePort | None = None,
@@ -697,7 +733,7 @@ class OrganizerBackend:
         assisted_use: AssistedUseService | None = None,
         post_export_deletion: PostExportDeletionService | None = None,
     ) -> None:
-        if not callable(close_resources):
+        if not callable(close_resources) or not callable(release_case_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
         if startup_recovery is None:
             startup_recovery = StartupRecoveryResult()
@@ -758,6 +794,7 @@ class OrganizerBackend:
                 "constraints.organizer",
             )
         self._lifecycle = lifecycle
+        self._release_case_resources = release_case_resources
         self._assisted_use = assisted_use
         self._repository = repository
         self._source_ingest = source_ingest
@@ -842,13 +879,13 @@ class OrganizerBackend:
         return self._assisted_use
 
     def create_assisted_case(
-        self, retention_days: int, passphrase: str, *, consent: bool
+        self, retention_days: int, passphrase: str, *, consent: bool, case_name: str = ""
     ) -> OrganizerViewState:
         """Publish no organizer content until the consent record is durable."""
 
         if self._assisted_use is None:
             raise RuntimeError("assisted use is unavailable")
-        state = self.create_case()
+        state = self.create_case(case_name)
         assert state.case_id is not None
         try:
             self._assisted_use.enroll(state.case_id, retention_days, passphrase, consent=consent)
@@ -858,9 +895,10 @@ class OrganizerBackend:
             raise
         return state
 
-    def create_case(self) -> OrganizerViewState:
+    def create_case(self, case_name: str = "") -> OrganizerViewState:
         """Create, load, and activate one empty case."""
 
+        selected_name = require_case_name(case_name, allow_empty=True)
         self._require_not_shutdown()
         if self._assisted_use is not None and self._assisted_use.snapshot is not None:
             reject_assisted_use(AssistedUseErrorCode.CASE_CONFLICT, "assisted.create_active")
@@ -870,13 +908,32 @@ class OrganizerBackend:
                 CaseLifecycleErrorCode.ACTIVE_CASE_CONFLICT,
                 "organizer.create_active",
             )
-        summary = self._lifecycle.create_case()
+        summary = (
+            self._lifecycle.create_case(selected_name)
+            if selected_name
+            else self._lifecycle.create_case()
+        )
         try:
             self._session = self._load_session(summary.case_id)
         except BaseException:
             _close_rejected_activation(self._lifecycle, summary.case_id)
             raise
         return self.state
+
+    def rename_case(self, case_name: str) -> OrganizerViewState:
+        """Persist private display text without changing case or source identity."""
+
+        selected_name = require_case_name(case_name)
+        session = self._require_session()
+        self._require_core_overlay_tools_inactive()
+        self.flush_autosave()
+        candidate = session.snapshot.document
+        if candidate.get("case_name", "") == selected_name:
+            return self.state
+        candidate["case_name"] = selected_name
+        _queue_session_edit(session, candidate)
+        session.pending_case_name = selected_name
+        return self.flush_autosave()
 
     def open_case(self, case_id: UUID) -> OrganizerViewState:
         """Open and reconstruct one organizer from its authoritative manifest."""
@@ -927,6 +984,7 @@ class OrganizerBackend:
         self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         if session is None:
+            self._release_case_resources()
             self._lifecycle.close_case()
             self._pending_committed_import = None
             if self._assisted_use is not None:
@@ -936,6 +994,7 @@ class OrganizerBackend:
         if result.snapshot is not None:
             session.snapshot = result.snapshot
         try:
+            self._release_case_resources()
             self._lifecycle.close_case(session.snapshot.case_id)
         except BaseException:
             # Autosave is sealed after a successful close.  Retain the active
@@ -1080,8 +1139,9 @@ class OrganizerBackend:
         *,
         cancellation: Callable[[], bool],
         progress: PdfExportProgressSink,
+        make_searchable: bool = False,
     ) -> OrganizerPagesPdfExportOutcome:
-        """Export the ordinary page sequence without a template or OCR dependency."""
+        """Export saved edits with an explicit OCR choice and no checklist dependency."""
 
         session = self._require_session()
         self._require_core_overlay_tools_inactive()
@@ -1092,13 +1152,16 @@ class OrganizerBackend:
         self.flush_autosave()
         require_redaction_export_allowed(session.snapshot.document)
         expires = monotonic() + DEFAULT_SOURCE_IMPORT_TIMEOUT_SECONDS
-        outcome = exporter.export_pdf(
+        result = exporter.export_pdf(
             session.snapshot.case_id,
             destination,
             deadline=lambda: monotonic() >= expires,
             cancellation=cancellation,
             progress=progress,
+            **({"make_searchable": True} if make_searchable else {}),
         )
+        report = result.report if type(result) is SearchablePdfExportOutcome else None
+        outcome = result if isinstance(result, PdfExportOutcome) else result.base_outcome
         # The destination is committed. A later view refresh must never turn this into
         # an apparent retryable export failure or permit edits based on stale history.
         self._export_reopen_required = True
@@ -1112,14 +1175,14 @@ class OrganizerBackend:
             replacement = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
             state = _view_state(replacement)
         except BaseException:
-            return OrganizerPagesPdfExportOutcome(outcome, _view_state(session), True)
+            return OrganizerPagesPdfExportOutcome(outcome, _view_state(session), True, report)
         try:
             session.autosave.close()
         except BaseException:
             pass
         self._session = replacement
         self._export_reopen_required = False
-        return OrganizerPagesPdfExportOutcome(outcome, state, False)
+        return OrganizerPagesPdfExportOutcome(outcome, state, False, report)
 
     def rotate_clockwise(self, page_id: UUID) -> OrganizerViewState:
         """Record one additive clockwise quarter turn for an active page."""
@@ -1201,7 +1264,7 @@ class OrganizerBackend:
             self._active_redaction_tools = None
             return self.state
         candidate = editor_state.to_candidate(session.snapshot)
-        session.autosave.queue(candidate)
+        _queue_session_edit(session, candidate)
         state = self._flush_autosave_unchecked()
         self._active_redaction_tools = None
         return state
@@ -1282,7 +1345,7 @@ class OrganizerBackend:
             self._active_core_overlay_tools = None
             return self.state
         candidate = editor_state.to_candidate(session.snapshot)
-        session.autosave.queue(candidate)
+        _queue_session_edit(session, candidate)
         self._active_scan_review = None
         state = self._flush_autosave_unchecked()
         self._active_core_overlay_tools = None
@@ -1572,7 +1635,7 @@ class OrganizerBackend:
             workflow.complete(opening_state, editor_state)
             self._active_checklist = None
             return self.state
-        session.autosave.queue(candidate)
+        _queue_session_edit(session, candidate)
         self._active_scan_review = None
         state = self._flush_autosave_unchecked()
         workflow.complete(opening_state, editor_state)
@@ -1656,7 +1719,7 @@ class OrganizerBackend:
             workflow.complete(opening_state, editor_state)
             self._active_portal_constraints = None
             return self.state
-        session.autosave.queue(candidate)
+        _queue_session_edit(session, candidate)
         self._active_scan_review = None
         state = self._flush_autosave_unchecked()
         workflow.complete(opening_state, editor_state)
@@ -1834,7 +1897,7 @@ class OrganizerBackend:
         )
         if type(change) is not SignatureImageManifestChange:
             reject_signature_image(SignatureImageErrorCode.RESULT_INVALID, "signature.delete")
-        session.autosave.queue(change.candidate_document)
+        _queue_session_edit(session, change.candidate_document)
         state = self._flush_autosave_unchecked()
         cleanup: SignatureImageCleanupResult | None = None
         warning: str | None = None
@@ -1892,6 +1955,8 @@ class OrganizerBackend:
         result = session.autosave.flush()
         if result.snapshot is not None:
             session.snapshot = result.snapshot
+        if not session.autosave.pending:
+            session.pending_case_name = None
         return self.state
 
     def retry_autosave(self) -> OrganizerViewState:
@@ -2445,7 +2510,7 @@ class OrganizerBackend:
     ) -> OrganizerViewState:
         self._require_core_overlay_tools_inactive()
         candidate = history.to_candidate(session.snapshot)
-        session.autosave.queue(candidate)
+        _queue_session_edit(session, candidate)
         session.history = history
         if not preserve_scan_review:
             self._active_scan_review = None
@@ -2561,12 +2626,28 @@ def _require_committed_signature_image(
         reject_signature_image(SignatureImageErrorCode.CASE_CHANGED, "signature.reconciliation")
 
 
+def _queue_session_edit(session: _OrganizerSession, candidate: Mapping[str, object]) -> None:
+    """Coalesce edits without discarding a private name awaiting a durable save."""
+
+    if session.pending_case_name is not None:
+        candidate = dict(candidate)
+        candidate["case_name"] = session.pending_case_name
+    session.autosave.queue(candidate)
+
+
 def _view_state(session: _OrganizerSession) -> OrganizerViewState:
     projection = session.history.projection
     media_by_source = _preview_media_by_source(session.snapshot)
     # Catalogue order remains stable when packet pages are moved or removed.
     document_numbers = {source_id: number for number, source_id in enumerate(media_by_source, 1)}
     document = session.snapshot.document
+    source_names = {
+        UUID(cast(str, source["source_id"])): cast(str, source["display_name"])
+        for source in cast(list[dict[str, object]], document["sources"])
+    }
+    name_counts: dict[str, int] = {}
+    for name in source_names.values():
+        name_counts[name.casefold()] = name_counts.get(name.casefold(), 0) + 1
     removal_counts: dict[UUID, int] = {}
     for mark in cast(list[dict[str, object]], document.get("redaction_marks", [])):
         mark_page_id = UUID(cast(str, mark["page_id"]))
@@ -2628,6 +2709,14 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
                     )
                 ),
                 removal_mark_count=removal_counts.get(page_id, 0),
+                source_display_name=(
+                    source_names[page.page.source_id]
+                    + (
+                        f" (import {document_numbers[page.page.source_id]})"
+                        if name_counts[source_names[page.page.source_id].casefold()] > 1
+                        else ""
+                    )
+                ),
             )
         )
     return OrganizerViewState(
@@ -2637,6 +2726,11 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
         can_undo=session.history.can_undo,
         can_redo=session.history.can_redo,
         autosave_pending=session.autosave.pending,
+        case_name=(
+            session.pending_case_name
+            if session.pending_case_name is not None
+            else cast(str, document.get("case_name", ""))
+        ),
         recovery_review_required=session.load_status
         in {
             ManifestLoadStatus.RECOVERED,

@@ -1,4 +1,4 @@
-"""Validate frozen v1/v2 and current v3 case-manifest contracts and fixtures."""
+"""Validate frozen v1/v2/v3 and current v4 case-manifest contracts and fixtures."""
 
 from __future__ import annotations
 
@@ -22,28 +22,35 @@ from jsonschema.exceptions import SchemaError
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[1]
 MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v1.schema.json")
 V2_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v2.schema.json")
-CURRENT_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v3.schema.json")
+V3_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v3.schema.json")
+CURRENT_MANIFEST_SCHEMA_PATH: Final = Path("schemas/case-manifest-v4.schema.json")
 MANIFEST_EXAMPLE_DIRECTORY: Final = Path("schemas/examples")
 MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v1/invalid")
 V2_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v2/invalid")
-CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v3/invalid")
+V3_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v3/invalid")
+CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY: Final = Path("tests/fixtures/manifests/v4/invalid")
 MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v1-*.json"
 V2_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v2-*.json"
-CURRENT_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v3-*.json"
-SUPPORTED_SCHEMA_VERSION: Final = 3
+V3_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v3-*.json"
+CURRENT_MANIFEST_EXAMPLE_PATTERN: Final = "case-manifest-v4-*.json"
+SUPPORTED_SCHEMA_VERSION: Final = 4
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
 V2_CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
 )
-CURRENT_CANONICAL_SCHEMA_FINGERPRINT: Final = (
+V3_CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
+)
+CURRENT_CANONICAL_SCHEMA_FINGERPRINT: Final = (
+    "481ce360cdb81c50512225bb8fc9f647f15b88d31adf0d74239aa3ea0960c6f4"
 )
 _SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
     1: CANONICAL_SCHEMA_FINGERPRINT,
     2: V2_CANONICAL_SCHEMA_FINGERPRINT,
-    3: CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
+    3: V3_CANONICAL_SCHEMA_FINGERPRINT,
+    4: CURRENT_CANONICAL_SCHEMA_FINGERPRINT,
 }
 
 MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
@@ -514,7 +521,7 @@ def load_manifest_schema(
 def load_current_manifest_schema(
     root: Path = PROJECT_ROOT,
 ) -> tuple[dict[str, Any] | None, list[ManifestIssue]]:
-    """Strictly load and check the current self-contained v3 schema."""
+    """Strictly load and check the current self-contained v4 schema."""
 
     return _load_manifest_schema_at(
         root,
@@ -1046,6 +1053,19 @@ def _semantic_issues(data: Mapping[str, Any], document: str) -> list[ManifestIss
             ),
         )
 
+    case_name = data.get("case_name", "")
+    if isinstance(case_name, str) and (
+        case_name != case_name.strip() or _contains_unsafe_unicode_codepoint(case_name)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "MANIFEST_CASE_NAME_INVALID",
+                document,
+                "$.case_name",
+                "case name contains surrounding whitespace or unsafe Unicode controls",
+            ),
+        )
     storage_names: set[str] = set()
     for index, source in enumerate(sources):
         source_id = cast(str, source["source_id"])
@@ -1624,6 +1644,10 @@ def validate_manifest_document(
     if active_schema is None:
         if data.get("schema_version") == SUPPORTED_SCHEMA_VERSION:
             active_schema, schema_issues = load_current_manifest_schema(root)
+        elif data.get("schema_version") == 3:
+            active_schema, schema_issues = _load_manifest_schema_at(
+                root, V3_MANIFEST_SCHEMA_PATH, V3_CANONICAL_SCHEMA_FINGERPRINT
+            )
         elif data.get("schema_version") == 2:
             active_schema, schema_issues = _load_manifest_schema_at(
                 root, V2_MANIFEST_SCHEMA_PATH, V2_CANONICAL_SCHEMA_FINGERPRINT
@@ -1675,16 +1699,19 @@ def _fixture_paths(
 def validate_manifest_fixture_set(
     root: Path = PROJECT_ROOT,
 ) -> tuple[ManifestFixtureSummary | None, list[ManifestIssue]]:
-    """Validate frozen v1/v2/current v3 examples and every negative fixture."""
+    """Validate frozen v1/v2/v3/current v4 examples and every negative fixture."""
 
     legacy_schema, legacy_schema_issues = load_manifest_schema(root)
     v2_schema, v2_schema_issues = _load_manifest_schema_at(
         root, V2_MANIFEST_SCHEMA_PATH, V2_CANONICAL_SCHEMA_FINGERPRINT
     )
     current_schema, current_schema_issues = load_current_manifest_schema(root)
-    if legacy_schema is None or v2_schema is None or current_schema is None:
+    v3_schema, v3_schema_issues = _load_manifest_schema_at(
+        root, V3_MANIFEST_SCHEMA_PATH, V3_CANONICAL_SCHEMA_FINGERPRINT
+    )
+    if legacy_schema is None or v2_schema is None or v3_schema is None or current_schema is None:
         return None, _sorted_issues(
-            [*legacy_schema_issues, *v2_schema_issues, *current_schema_issues]
+            [*legacy_schema_issues, *v2_schema_issues, *v3_schema_issues, *current_schema_issues]
         )
     fixture_sets = (
         (
@@ -1696,6 +1723,11 @@ def validate_manifest_fixture_set(
             v2_schema,
             V2_MANIFEST_EXAMPLE_PATTERN,
             V2_MANIFEST_INVALID_FIXTURE_DIRECTORY,
+        ),
+        (
+            v3_schema,
+            V3_MANIFEST_EXAMPLE_PATTERN,
+            V3_MANIFEST_INVALID_FIXTURE_DIRECTORY,
         ),
         (
             current_schema,

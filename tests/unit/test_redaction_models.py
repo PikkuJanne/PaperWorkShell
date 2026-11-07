@@ -22,6 +22,7 @@ from paperworkshell.domain.manifest_repository import (
 )
 from paperworkshell.domain.manifest_validation import (
     CURRENT_SCHEMA_FINGERPRINT,
+    V3_SCHEMA_FINGERPRINT,
     validate_manifest,
 )
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
@@ -67,25 +68,28 @@ def _snapshot(document: dict[str, Any]) -> ManifestSnapshot:
     )
 
 
-def test_current_schema_copies_identity_and_both_examples_are_valid() -> None:
-    canonical = (ROOT / "schemas/case-manifest-v3.schema.json").read_bytes()
+@pytest.mark.parametrize("version", [3, 4])
+def test_current_schema_copies_identity_and_both_examples_are_valid(version: int) -> None:
+    canonical = (ROOT / f"schemas/case-manifest-v{version}.schema.json").read_bytes()
     assert (
-        canonical == (ROOT / "src/paperworkshell/storage/case-manifest-v3.schema.json").read_bytes()
+        canonical
+        == (ROOT / f"src/paperworkshell/storage/case-manifest-v{version}.schema.json").read_bytes()
     )
-    assert (
-        hashlib.sha256(
-            json.dumps(_schema(), sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-        ).hexdigest()
-        == CURRENT_SCHEMA_FINGERPRINT
-    )
+    assert hashlib.sha256(
+        json.dumps(
+            _schema(version), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode()
+    ).hexdigest() == (V3_SCHEMA_FINGERPRINT if version == 3 else CURRENT_SCHEMA_FINGERPRINT)
     for kind in ("minimal", "representative"):
-        document = _load(f"schemas/examples/case-manifest-v3-{kind}.json")
+        document = _load(f"schemas/examples/case-manifest-v{version}-{kind}.json")
         before = copy.deepcopy(document)
-        assert validate_manifest(document, _schema()) == ()
-        assert validate_manifest_data(document, _schema()) == []
+        assert validate_manifest(document, _schema(version)) == ()
+        assert validate_manifest_data(document, _schema(version)) == []
         assert document == before
-        assert probe_supported_manifest_schema_version(json.dumps(document).encode()) == 3
-        assert summary_from_manifest(document, UUID(document["case_id"])).manifest_version == 3
+        assert probe_supported_manifest_schema_version(json.dumps(document).encode()) == version
+        assert (
+            summary_from_manifest(document, UUID(document["case_id"])).manifest_version == version
+        )
 
 
 @pytest.mark.parametrize("path", sorted(INVALID.glob("*.json")), ids=lambda path: path.stem)

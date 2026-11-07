@@ -200,7 +200,8 @@ def test_rotation_invalidates_stale_pixels_before_autosave_preview_suppression()
     index = model.index(0, 0)
     assert model.data(index, model.PreviewStateRole) == PreviewState.NOT_LOADED.value
     assert model.data(index, int(Qt.ItemDataRole.DecorationRole)) is None
-    assert model.retained_preview_count == 0
+    # The stale orientation is retained for undo, never exposed as the current image.
+    assert model.retained_preview_count == 1
 
 
 def test_any_persisted_scan_transform_invalidates_stale_image_pixels() -> None:

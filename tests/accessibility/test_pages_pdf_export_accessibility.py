@@ -18,6 +18,7 @@ def test_export_shortcut_exposes_named_button_and_returns_focus_for_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.pages_pdf_export_requested.disconnect(worker.export_pages_pdf)
         requests: list[tuple[int, Path, OperationCancellation]] = []
         commands.pages_pdf_export_requested.connect(
@@ -32,7 +33,7 @@ def test_export_shortcut_exposes_named_button_and_returns_focus_for_retry(
         interface = QAccessible.queryAccessibleInterface(button)
         assert interface is not None
         assert interface.role() is QAccessible.Role.Button
-        assert interface.text(QAccessible.Text.Name) == "Export pages as PDF"
+        assert interface.text(QAccessible.Text.Name) == "Export PDF…"
         assert "Ctrl+Shift+E" in interface.text(QAccessible.Text.Description)
         assert interface.state().focusable
         action = window.findChild(QAction, "pagesPdfExportMenuAction")

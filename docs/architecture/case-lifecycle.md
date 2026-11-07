@@ -24,12 +24,16 @@ desktop workflow, PWS-0110 owns page-operation state, and PWS-0113 owns the orde
 
 ## Public lifecycle behavior
 
-- `create_case()` publishes a complete empty manifest and returns its active `CaseSummary`.
-- `list_cases()` returns valid current-version summaries in internal-UUID order. Canonical
+- `create_case(case_name="")` publishes a complete empty v4 manifest and returns its
+  active `CaseSummary`. The ordinary UI requests a nonblank name; the empty default
+  remains available to legacy programmatic callers. Cancel creates no case.
+- `list_cases()` returns valid supported-version summaries in internal-UUID order without
+  initiating migrations or changing case files. Canonical
   UUID-named candidates are authenticated independently; entries that are incomplete or invalid
   are returned separately as path-free unavailable issues and never hide valid cases.
-- `open_case(case_id)` strictly reads the lifecycle envelope and retains an authenticated case-root
-  lease. The envelope may describe an empty case or a complete PWS-0104 source/page import revision.
+- `open_case(case_id)` validates the lifecycle envelope, transactionally upgrades a supported
+  older schema if needed, and retains an authenticated case-root lease. The envelope may describe
+  an empty case or a complete PWS-0104 source/page import revision.
   Opening the already-active ID is idempotent; opening or creating a different ID requires closing
   the current lease first.
 - `close_case()` releases the retained handles idempotently. An optional supplied ID must match the
@@ -39,15 +43,18 @@ desktop workflow, PWS-0110 owns page-operation state, and PWS-0113 owns the orde
   mutation. Its result is `complete` or `partial`, contains counts and a stable code only, and says
   explicitly that application-storage removal does not guarantee forensic erasure.
 
-All summaries and results use opaque UUIDs, revisions, timestamps, counts, and closed enums. They do
-not carry a case path, original filename, document value, display name, or raw exception.
+Summaries carry opaque UUIDs, revisions and timestamps plus the private `case_name`
+presentation field, excluded from `repr`. They do not carry a case path, original
+filename, document value or raw exception. The name stays in the protected manifest
+and must never enter routine logs. Renaming uses organizer autosave without changing
+the storage UUID or imported originals; see [manifest v4](../schemas/case-manifest-v4.md).
 
 ## Creation publication boundary
 
 Creation uses `manifest.json` as the sole lifecycle-validity marker:
 
 1. Provision and authenticate the fixed private UUID workspace from PWS-0101.
-2. Construct the exact empty manifest-v2 document with revision zero, one UTC timestamp, empty
+2. Construct the exact empty manifest-v4 document with revision zero, private case name, one UTC timestamp, empty
    collections, `combined_pdf`, and `must_be_unencrypted`.
 3. Reserve case/temp bytes and one entry under the shared per-case coordination lock.
 4. Exclusively create a random `temp/<uuid>.tmp`, write the exact UTF-8 bytes, flush them, and verify

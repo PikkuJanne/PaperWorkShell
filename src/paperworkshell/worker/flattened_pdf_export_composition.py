@@ -13,7 +13,11 @@ from paperworkshell.worker._windows_broker import (
     drain_windows_bounded_output_cleanup,
     drain_windows_result_pipe_cleanup,
 )
-from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
+from paperworkshell.worker.client._windows import (
+    RuntimeAccessAuthority,
+    WindowsLaunchConfig,
+    WindowsProcessLauncher,
+)
 from paperworkshell.worker.client.client import WorkerClient
 from paperworkshell.worker.client.errors import (
     WorkerClientContext,
@@ -228,6 +232,7 @@ def create_flattened_pdf_export_worker_composition(
     config: FlattenedPdfExportWorkerCompositionConfig,
     *,
     heavy_operations: HeavyOperationCoordinator,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> FlattenedPdfExportWorkerComposition:
     """Build the fixed qpdf launcher, one-shot client, and flattened broker."""
 
@@ -241,8 +246,13 @@ def create_flattened_pdf_export_worker_composition(
             WorkerClientErrorCode.CONFIGURATION_INVALID,
             WorkerClientContext.CONFIGURATION,
         )
+    launcher = (
+        WindowsProcessLauncher(config._launch_config)
+        if runtime_access is None
+        else WindowsProcessLauncher(config._launch_config, runtime_access=runtime_access)
+    )
     worker = WorkerClient(
-        WindowsProcessLauncher(config._launch_config),
+        launcher,
         config.resource_policy,
         config.timeout_policy,
         required_capabilities=(FLATTENED_PDF_EXPORT_CAPABILITY,),

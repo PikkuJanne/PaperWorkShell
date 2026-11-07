@@ -1,4 +1,4 @@
-"""Authenticated Windows storage for disposable, fixed-layout PDF thumbnails."""
+"""Authenticated, quota-bounded storage for fixed-layout PDF and image pixels."""
 
 from __future__ import annotations
 
@@ -13,6 +13,14 @@ from threading import RLock
 from typing import Final, Self
 from uuid import UUID, uuid4
 
+from paperworkshell.domain.image_pages import ImagePageError
+from paperworkshell.domain.image_transforms import (
+    IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES,
+    MAX_IMAGE_TRANSFORM_ARTIFACT_BYTES,
+    ImageTransformArtifact,
+    ImageTransformLookupKey,
+    decode_image_transform_artifact,
+)
 from paperworkshell.domain.pdf_thumbnails import (
     MAX_PDF_THUMBNAIL_ARTIFACT_BYTES,
     PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES,
@@ -47,7 +55,7 @@ _MAXIMUM_CACHE_OBJECT_ID_ATTEMPTS: Final = 32
 _DEFAULT_MAXIMUM_CLEANUP_ENTRIES: Final = 4_096
 _CACHE_ENTRY_NAME: Final = re.compile(
     r"(?P<page>[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-"
-    r"[0-9a-f]{12})\.(?P<key>[0-9a-f]{64})\.pwsthumb\Z"
+    r"[0-9a-f]{12})\.(?P<key>[0-9a-f]{64})\.(?:pwsthumb|pwstransform)\Z"
 )
 _CACHE_STAGE_NAME: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-"
@@ -103,6 +111,40 @@ class ThumbnailCachePublication:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ImageTransformCacheLookup:
+    """Image-only lookup result; never a source parser or PDF artifact."""
+
+    status: ThumbnailCacheLookupStatus
+    artifact: ImageTransformArtifact | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.status) is not ThumbnailCacheLookupStatus
+            or (
+                self.status is ThumbnailCacheLookupStatus.HIT
+                and type(self.artifact) is not ImageTransformArtifact
+            )
+            or (self.status is not ThumbnailCacheLookupStatus.HIT and self.artifact is not None)
+        ):
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.INTERNAL_ERROR, "thumbnail.image_lookup")
+
+    @property
+    def is_hit(self) -> bool:
+        return self.status is ThumbnailCacheLookupStatus.HIT
+
+    @property
+    def corrupt_removed(self) -> bool:
+        return self.status is ThumbnailCacheLookupStatus.CORRUPT_REMOVED
+
+
+@dataclass(frozen=True, slots=True)
+class ImageTransformCachePublication:
+    artifact: ImageTransformArtifact = field(repr=False)
+    published: bool
+    delayed_exception: BaseException | None = field(default=None, repr=False, compare=False)
+
+
 class ThumbnailCleanupStatus(StrEnum):
     """Whether a bounded exact-entry cleanup completed its selected inventory."""
 
@@ -123,7 +165,11 @@ class ThumbnailCleanupReport:
     unexpected_failure: bool = False
 
 
-class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheStage"]):
+class _WindowsArtifactCacheStage[
+    K: (PdfThumbnailCacheKey, ImageTransformLookupKey),
+    A: (PdfThumbnailArtifact, ImageTransformArtifact),
+    P,
+](AbstractContextManager["_WindowsArtifactCacheStage[K, A, P]"]):
     """Quota-reserved exact cache stage retained through validation and publication."""
 
     __slots__ = (
@@ -146,23 +192,23 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
         stack: ExitStack,
         pending: WindowsPendingThumbnailFile,
         thumbnails_root: WindowsHandle,
-        key: PdfThumbnailCacheKey,
+        key: K,
         cache_object_id: UUID,
     ) -> None:
         self._store = store
         self._stack = stack
         self._pending = pending
         self._thumbnails_root = thumbnails_root
-        self._key = key
+        self._key: K = key
         self._cache_object_id = cache_object_id
-        self._artifact: PdfThumbnailArtifact | None = None
+        self._artifact: A | None = None
         self._published = False
         self._quarantined = False
         self._closed = False
 
     def __repr__(self) -> str:
         return (
-            "WindowsThumbnailCacheStage("
+            f"{type(self).__name__}("
             f"case_id={self._key.case_id!r}, page_id={self._key.page_id!r}, "
             f"cache_object_id={self._cache_object_id!r})"
         )
@@ -175,7 +221,7 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
         self.close()
 
     @property
-    def key(self) -> PdfThumbnailCacheKey:
+    def key(self) -> K:
         return self._key
 
     @property
@@ -213,7 +259,7 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
     def is_quarantined(self) -> bool:
         return self._quarantined
 
-    def validate(self, *, expected_operation_id: UUID) -> PdfThumbnailArtifact:
+    def validate(self, *, expected_operation_id: UUID, expected_output_id: UUID | None = None) -> A:
         """Seal and fully validate exact broker-staged output before publication."""
 
         self._require_open(context="thumbnail.stage_validate")
@@ -222,13 +268,12 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
         try:
             self._pending.seal()
             payload = self._pending.read_bytes()
-            artifact = decode_pdf_thumbnail_artifact(
+            artifact = self._decode(
                 payload,
-                expected_key=self._key,
                 expected_operation_id=expected_operation_id,
-                expected_cache_object_id=self._cache_object_id,
+                expected_output_id=expected_output_id,
             )
-        except PdfThumbnailError:
+        except PdfThumbnailError, ImagePageError:
             raise
         except WorkspaceError:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.CACHE_INVALID, "thumbnail.stage_storage")
@@ -237,7 +282,7 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
         self._artifact = artifact
         return artifact
 
-    def publish(self) -> ThumbnailCachePublication:
+    def publish(self) -> P:
         """No-replace publish the validated stage or reuse an equivalent valid collision."""
 
         self._require_open(context="thumbnail.stage_publish")
@@ -250,19 +295,9 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
                 storage_name=self._key.internal_name,
             )
             if result.state is CachePublishState.DESTINATION_EXISTS:
-                collision = self._store._lookup_under_root(self._key, self._thumbnails_root)
-                if collision.status is ThumbnailCacheLookupStatus.HIT:
-                    artifact = collision.artifact
-                    if artifact is None:
-                        reject_pdf_thumbnail(
-                            PdfThumbnailErrorCode.INTERNAL_ERROR,
-                            "thumbnail.publish_collision",
-                        )
-                    publication = ThumbnailCachePublication(
-                        artifact=artifact,
-                        published=False,
-                        delayed_exception=result.delayed_exception,
-                    )
+                artifact = self._lookup_collision()
+                if artifact is not None:
+                    publication = self._publication(artifact, False, result.delayed_exception)
                     self.discard()
                     return publication
                 result = publish_new_thumbnail_file(
@@ -271,18 +306,14 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
                     storage_name=self._key.internal_name,
                 )
             if result.state is CachePublishState.PUBLISHED:
-                publication = ThumbnailCachePublication(
-                    artifact=self._artifact,
-                    published=True,
-                    delayed_exception=result.delayed_exception,
-                )
+                publication = self._publication(self._artifact, True, result.delayed_exception)
                 self._published = True
                 self.close()
                 return publication
             if result.state is CachePublishState.UNKNOWN:
                 self.quarantine()
             reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.publish")
-        except PdfThumbnailError:
+        except PdfThumbnailError, ImagePageError:
             raise
         except WorkspaceError:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, "thumbnail.publish")
@@ -320,6 +351,77 @@ class WindowsThumbnailCacheStage(AbstractContextManager["WindowsThumbnailCacheSt
     def _require_open(self, *, context: str) -> None:
         if self._closed:
             reject_pdf_thumbnail(PdfThumbnailErrorCode.DESTINATION_FAILED, context)
+
+    def _decode(
+        self, payload: bytes, *, expected_operation_id: UUID, expected_output_id: UUID | None
+    ) -> A:
+        raise NotImplementedError
+
+    def _lookup_collision(self) -> A | None:
+        raise NotImplementedError
+
+    def _publication(self, artifact: A, published: bool, delayed: BaseException | None) -> P:
+        raise NotImplementedError
+
+
+class WindowsThumbnailCacheStage(
+    _WindowsArtifactCacheStage[
+        PdfThumbnailCacheKey, PdfThumbnailArtifact, ThumbnailCachePublication
+    ]
+):
+    """The unchanged PDF artifact boundary over the shared secure file lifecycle."""
+
+    __slots__ = ()
+
+    def _decode(
+        self, payload: bytes, *, expected_operation_id: UUID, expected_output_id: UUID | None
+    ) -> PdfThumbnailArtifact:
+        if expected_output_id is not None and expected_output_id != self._cache_object_id:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.CACHE_INVALID, "thumbnail.stage_output")
+        return decode_pdf_thumbnail_artifact(
+            payload,
+            expected_key=self._key,
+            expected_operation_id=expected_operation_id,
+            expected_cache_object_id=self._cache_object_id,
+        )
+
+    def _lookup_collision(self) -> PdfThumbnailArtifact | None:
+        return self._store._lookup_under_root(self._key, self._thumbnails_root).artifact
+
+    def _publication(
+        self, artifact: PdfThumbnailArtifact, published: bool, delayed: BaseException | None
+    ) -> ThumbnailCachePublication:
+        return ThumbnailCachePublication(artifact, published, delayed)
+
+
+class WindowsImageTransformCacheStage(
+    _WindowsArtifactCacheStage[
+        ImageTransformLookupKey, ImageTransformArtifact, ImageTransformCachePublication
+    ]
+):
+    """Strict native image artifacts, without introducing an image file decoder."""
+
+    __slots__ = ()
+
+    def _decode(
+        self, payload: bytes, *, expected_operation_id: UUID, expected_output_id: UUID | None
+    ) -> ImageTransformArtifact:
+        if expected_output_id is None:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.CACHE_INVALID, "thumbnail.image_output")
+        return decode_image_transform_artifact(
+            payload,
+            expected_lookup_key=self._key,
+            expected_operation_id=expected_operation_id,
+            expected_output_id=expected_output_id,
+        )
+
+    def _lookup_collision(self) -> ImageTransformArtifact | None:
+        return self._store._lookup_image_under_root(self._key, self._thumbnails_root).artifact
+
+    def _publication(
+        self, artifact: ImageTransformArtifact, published: bool, delayed: BaseException | None
+    ) -> ImageTransformCachePublication:
+        return ImageTransformCachePublication(artifact, published, delayed)
 
 
 class WindowsThumbnailCacheStore:
@@ -373,7 +475,58 @@ class WindowsThumbnailCacheStore:
         """Reserve the maximum artifact size and create one random exact cache stage."""
 
         safe_key = _require_cache_key(key)
-        maximum_bytes = _maximum_artifact_bytes(safe_key)
+        return self._create_stage(
+            safe_key,
+            _maximum_artifact_bytes(safe_key),
+            lambda stack, pending, root, object_id: WindowsThumbnailCacheStage(
+                store=self,
+                stack=stack,
+                pending=pending,
+                thumbnails_root=root,
+                key=safe_key,
+                cache_object_id=object_id,
+            ),
+        )
+
+    def lookup_image_transform(self, key: ImageTransformLookupKey) -> ImageTransformCacheLookup:
+        """Validate one case-private native RGBA image artifact before returning a hit."""
+
+        safe_key = _require_image_lookup_key(key)
+        try:
+            with ExitStack() as stack:
+                authority = stack.enter_context(self._manager.authenticate_case(safe_key.case_id))
+                _cache_root, thumbnails_root = _open_thumbnail_roots(stack, authority)
+                return self._lookup_image_under_root(safe_key, thumbnails_root)
+        except PdfThumbnailError, ImagePageError:
+            raise
+        except Exception:
+            reject_pdf_thumbnail(PdfThumbnailErrorCode.CACHE_INVALID, "thumbnail.image_lookup")
+
+    def create_image_transform_stage(
+        self, key: ImageTransformLookupKey
+    ) -> WindowsImageTransformCacheStage:
+        safe_key = _require_image_lookup_key(key)
+        return self._create_stage(
+            safe_key,
+            _maximum_image_artifact_bytes(safe_key),
+            lambda stack, pending, root, object_id: WindowsImageTransformCacheStage(
+                store=self,
+                stack=stack,
+                pending=pending,
+                thumbnails_root=root,
+                key=safe_key,
+                cache_object_id=object_id,
+            ),
+        )
+
+    def _create_stage[S](
+        self,
+        safe_key: PdfThumbnailCacheKey | ImageTransformLookupKey,
+        maximum_bytes: int,
+        build: Callable[[ExitStack, WindowsPendingThumbnailFile, WindowsHandle, UUID], S],
+    ) -> S:
+        """One reservation, identity, publication guard and live-stage registry for both codecs."""
+
         cache_object_id = self._allocate_cache_object_id(safe_key)
         stage_name = f"{cache_object_id}.tmp"
         relative_path = f"cache/thumbnails/{stage_name}"
@@ -408,19 +561,12 @@ class WindowsThumbnailCacheStore:
                 maximum_bytes=maximum_bytes,
             )
             stack.enter_context(pending)
-            stage = WindowsThumbnailCacheStage(
-                store=self,
-                stack=stack,
-                pending=pending,
-                thumbnails_root=thumbnails_root,
-                key=safe_key,
-                cache_object_id=cache_object_id,
-            )
+            stage = build(stack, pending, thumbnails_root, cache_object_id)
             with self._stage_lock:
                 self._live_stage_ids.add(cache_object_id)
             complete = True
             return stage
-        except PdfThumbnailError:
+        except PdfThumbnailError, ImagePageError:
             raise
         except WorkspaceError as error:
             code = (
@@ -441,7 +587,12 @@ class WindowsThumbnailCacheStore:
     def invalidate_key(self, key: PdfThumbnailCacheKey) -> bool:
         """Delete one exact safe cache key without touching siblings or unknown names."""
 
-        safe_key = _require_cache_key(key)
+        return self._invalidate_key(_require_cache_key(key))
+
+    def invalidate_image_transform_key(self, key: ImageTransformLookupKey) -> bool:
+        return self._invalidate_key(_require_image_lookup_key(key))
+
+    def _invalidate_key(self, safe_key: PdfThumbnailCacheKey | ImageTransformLookupKey) -> bool:
         try:
             with ExitStack() as stack:
                 authority = stack.enter_context(self._manager.authenticate_case(safe_key.case_id))
@@ -598,9 +749,43 @@ class WindowsThumbnailCacheStore:
         key: PdfThumbnailCacheKey,
         thumbnails_root: WindowsHandle,
     ) -> ThumbnailCacheLookup:
+        status, artifact = self._read_under_root(
+            key,
+            thumbnails_root,
+            minimum_bytes=PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES,
+            maximum_bytes=_maximum_artifact_bytes(key),
+            decode=lambda payload: decode_pdf_thumbnail_artifact(payload, expected_key=key),
+        )
+        return ThumbnailCacheLookup(status, artifact)
+
+    def _lookup_image_under_root(
+        self,
+        key: ImageTransformLookupKey,
+        thumbnails_root: WindowsHandle,
+    ) -> ImageTransformCacheLookup:
+        status, artifact = self._read_under_root(
+            key,
+            thumbnails_root,
+            minimum_bytes=IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES,
+            maximum_bytes=_maximum_image_artifact_bytes(key),
+            decode=lambda payload: decode_image_transform_artifact(
+                payload, expected_lookup_key=key
+            ),
+        )
+        return ImageTransformCacheLookup(status, artifact)
+
+    def _read_under_root[A](
+        self,
+        key: PdfThumbnailCacheKey | ImageTransformLookupKey,
+        thumbnails_root: WindowsHandle,
+        *,
+        minimum_bytes: int,
+        maximum_bytes: int,
+        decode: Callable[[bytes], A],
+    ) -> tuple[ThumbnailCacheLookupStatus, A | None]:
         path = thumbnails_root.info.final_path / key.internal_name
         if not os.path.lexists(path):
-            return ThumbnailCacheLookup(ThumbnailCacheLookupStatus.MISS)
+            return ThumbnailCacheLookupStatus.MISS, None
         try:
             with open_handle(path, read=True, delete=True, share_delete=True) as handle:
                 require_expected_handle(handle, path, directory=False)
@@ -610,11 +795,7 @@ class WindowsThumbnailCacheStore:
                         PdfThumbnailErrorCode.CACHE_INVALID, "thumbnail.cache_identity"
                     )
                 require_no_alternate_streams(path)
-                if not (
-                    PDF_THUMBNAIL_ARTIFACT_HEADER_BYTES
-                    <= initial.logical_size
-                    <= MAX_PDF_THUMBNAIL_ARTIFACT_BYTES
-                ):
+                if not (minimum_bytes <= initial.logical_size <= maximum_bytes):
                     try:
                         handle.mark_for_deletion()
                     except WorkspaceError:
@@ -622,9 +803,9 @@ class WindowsThumbnailCacheStore:
                             PdfThumbnailErrorCode.CACHE_INVALID,
                             "thumbnail.cache_cleanup",
                         )
-                    return ThumbnailCacheLookup(ThumbnailCacheLookupStatus.CORRUPT_REMOVED)
+                    return ThumbnailCacheLookupStatus.CORRUPT_REMOVED, None
                 handle.rewind()
-                payload = handle.read_bytes(maximum_bytes=MAX_PDF_THUMBNAIL_ARTIFACT_BYTES)
+                payload = handle.read_bytes(maximum_bytes=maximum_bytes)
                 current = handle.refresh_info()
                 if (
                     current.identity != initial.identity
@@ -637,8 +818,8 @@ class WindowsThumbnailCacheStore:
                     )
                 require_no_alternate_streams(path)
                 try:
-                    artifact = decode_pdf_thumbnail_artifact(payload, expected_key=key)
-                except PdfThumbnailError:
+                    artifact = decode(payload)
+                except PdfThumbnailError, ImagePageError:
                     try:
                         handle.mark_for_deletion()
                     except WorkspaceError:
@@ -646,13 +827,13 @@ class WindowsThumbnailCacheStore:
                             PdfThumbnailErrorCode.CACHE_INVALID,
                             "thumbnail.cache_cleanup",
                         )
-                    return ThumbnailCacheLookup(ThumbnailCacheLookupStatus.CORRUPT_REMOVED)
-                return ThumbnailCacheLookup(ThumbnailCacheLookupStatus.HIT, artifact)
+                    return ThumbnailCacheLookupStatus.CORRUPT_REMOVED, None
+                return ThumbnailCacheLookupStatus.HIT, artifact
         except PdfThumbnailError:
             raise
         except WorkspaceError:
             if not os.path.lexists(path):
-                return ThumbnailCacheLookup(ThumbnailCacheLookupStatus.MISS)
+                return ThumbnailCacheLookupStatus.MISS, None
             raise
 
     def _bounded_names(self, path: Path) -> tuple[str, ...]:
@@ -676,7 +857,9 @@ class WindowsThumbnailCacheStore:
         names.sort(key=str.casefold)
         return tuple(names)
 
-    def _allocate_cache_object_id(self, key: PdfThumbnailCacheKey) -> UUID:
+    def _allocate_cache_object_id(
+        self, key: PdfThumbnailCacheKey | ImageTransformLookupKey
+    ) -> UUID:
         used = {key.case_id, key.source_id, key.page_id}
         for _ in range(_MAXIMUM_CACHE_OBJECT_ID_ATTEMPTS):
             try:
@@ -805,6 +988,22 @@ def _maximum_artifact_bytes(key: PdfThumbnailCacheKey) -> int:
     if maximum_bytes > MAX_PDF_THUMBNAIL_ARTIFACT_BYTES:
         reject_pdf_thumbnail(PdfThumbnailErrorCode.LIMIT_EXCEEDED, "thumbnail.cache_size")
     return maximum_bytes
+
+
+def _maximum_image_artifact_bytes(key: ImageTransformLookupKey) -> int:
+    maximum_bytes = (
+        IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
+        + key.maximum_width_pixels * key.maximum_height_pixels * 4
+    )
+    if maximum_bytes > MAX_IMAGE_TRANSFORM_ARTIFACT_BYTES:
+        reject_pdf_thumbnail(PdfThumbnailErrorCode.LIMIT_EXCEEDED, "thumbnail.image_cache_size")
+    return maximum_bytes
+
+
+def _require_image_lookup_key(value: object) -> ImageTransformLookupKey:
+    if type(value) is not ImageTransformLookupKey:
+        reject_pdf_thumbnail(PdfThumbnailErrorCode.MODEL_INVALID, "thumbnail.image_cache_key")
+    return value
 
 
 def _require_cache_key(value: object) -> PdfThumbnailCacheKey:

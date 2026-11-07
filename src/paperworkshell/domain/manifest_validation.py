@@ -1,4 +1,4 @@
-"""Pure, non-disclosing validation for decoded case-manifest v1/v2/v3 data.
+"""Pure, non-disclosing validation for decoded case-manifest v1/v2/v3/v4 data.
 
 The runtime validator intentionally implements only the reviewed JSON Schema
 subset used by the canonical manifest-v1/v2 contracts. Keeping this interpreter
@@ -25,18 +25,20 @@ from paperworkshell.domain.page_coordinates import (
 
 # ``CANONICAL_SCHEMA_FINGERPRINT`` remains the published v1 identity for
 # compatibility with callers that explicitly validate a historical manifest.
-SUPPORTED_SCHEMA_VERSION: Final = 3
+SUPPORTED_SCHEMA_VERSION: Final = 4
 CANONICAL_SCHEMA_FINGERPRINT: Final = (
     "a4dfbc925b601ce3dca08085173a742642cab6b962b4358f91d921bd9fdbd695"
 )
 V2_SCHEMA_FINGERPRINT: Final = "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
+V3_SCHEMA_FINGERPRINT: Final = "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
 CURRENT_SCHEMA_FINGERPRINT: Final = (
-    "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
+    "481ce360cdb81c50512225bb8fc9f647f15b88d31adf0d74239aa3ea0960c6f4"
 )
 _SCHEMA_FINGERPRINTS_BY_VERSION: Final = {
     1: CANONICAL_SCHEMA_FINGERPRINT,
     2: V2_SCHEMA_FINGERPRINT,
-    3: CURRENT_SCHEMA_FINGERPRINT,
+    3: V3_SCHEMA_FINGERPRINT,
+    4: CURRENT_SCHEMA_FINGERPRINT,
 }
 MAX_REPORTED_ISSUES: Final = 512
 MAX_VALIDATION_STEPS: Final = 1_000_000
@@ -1109,6 +1111,18 @@ def _semantic_issues(data: Mapping[str, Any]) -> tuple[ManifestValidationIssue, 
             ),
         )
 
+    case_name = data.get("case_name", "")
+    if isinstance(case_name, str) and (
+        case_name != case_name.strip() or _contains_unsafe_unicode_codepoint(case_name)
+    ):
+        _add_issue(
+            issues,
+            _issue(
+                "MANIFEST_CASE_NAME_INVALID",
+                "$.case_name",
+                "case name contains surrounding whitespace or unsafe Unicode controls",
+            ),
+        )
     storage_names: set[str] = set()
     for index, source in enumerate(sources):
         source_id = cast(str, source["source_id"])
@@ -1569,12 +1583,12 @@ def validate_manifest(
     data: Mapping[str, object],
     schema: Mapping[str, object],
 ) -> tuple[ManifestValidationIssue, ...]:
-    """Validate decoded manifest-v1/v2/v3 data without mutation, I/O, or disclosure.
+    """Validate decoded manifest-v1/v2/v3/v4 data without mutation, I/O, or disclosure.
 
     Version dispatch happens before schema execution so unknown future versions
     fail closed without interpreting or traversing their content. Released v1
     remains independently valid only when paired with its exact frozen schema;
-    current persisted state uses v3.
+    current persisted state uses v4.
     """
 
     version = data.get("schema_version")

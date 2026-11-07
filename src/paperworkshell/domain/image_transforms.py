@@ -37,6 +37,7 @@ IMAGE_TRANSFORM_INTENT_VERSION: Final = 1
 IMAGE_TRANSFORM_LIMITS_VERSION: Final = 1
 IMAGE_TRANSFORM_PLAN_VERSION: Final = 1
 IMAGE_TRANSFORM_CACHE_KEY_VERSION: Final = 1
+IMAGE_TRANSFORM_LOOKUP_KEY_VERSION: Final = 1
 IMAGE_TRANSFORM_RESULT_VERSION: Final = 1
 IMAGE_TRANSFORM_ARTIFACT_VERSION: Final = 1
 IMAGE_PAGE_TRANSFORM_REQUEST_VERSION: Final = 1
@@ -94,6 +95,7 @@ _ARTIFACT_MAGIC: Final = b"PWSITA1\0"
 _INTENT_STRUCT: Final = struct.Struct(">8sHIIIIHiIIH")
 _CACHE_PREFIX_STRUCT: Final = struct.Struct(">8sHHH16s16s16sQBIIB")
 _CACHE_SUFFIX_STRUCT: Final = struct.Struct(">II32s32s32s")
+_LOOKUP_STRUCT: Final = struct.Struct(">8sHHH16s16s16sQBII32s32s")
 _ARTIFACT_PREFIX_STRUCT: Final = struct.Struct(">8sHHI16s16s")
 _ARTIFACT_RESULT_STRUCT: Final = struct.Struct(">HHIIIIIIIIIIIQ32s32s32s")
 
@@ -510,6 +512,115 @@ def _fit_dimensions(
         min(maximum_width, max(1, _round_divide(width * maximum_height, height))),
         maximum_height,
     )
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ImageTransformLookupKey:
+    """Case-private lookup identity available before any image decoding.
+
+    The immutable source digest and fixed engine profile bind source geometry,
+    EXIF and decoded pixels. Those independently validated facts remain in the
+    native artifact's full cache key; they need not be discovered in the GUI.
+    This disposable lookup namespace does not change the v1 artifact format.
+    """
+
+    case_id: UUID
+    source_id: UUID
+    page_id: UUID
+    source_byte_size: int
+    source_sha256: str = field(repr=False)
+    source_format: ImageSourceFormat
+    intent: ImageTransformIntent
+    maximum_width_pixels: int
+    maximum_height_pixels: int
+    engine_profile_sha256: str = field(default=IMAGE_TRANSFORM_ENGINE_PROFILE_SHA256, repr=False)
+    artifact_version: int = IMAGE_TRANSFORM_ARTIFACT_VERSION
+    key_version: int = IMAGE_TRANSFORM_LOOKUP_KEY_VERSION
+    _key_sha256: str = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        identifiers = tuple(
+            _require_uuid4(value, "image.transform_lookup_ids")
+            for value in (self.case_id, self.source_id, self.page_id)
+        )
+        if len(set(identifiers)) != 3:
+            reject_image_page(ImagePageErrorCode.MODEL_INVALID, "image.transform_lookup_ids")
+        _require_positive(
+            self.source_byte_size, MAX_IMAGE_SOURCE_BYTES, "image.transform_lookup_source"
+        )
+        _require_sha256(self.source_sha256, "image.transform_lookup_source_digest")
+        _require_sha256(self.engine_profile_sha256, "image.transform_lookup_engine")
+        if (
+            type(self.source_format) is not ImageSourceFormat
+            or type(self.intent) is not ImageTransformIntent
+            or self.engine_profile_sha256 != IMAGE_TRANSFORM_ENGINE_PROFILE_SHA256
+            or type(self.maximum_width_pixels) is not int
+            or not 1 <= self.maximum_width_pixels <= MAX_IMAGE_DIMENSION_PIXELS
+            or type(self.maximum_height_pixels) is not int
+            or not 1 <= self.maximum_height_pixels <= MAX_IMAGE_DIMENSION_PIXELS
+            or type(self.artifact_version) is not int
+            or self.artifact_version != IMAGE_TRANSFORM_ARTIFACT_VERSION
+            or type(self.key_version) is not int
+            or self.key_version != IMAGE_TRANSFORM_LOOKUP_KEY_VERSION
+        ):
+            reject_image_page(ImagePageErrorCode.MODEL_INVALID, "image.transform_lookup")
+        encoded = (
+            _LOOKUP_STRUCT.pack(
+                b"PWSITL1\0",
+                self.key_version,
+                self.artifact_version,
+                IMAGE_TRANSFORM_PROFILE_VERSION,
+                self.case_id.bytes,
+                self.source_id.bytes,
+                self.page_id.bytes,
+                self.source_byte_size,
+                1 if self.source_format is ImageSourceFormat.JPEG else 2,
+                self.maximum_width_pixels,
+                self.maximum_height_pixels,
+                bytes.fromhex(self.source_sha256),
+                bytes.fromhex(self.engine_profile_sha256),
+            )
+            + self.intent.canonical_bytes()
+        )
+        object.__setattr__(self, "_key_sha256", hashlib.sha256(encoded).hexdigest())
+
+    @classmethod
+    def from_cache_key(cls, key: ImageTransformCacheKey) -> ImageTransformLookupKey:
+        if type(key) is not ImageTransformCacheKey:
+            reject_image_page(ImagePageErrorCode.MODEL_INVALID, "image.transform_lookup_full_key")
+        return cls(
+            case_id=key.case_id,
+            source_id=key.source_id,
+            page_id=key.page_id,
+            source_byte_size=key.source_byte_size,
+            source_sha256=key.source_sha256,
+            source_format=key.source_format,
+            intent=key.intent,
+            maximum_width_pixels=key.maximum_width_pixels,
+            maximum_height_pixels=key.maximum_height_pixels,
+            engine_profile_sha256=key.engine_profile_sha256,
+            artifact_version=key.artifact_version,
+        )
+
+    def matches(self, key: ImageTransformCacheKey) -> bool:
+        return type(key) is ImageTransformCacheKey and hmac.compare_digest(
+            self.key_sha256, type(self).from_cache_key(key).key_sha256
+        )
+
+    @property
+    def key_sha256(self) -> str:
+        return self._key_sha256
+
+    @property
+    def internal_name(self) -> str:
+        return f"{self.page_id}.{self._key_sha256}.pwstransform"
+
+    def __repr__(self) -> str:
+        return (
+            "ImageTransformLookupKey("
+            f"case_id={self.case_id!r}, source_id={self.source_id!r}, "
+            f"page_id={self.page_id!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -979,6 +1090,7 @@ def decode_image_transform_artifact(
     expected_operation_id: UUID | None = None,
     expected_output_id: UUID | None = None,
     expected_cache_key: ImageTransformCacheKey | None = None,
+    expected_lookup_key: ImageTransformLookupKey | None = None,
 ) -> ImageTransformArtifact:
     """Authenticate one complete artifact before exposing its pixels."""
 
@@ -1003,6 +1115,11 @@ def decode_image_transform_artifact(
         or not hmac.compare_digest(header.cache_key.key_sha256, expected_cache_key.key_sha256)
     ):
         reject_image_page(ImagePageErrorCode.CACHE_INVALID, "image.transform_artifact_key")
+    if expected_lookup_key is not None and (
+        type(expected_lookup_key) is not ImageTransformLookupKey
+        or not expected_lookup_key.matches(header.cache_key)
+    ):
+        reject_image_page(ImagePageErrorCode.CACHE_INVALID, "image.transform_artifact_lookup")
     return ImageTransformArtifact(
         header=header,
         payload=payload[IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES:],

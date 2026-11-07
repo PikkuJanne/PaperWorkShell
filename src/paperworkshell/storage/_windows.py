@@ -88,7 +88,7 @@ _PENDING_THUMBNAIL_NAME: Final = re.compile(
 )
 _THUMBNAIL_CACHE_NAME: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
-    r"\.[0-9a-f]{64}\.pwsthumb\Z"
+    r"\.[0-9a-f]{64}\.(?:pwsthumb|pwstransform)\Z"
 )
 _JOURNAL_CHECKPOINT_NAME: Final = "latest.json"
 

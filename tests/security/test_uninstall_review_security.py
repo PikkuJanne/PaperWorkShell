@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from paperworkshell.app.uninstall_review import UninstallReviewService
+from paperworkshell.domain.case_lifecycle import CURRENT_CASE_MANIFEST_VERSION
 from paperworkshell.domain.uninstall_review import (
     UninstallDeletionConfirmation,
     UninstallReviewError,
@@ -73,7 +74,7 @@ def test_unsupported_or_corrupt_manifest_is_not_migrated_recovered_or_deleted(
     lease.close()
     path = manager.layout(selected).manifest
     payload = json.loads(path.read_bytes())
-    payload["schema_version"] = 4 if variant == "future" else 2
+    payload["schema_version"] = CURRENT_CASE_MANIFEST_VERSION + 1 if variant == "future" else 2
     changed = b"{" if variant == "corrupt" else json.dumps(payload).encode()
     path.write_bytes(changed)
     service = UninstallReviewService(WindowsUninstallCaseStore(manager))

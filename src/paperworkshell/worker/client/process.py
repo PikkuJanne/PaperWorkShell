@@ -492,6 +492,22 @@ class WorkerProcess(Protocol):
 
 
 @runtime_checkable
+class WorkerRuntimeReuseReporter(Protocol):
+    """Optional static-runtime optimization; never retains a document process."""
+
+    def allow_runtime_reuse(self) -> None:
+        """Permit static access retention after one protocol-successful operation."""
+
+
+@runtime_checkable
+class RetainedRuntimeLauncher(Protocol):
+    """Optional owner-only disposal for immutable, case-scoped runtime access."""
+
+    def retire_runtime_access(self) -> None:
+        """Close static runtime access after a consuming result fails validation."""
+
+
+@runtime_checkable
 class WorkerResourceReporter(Protocol):
     """Narrow optional process capability for path-free Job accounting."""
 

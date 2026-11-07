@@ -56,6 +56,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportOutcome,
     SearchablePdfExportPlan,
     SearchablePdfExportProfile,
+    SearchablePdfPageOutcomeCode,
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
     reject_searchable_pdf_export,
@@ -218,6 +219,7 @@ class SearchablePdfExportService:
         cancellation: CancellationProbe,
         progress: SearchablePdfExportProgressSink = _ignore_progress,
         profile: SearchablePdfExportProfile | None = None,
+        require_ocr_success: bool = False,
     ) -> SearchablePdfExportOutcome:
         """Return only after no-replace commit and destination reopen succeed."""
 
@@ -229,6 +231,7 @@ class SearchablePdfExportService:
             or not callable(cancellation)
             or not callable(progress)
             or (profile is not None and type(profile) is not SearchablePdfExportProfile)
+            or type(require_ocr_success) is not bool
         ):
             reject_searchable_pdf_export(
                 SearchablePdfExportErrorCode.MODEL_INVALID,
@@ -288,6 +291,24 @@ class SearchablePdfExportService:
                 )
                 with candidate_context as candidate:
                     report = _require_candidate(plan, candidate)
+                    failed_page = next(
+                        (
+                            page
+                            for page in report.page_outcomes
+                            if page.outcome
+                            in {
+                                SearchablePdfPageOutcomeCode.OCR_FAILED_RETAINED,
+                                SearchablePdfPageOutcomeCode.OCR_BLOCKED_SIGNED_SOURCE_RETAINED,
+                            }
+                        ),
+                        None,
+                    )
+                    if require_ocr_success and failed_page is not None:
+                        reject_searchable_pdf_export(
+                            SearchablePdfExportErrorCode.OCR_FAILED,
+                            "searchable.ocr_required",
+                            output_page_number=failed_page.output_page_index + 1,
+                        )
                     _require_active(deadline, cancellation)
                     record, receipt = self._prepare_history(
                         binding,

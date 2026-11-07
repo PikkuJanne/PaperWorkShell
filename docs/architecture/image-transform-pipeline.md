@@ -1,7 +1,7 @@
 # Non-destructive scan-transform pipeline
 
-- Status: PWS-0202 implementation and evidence contract
-- Task: PWS-0202
+- Status: PWS-0202 contract with the PWS-0811 bounded persistent-cache extension
+- Tasks: PWS-0202, PWS-0811
 - Decisions: PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D016, PWS-D035, PWS-D041
 - Intake boundary: [Bounded JPEG/PNG intake](image-intake.md)
 - Worker boundary: [Restricted worker lifecycle](worker-lifecycle.md)
@@ -104,6 +104,25 @@ engine/profile still separate every pixel-affecting input. This permits two hist
 to the same page transform to reuse only the same disposable result while any latest-wins value,
 crop, accumulated turn, source, bound, or profile change selects a different key.
 
+PWS-0811 adds a separate versioned pre-decode `ImageTransformLookupKey`. It binds
+the case/source/page identities, immutable source size/digest/media type, complete
+final transform intent, requested bounds, and fixed artifact/engine/profile
+versions. The existing native v1 `ImageTransformArtifact` and its full decoded
+geometry, EXIF and source-pixel-digest key remain unchanged. A stored native
+artifact must fully validate against that lookup before it becomes a hit.
+
+Persisted image artifacts use the existing `WindowsThumbnailCacheStore`, the
+case-private `cache/thumbnails` area, central CACHE reservations, live-stage
+registry, cleanup and native no-replace publication. There is no second cache
+manager or independent budget. The broker authenticates the current immutable
+source lease and enforces current resource limits before lookup. Misses retain
+the one-shot worker boundary; only the trusted broker writes and publishes the
+validated artifact after the worker tree has ended. Hits expose validated typed
+RGBA pixels without a GUI image/PDF parser. Corrupt entries are removed only by
+their authenticated identity and regenerated; originals and manifest intent
+remain authoritative. These pixels contain source and scan transformations only:
+they do not claim that text, checkmarks or signature overlays have been painted.
+
 ## Worker execution and trust handoff
 
 The application sends only typed internal identities, canonical transform intent, bounds, and
@@ -132,9 +151,10 @@ or timeout.
 Processing is incremental by page. The planner charges the destination plus every simultaneously
 live source, crop, rotation, deskew, contrast, cleanup, and serialization raster needed by the
 selected implementation, including bounded metadata/scratch state and native-allocation headroom.
-No packet-wide full-resolution materialization, unbounded queue, extra worker, or new cache is
-permitted. Production composition uses the central versioned `ResourcePolicy`; a profile name alone
-does not alter a limit.
+No packet-wide full-resolution materialization, unbounded queue, extra worker or
+unbounded cache is permitted. The PWS-0811 persisted results share the existing
+case-cache quota and cleanup contract. Production composition uses the central
+versioned `ResourcePolicy`; a profile name alone does not alter a limit.
 
 Before private temporary output is created, the capacity seam reserves its complete worst-case
 bytes plus the approved volume floor. Exact-boundary and one-byte-short tests are required. A

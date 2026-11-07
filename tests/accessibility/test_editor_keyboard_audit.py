@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -190,8 +191,15 @@ def test_delete_and_text_undo_never_remove_or_undo_the_selected_visual_mark() ->
 
 
 def _assert_focused_control_is_in_view(dialog: CoreOverlayToolsDialog, control: QWidget) -> None:
-    viewport = _widget(dialog, QScrollArea, "coreOverlayToolsScrollArea").viewport()
+    scroll = _widget(dialog, QScrollArea, "coreOverlayToolsScrollArea")
+    viewport = scroll.viewport()
+    content = scroll.widget()
+    assert content is not None
     assert control.hasFocus()
+    if not content.isAncestorOf(control):
+        # Text/value entry stays fixed above the scrolling settings.
+        assert dialog.rect().contains(control.mapTo(dialog, control.rect().center()))
+        return
     if isinstance(control, QListWidget) and control.currentItem() is not None:
         position = control.viewport().mapTo(
             viewport, control.visualItemRect(control.currentItem()).center()
@@ -256,11 +264,9 @@ def test_property_error_scrolls_the_focused_recovery_status_into_view(
     with _shown(CoreOverlayToolsDialog(_overlay_state())) as dialog:
         dialog.resize(650, 360)
         app.processEvents()
-        left = _widget(dialog, QSpinBox, "coreOverlayLeftSpin")
-        left.setValue(990_000)
-        apply = _widget(dialog, QPushButton, "applyCoreOverlayPropertiesButton")
-        scroll = _widget(dialog, QScrollArea, "coreOverlayToolsScrollArea")
-        scroll.ensureWidgetVisible(apply)
+        left = _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin")
+        left.setValue(99)
+        apply = _widget(dialog, QPushButton, "applyFormMarksButton")
         if use_field_return:
             left.setFocus()
             QTest.keyClick(left, Qt.Key.Key_Return)
@@ -296,7 +302,7 @@ def test_return_in_property_fields_applies_only_local_properties_without_zoom_or
         elif field in {"font", "left"}:
             spin = _widget(
                 dialog,
-                QSpinBox,
+                QSpinBox if field == "font" else QDoubleSpinBox,
                 "coreOverlayFontSizeSpin" if field == "font" else "coreOverlayLeftSpin",
             )
             editor = spin.findChild(QLineEdit)
@@ -304,7 +310,7 @@ def test_return_in_property_fields_applies_only_local_properties_without_zoom_or
             target = editor
             target.setFocus()
             QTest.keyClick(target, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
-            QTest.keyClicks(target, "18" if field == "font" else "200000")
+            QTest.keyClicks(target, "18" if field == "font" else "20")
         else:
             color = _widget(dialog, QComboBox, "coreOverlayColorCombo")
             target = color
@@ -406,6 +412,10 @@ def test_return_on_focused_zoom_button_retains_ordinary_button_activation() -> N
     with _shown(CoreOverlayToolsDialog(_overlay_state())) as dialog:
         before = dialog.state
         canvas = _widget(dialog, OverlayEditorCanvas, "overlayEditorCanvas")
+        # Fit-to-page can start at the minimum zoom. Deliberately choose a
+        # larger zoom before checking that Return activates the focused button.
+        combo = _widget(dialog, QComboBox, "overlayEditorZoomCombo")
+        combo.setCurrentIndex(combo.findData(100))
         zoom = canvas.zoom_percent
         zoom_out = _widget(dialog, QPushButton, "overlayEditorZoomOutButton")
         zoom_out.setFocus()

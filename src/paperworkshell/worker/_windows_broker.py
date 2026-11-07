@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ctypes
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager
 from ctypes import wintypes
+from functools import wraps
 from typing import Any, Final, Self
 
 from paperworkshell.domain.pdf_inspection import (
@@ -29,6 +30,28 @@ _PIPE_BUFFER_BYTES: Final = 8_192
 _READ_CHUNK_BYTES: Final = 1_024
 _OUTPUT_CLEANUP_QUARANTINE: list[Any] = []
 _PIPE_CLEANUP_QUARANTINE: list[Any] = []
+
+
+def retire_runtime_on_failure[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+    """Retire optional static access if a consuming broker rejects any result.
+
+    Broker finally blocks still stop the tree before this outer exception path.
+    This includes artifact validation performed after process.close returned.
+    """
+
+    @wraps(method)
+    def invoke(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return method(*args, **kwargs)
+        except BaseException:
+            owner = args[0] if args else None
+            worker = getattr(owner, "_worker", None)
+            retire = getattr(worker, "retire_runtime_access", None)
+            if callable(retire):
+                retire()
+            raise
+
+    return invoke
 
 
 class _SecurityAttributes(ctypes.Structure):

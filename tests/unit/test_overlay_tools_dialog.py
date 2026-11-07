@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
-    QSpinBox,
 )
 
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
@@ -164,8 +164,8 @@ def test_value_geometry_move_resize_and_history_shortcuts_preserve_exact_state()
     with _dialog() as dialog:
         _add_kind(dialog, OverlayKind.DATE)
         value = dialog.findChild(QLineEdit, "coreOverlayValueEdit")
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
-        width = dialog.findChild(QSpinBox, "coreOverlayWidthSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
+        width = dialog.findChild(QDoubleSpinBox, "coreOverlayWidthSpin")
         apply_properties = dialog.findChild(
             QPushButton,
             "applyCoreOverlayPropertiesButton",
@@ -179,8 +179,8 @@ def test_value_geometry_move_resize_and_history_shortcuts_preserve_exact_state()
 
         value.setFocus(Qt.FocusReason.OtherFocusReason)
         QTest.keyClicks(value, " 03/04/2030 ")
-        left.setValue(123_457)
-        width.setValue(234_569)
+        left.setValue(12.3457)
+        width.setValue(23.4569)
         QTest.keyClick(value, Qt.Key.Key_Return, Qt.KeyboardModifier.ControlModifier)
         _application().processEvents()
 
@@ -224,8 +224,8 @@ def test_mark_color_is_editable_and_invalid_box_fails_without_partial_mutation()
     with _dialog() as dialog:
         _add_kind(dialog, OverlayKind.CHECKMARK)
         color = dialog.findChild(QComboBox, "coreOverlayColorCombo")
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
-        width = dialog.findChild(QSpinBox, "coreOverlayWidthSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
+        width = dialog.findChild(QDoubleSpinBox, "coreOverlayWidthSpin")
         apply_properties = dialog.findChild(
             QPushButton,
             "applyCoreOverlayPropertiesButton",
@@ -245,8 +245,8 @@ def test_mark_color_is_editable_and_invalid_box_fails_without_partial_mutation()
         assert selected.payload.color.value == "#008040ff"
 
         before = selected
-        left.setValue(900_000)
-        width.setValue(200_000)
+        left.setValue(90)
+        width.setValue(20)
         _activate(apply_properties)
         assert dialog.state.selected_record == before
         assert "outside" in status.text().casefold()
@@ -333,38 +333,38 @@ def test_unavailable_undo_and_redo_never_desynchronize_dirty_fields_from_draft()
     initial = _loaded_state_without_local_history()
     assert not initial.can_undo and not initial.can_redo
     with _dialog(initial) as dialog:
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
         apply_button = dialog.findChild(QPushButton, "applyFormMarksButton")
         assert left is not None and apply_button is not None
         original_left = left.value()
 
-        left.setValue(original_left + 1_234)
+        left.setValue(original_left + 0.1234)
         QTest.keyClick(dialog, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
         _application().processEvents()
         assert left.value() == original_left
         assert dialog.state.selected_record is not None
-        assert dialog.state.selected_record.box.x == original_left
+        assert dialog.state.selected_record.box.x == round(original_left * 10_000)
 
-        left.setValue(original_left + 2_345)
+        left.setValue(original_left + 0.2345)
         QTest.keyClick(dialog, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
         _application().processEvents()
-        assert left.value() == original_left + 2_345
+        assert left.value() == original_left + 0.2345
         assert dialog.state.selected_record is not None
-        assert dialog.state.selected_record.box.x == left.value()
+        assert dialog.state.selected_record.box.x == round(left.value() * 10_000)
 
         requests: list[CoreOverlayToolsState] = []
         dialog.apply_requested.connect(requests.append)
         _activate(apply_button)
         assert requests == [dialog.state]
         assert requests[0].selected_record is not None
-        assert requests[0].selected_record.box.x == left.value()
+        assert requests[0].selected_record.box.x == round(left.value() * 10_000)
 
 
 def test_supplementary_unicode_limit_preserves_4096_code_points_and_rejects_4097() -> None:
     with _dialog() as dialog:
         _add_kind(dialog, OverlayKind.TEXT)
         value = dialog.findChild(QLineEdit, "coreOverlayValueEdit")
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
         apply_properties = dialog.findChild(
             QPushButton,
             "applyCoreOverlayPropertiesButton",
@@ -377,7 +377,7 @@ def test_supplementary_unicode_limit_preserves_4096_code_points_and_rejects_4097
         maximum = "😀" * MAX_OVERLAY_TEXT_CODE_POINTS
         value.setText(maximum)
         assert value.text() == maximum
-        left.setValue(left.value() + 1)
+        left.setValue(left.value() + 0.0001)
         _activate(apply_properties)
         accepted = dialog.state.selected_record
         assert accepted is not None and type(accepted.payload) is TextualOverlayPayload
@@ -386,7 +386,7 @@ def test_supplementary_unicode_limit_preserves_4096_code_points_and_rejects_4097
         over_limit = maximum + "😀"
         value.setText(over_limit)
         assert value.text() == over_limit
-        left.setValue(left.value() + 1)
+        left.setValue(left.value() + 0.0001)
         _activate(apply_properties)
 
         assert dialog.state.selected_record == accepted
@@ -400,7 +400,7 @@ def test_unrepresentable_loaded_value_cannot_be_silently_replaced_by_other_edits
     assert before is not None
     with _dialog(state) as dialog:
         value = dialog.findChild(QLineEdit, "coreOverlayValueEdit")
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
         apply_properties = dialog.findChild(
             QPushButton,
             "applyCoreOverlayPropertiesButton",
@@ -413,7 +413,7 @@ def test_unrepresentable_loaded_value_cannot_be_silently_replaced_by_other_edits
         assert value.text() != original_value
         assert "cannot be represented" in status.text()
 
-        left.setValue(left.value() + 1)
+        left.setValue(left.value() + 0.0001)
         _activate(apply_properties)
 
         assert dialog.state.selected_record == before

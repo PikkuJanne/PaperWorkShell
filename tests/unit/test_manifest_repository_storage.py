@@ -36,7 +36,7 @@ def _document(*, case_id: UUID = CASE_ID, revision: int = 0) -> dict[str, Any]:
     loaded = json.loads(MINIMAL_MANIFEST.read_text(encoding="utf-8"))
     assert type(loaded) is dict
     document = cast(dict[str, Any], loaded)
-    document["schema_version"] = 3
+    document["schema_version"] = 4
     document["redaction_marks"] = []
     document["case_id"] = str(case_id)
     document["revision"] = revision
@@ -60,6 +60,21 @@ def _repository_without_storage() -> tuple[WindowsManifestRepository, _NoStorage
     manager = _NoStorageManager()
     repository = WindowsManifestRepository(cast(CaseWorkspaceManager, manager))
     return repository, manager
+
+
+@pytest.mark.parametrize("invalid", [0, 1, "yes"])
+def test_invalid_migration_policy_fails_before_storage_access(invalid: object) -> None:
+    manager = _NoStorageManager()
+    with pytest.raises(ManifestRepositoryError) as constructor:
+        WindowsManifestRepository(
+            cast(CaseWorkspaceManager, manager), migrate_on_load=cast(bool, invalid)
+        )
+    assert constructor.value.code is ManifestRepositoryErrorCode.MODEL_INVALID
+    repository = WindowsManifestRepository(cast(CaseWorkspaceManager, manager))
+    with pytest.raises(ManifestRepositoryError) as loaded:
+        repository.load(CASE_ID, migrate=cast(bool, invalid))
+    assert loaded.value.code is ManifestRepositoryErrorCode.MODEL_INVALID
+    assert manager.calls == []
 
 
 def _set_nested(document: dict[str, Any], path: tuple[str | int, ...], value: object) -> None:
@@ -104,11 +119,11 @@ def test_packaged_runtime_schema_is_the_exact_canonical_contract() -> None:
         .read_text(encoding="utf-8")
     )
     current = json.loads(
-        (ROOT / "schemas" / "case-manifest-v3.schema.json").read_text(encoding="utf-8")
+        (ROOT / "schemas" / "case-manifest-v4.schema.json").read_text(encoding="utf-8")
     )
     packaged_current = json.loads(
         files("paperworkshell.storage")
-        .joinpath("case-manifest-v3.schema.json")
+        .joinpath("case-manifest-v4.schema.json")
         .read_text(encoding="utf-8")
     )
 
@@ -135,7 +150,7 @@ def test_invalid_save_target_is_rejected_before_any_storage_access(
     repository, manager = _repository_without_storage()
     candidate = _document(revision=1)
     if mutation == "future-version":
-        candidate["schema_version"] = 4
+        candidate["schema_version"] = 5
     elif mutation == "invalid-version":
         candidate["schema_version"] = "2"
     elif mutation == "case-mismatch":
@@ -184,7 +199,7 @@ def test_strict_payload_failures_are_sanitized_and_never_echo_bytes(payload: byt
 
 def test_future_version_dispatch_precedes_current_version_float_rules() -> None:
     future = _document()
-    future["schema_version"] = 4
+    future["schema_version"] = 5
     future["future_shape"] = {"fraction": 1.25, "members": ["unknown"]}
     payload = json.dumps(future, separators=(",", ":"), sort_keys=True).encode() + b"\n"
 

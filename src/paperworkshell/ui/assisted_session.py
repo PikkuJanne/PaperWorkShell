@@ -91,8 +91,11 @@ class AssistedSessionController(QObject):
             return
         dialog = AssistedConsentDialog(window)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            window._commands.create_assisted_case_requested.emit(
-                dialog.retention_days, dialog.take_passphrase(), dialog.consent_confirmed
+            window._commands.create_named_assisted_case_requested.emit(
+                dialog.retention_days,
+                dialog.take_passphrase(),
+                dialog.consent_confirmed,
+                dialog.case_name,
             )
         dialog.deleteLater()
 
@@ -158,6 +161,7 @@ class AssistedSessionController(QObject):
         must_revoke = revoke or not self.locked
         self.locked = True
         window._application_scroll.hide()
+        window._status_surface.hide()
         window.menuBar().hide()
         window.setAccessibleName(tr("PaperWorkShell assisted case locked"))
         for shortcut in window._shortcuts:
@@ -244,6 +248,7 @@ class AssistedSessionController(QObject):
             self._curtain = None
         window = self._window
         window._application_scroll.show()
+        window._status_surface.show()
         window.menuBar().show()
         window.setAccessibleName(tr("PaperWorkShell guided packet builder"))
         for shortcut in window._shortcuts:

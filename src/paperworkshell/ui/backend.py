@@ -19,6 +19,7 @@ from paperworkshell.app.checklist import (
 )
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.ocr_languages import OcrLanguageSnapshot
+from paperworkshell.app.ordinary_pdf_export import OrdinaryPdfExportError
 from paperworkshell.app.organizer import (
     OrganizerBackend,
     OrganizerSignatureImageDeleteOutcome,
@@ -95,6 +96,7 @@ from paperworkshell.domain.recovery import RecoveryError
 from paperworkshell.domain.redaction import RedactionError, RedactionErrorCode
 from paperworkshell.domain.redaction_export import RedactionExportReport
 from paperworkshell.domain.redaction_verification import runtime_release_qualified
+from paperworkshell.domain.searchable_pdf_export import SearchablePdfExportError
 from paperworkshell.domain.signature_images import (
     SignatureImageError,
     SignatureImageErrorCode,
@@ -109,6 +111,10 @@ from paperworkshell.domain.source_ingest import (
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.domain.text_companion import TextCompanionError
 from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.overlays.exporting import (
+    FlattenedPdfExportError,
+    FlattenedPdfExportErrorCode,
+)
 from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 from paperworkshell.preflight.models import PreflightError
@@ -136,6 +142,7 @@ class UiFailure:
     message: str
     retryable: bool
     operation_id: int | None = None
+    affected_page_number: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +219,25 @@ def sanitize_ui_failure(
     operation_id: int | None = None,
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
+
+    if type(error) is OrdinaryPdfExportError:
+        rebuilt_ordinary = OrdinaryPdfExportError(error.code)
+        return UiFailure(error.code.value, rebuilt_ordinary.safe_message, True, operation_id)
+    if type(error) in {SearchablePdfExportError, FlattenedPdfExportError}:
+        if isinstance(error, SearchablePdfExportError):
+            rebuilt_searchable = SearchablePdfExportError(
+                error.code, error.context, error.output_page_number
+            )
+            return UiFailure(
+                error.code.value,
+                rebuilt_searchable.safe_message,
+                True,
+                operation_id,
+                rebuilt_searchable.output_page_number,
+            )
+        if isinstance(error, FlattenedPdfExportError):
+            rebuilt_flattened = FlattenedPdfExportError(error.code, error.context)
+            return UiFailure(error.code.value, rebuilt_flattened.safe_message, True, operation_id)
 
     if type(error) is TextCompanionError:
         rebuilt_text = TextCompanionError(error.code)
@@ -457,6 +483,7 @@ class OrganizerBackendWorker(QObject):
     operation_started = Signal(int, str)
     operation_cancelled = Signal(int, str)
     operation_finished = Signal(int)
+    pages_pdf_export_saved = Signal(int, int)
     failed = Signal(object)
     shutdown_complete = Signal()
     shutdown_refused = Signal(object)
@@ -500,6 +527,15 @@ class OrganizerBackendWorker(QObject):
             lambda backend: backend.refresh_ocr_languages(),
         )
 
+    @Slot(int)
+    def show_ocr_languages(self, request_id: int) -> None:
+        """Open the last checked presentation without redundant closure hashing."""
+
+        self._run_ocr_language_action(
+            request_id,
+            lambda backend: backend.ocr_language_manager.review_snapshot(),
+        )
+
     @Slot(int, object)
     def select_ocr_language_codes(self, request_id: int, language_codes: object) -> None:
         """Retain one correlated canonical selection without mutating a case."""
@@ -522,15 +558,34 @@ class OrganizerBackendWorker(QObject):
         self._run_ocr_language_action(request_id, action)
 
     @Slot()
-    def create_case(self) -> None:
+    @Slot(str)
+    def create_case(self, case_name: str = "") -> None:
         """Create and open a case, then publish its empty organizer state."""
 
         def action(backend: OrganizerBackend) -> None:
-            state = backend.create_case()
+            state = backend.create_case(case_name) if case_name else backend.create_case()
             self.state_changed.emit(state)
             self.status_changed.emit(
                 tr("New case created. Import a document to begin organizing pages.")
             )
+
+        self._with_backend(action)
+
+    @Slot(str)
+    def rename_case(self, case_name: str) -> None:
+        """Save a new display name using the active case's manifest transaction."""
+
+        def action(backend: OrganizerBackend) -> None:
+            try:
+                state = backend.rename_case(case_name)
+            except ManifestRepositoryError:
+                # Publish retained unsaved intent before the actionable failure;
+                # the desktop must not keep displaying an obsolete saved state.
+                self.state_changed.emit(backend.state)
+                raise
+            self.state_changed.emit(state)
+            self._emit_cases(backend)
+            self.status_changed.emit(tr("Case name saved."))
 
         self._with_backend(action)
 
@@ -564,11 +619,16 @@ class OrganizerBackendWorker(QObject):
         self._with_backend(action)
 
     @Slot(int, str, bool)
-    def create_assisted_case(self, retention_days: int, passphrase: str, consent: bool) -> None:
+    @Slot(int, str, bool, str)
+    def create_assisted_case(
+        self, retention_days: int, passphrase: str, consent: bool, case_name: str = ""
+    ) -> None:
         """Record consent before emitting an import-capable organizer."""
 
         def action(backend: OrganizerBackend) -> None:
-            state = backend.create_assisted_case(retention_days, passphrase, consent=consent)
+            state = backend.create_assisted_case(
+                retention_days, passphrase, consent=consent, case_name=case_name
+            )
             assert backend.assisted_use is not None
             self.assisted_use_changed.emit(backend.assisted_use.snapshot)
             self.cases_changed.emit(CaseIndex())
@@ -737,6 +797,20 @@ class OrganizerBackendWorker(QObject):
     ) -> None:
         """Save a verified ordinary PDF on the serialized backend thread."""
 
+        self._export_pages_pdf(operation_id, destination, cancellation, make_searchable=False)
+
+    @Slot(int, object, object)
+    def export_searchable_pdf(
+        self, operation_id: int, destination: object, cancellation: object
+    ) -> None:
+        """Honor an explicit visible OCR choice without checklist assignments."""
+
+        self._export_pages_pdf(operation_id, destination, cancellation, make_searchable=True)
+
+    def _export_pages_pdf(
+        self, operation_id: int, destination: object, cancellation: object, *, make_searchable: bool
+    ) -> None:
+
         def action(backend: OrganizerBackend) -> None:
             if not isinstance(destination, Path) or type(cancellation) is not OperationCancellation:
                 raise TypeError
@@ -744,6 +818,10 @@ class OrganizerBackendWorker(QObject):
                 destination,
                 cancellation=cancellation.cancelled,
                 progress=lambda value: self._pdf_export_progress(operation_id, value),
+                **({"make_searchable": True} if make_searchable else {}),
+            )
+            self.pages_pdf_export_saved.emit(
+                operation_id, outcome.committed_export.report.page_count
             )
             self.state_changed.emit(outcome.state)
             if outcome.refresh_required:
@@ -2706,6 +2784,13 @@ class OrganizerBackendWorker(QObject):
                 )
                 return
             self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
+        except FlattenedPdfExportError as error:
+            if error.code is FlattenedPdfExportErrorCode.CANCELLED and operation_id is not None:
+                self.operation_cancelled.emit(
+                    operation_id, tr("PDF export cancelled before completion.")
+                )
+                return
+            self.failed.emit(sanitize_ui_failure(error, operation_id=operation_id))
         except SourceIngestError as error:
             if error.code is SourceIngestErrorCode.CANCELLED:
                 if operation_id is not None:
@@ -2854,9 +2939,13 @@ class OrganizerBackendCommands(QObject):
     initialize_requested = Signal()
     list_cases_requested = Signal()
     ocr_languages_refresh_requested = Signal(int)
+    ocr_languages_show_requested = Signal(int)
     ocr_languages_select_requested = Signal(int, object)
     create_case_requested = Signal()
+    create_named_case_requested = Signal(str)
+    rename_case_requested = Signal(str)
     create_assisted_case_requested = Signal(int, str, bool)
+    create_named_assisted_case_requested = Signal(int, str, bool, str)
     unlock_assisted_case_requested = Signal(int, object, str, object)
     assisted_check_requested = Signal(object)
     open_case_requested = Signal(object)
@@ -2892,6 +2981,7 @@ class OrganizerBackendCommands(QObject):
     compression_export_requested = Signal(int, object, bool, object)
     compression_discard_requested = Signal(int)
     pages_pdf_export_requested = Signal(int, object, object)
+    searchable_pdf_export_requested = Signal(int, object, object)
     removal_export_review_requested = Signal(int)
     removal_pdf_export_requested = Signal(int, object, object, bool, object)
     package_review_cancel_requested = Signal(int)
@@ -2921,15 +3011,20 @@ class OrganizerBackendCommands(QObject):
         self.initialize_requested.connect(worker.initialize)
         self.list_cases_requested.connect(worker.list_cases)
         self.ocr_languages_refresh_requested.connect(worker.refresh_ocr_languages)
+        self.ocr_languages_show_requested.connect(worker.show_ocr_languages)
         self.ocr_languages_select_requested.connect(worker.select_ocr_language_codes)
         self.create_case_requested.connect(worker.create_case)
+        self.create_named_case_requested.connect(worker.create_case)
+        self.rename_case_requested.connect(worker.rename_case)
         self.create_assisted_case_requested.connect(worker.create_assisted_case)
+        self.create_named_assisted_case_requested.connect(worker.create_assisted_case)
         self.unlock_assisted_case_requested.connect(worker.unlock_assisted_case)
         self.assisted_check_requested.connect(worker.check_assisted_use)
         self.open_case_requested.connect(worker.open_case)
         self.close_case_requested.connect(worker.close_case)
         self.import_requested.connect(worker.import_source)
         self.pages_pdf_export_requested.connect(worker.export_pages_pdf)
+        self.searchable_pdf_export_requested.connect(worker.export_searchable_pdf)
         self.removal_export_review_requested.connect(worker.begin_removal_export)
         self.removal_pdf_export_requested.connect(worker.export_removal_pdf)
         self.thumbnails_requested.connect(worker.get_thumbnails)

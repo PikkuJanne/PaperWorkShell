@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -24,7 +25,15 @@ _REPARSE_POINT_ATTRIBUTE: Final = 0x0000_0400
 _RUNTIME_DIRECTORIES: Final = ("DLLs", "Lib")
 _RUNTIME_IGNORED_DIRECTORIES: Final = frozenset({"site-packages"})
 _STAGE_PREFIX: Final = "pws-worker-resources-"
+_MAX_TEST_RECOVERY_JOURNALS: Final = 256
 _EXPECTED_PILLOW_VERSION: Final = "12.3.0"
+
+
+@dataclass(slots=True)
+class WorkerTestCleanupGuard:
+    """Retain exact test objects while an ACL recovery record is unresolved."""
+
+    cleanup_safe: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +43,9 @@ class WorkerTestResources:
     stage_root: Path
     runtime_root: Path
     repository_root: Path
+    cleanup_guard: WorkerTestCleanupGuard = field(
+        default_factory=WorkerTestCleanupGuard, compare=False, repr=False
+    )
 
     @property
     def python_executable(self) -> Path:
@@ -46,6 +58,12 @@ class WorkerTestResources:
     @property
     def helper_root(self) -> Path:
         return self.repository_root / "tests" / "helpers"
+
+    @property
+    def recovery_root(self) -> Path:
+        """Durable sibling of granted code/runtime, outside pytest retention."""
+
+        return self.stage_root / "private-recovery"
 
 
 @dataclass(slots=True)
@@ -192,7 +210,69 @@ def _pillow_package_source() -> Path:
 def cleanup_worker_test_resources(resources: WorkerTestResources) -> None:
     """Remove exactly the validated random fixed-drive staging directory."""
 
+    if resources.cleanup_guard.cleanup_safe and not _test_recovery_tree_is_empty(resources):
+        resources.cleanup_guard.cleanup_safe = False
+    if not resources.cleanup_guard.cleanup_safe:
+        raise RuntimeError("Worker cleanup is unconfirmed; exact staged resources were retained.")
     _remove_stage_root(resources.stage_root)
+
+
+def create_worker_test_recovery_path(resources: WorkerTestResources, scope: str) -> Path:
+    """Choose a fresh private journal location before any ACL mutation occurs."""
+
+    _require_test_scope(scope)
+    root = resources.recovery_root
+    if root.is_relative_to(resources.runtime_root) or root.is_relative_to(resources.source_root):
+        raise RuntimeError("Test recovery storage must remain outside granted resources.")
+    if os.path.lexists(root) and (_is_reparse_point(root) or not root.is_dir()):
+        raise RuntimeError("Test recovery storage is redirected or unavailable.")
+    root.mkdir(exist_ok=True)
+    # Leave the leaf absent: the production API creates its exact protected ACL.
+    return root / f"{scope}-{os.urandom(12).hex()}"
+
+
+def create_worker_test_owned_directory(resources: WorkerTestResources, scope: str) -> Path:
+    """Keep extra test-granted objects beside code until cleanup is confirmed."""
+
+    _require_test_scope(scope)
+    root = resources.stage_root / "test-state"
+    if os.path.lexists(root) and (_is_reparse_point(root) or not root.is_dir()):
+        raise RuntimeError("Test state storage is redirected or unavailable.")
+    root.mkdir(exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f"{scope}-", dir=root))
+
+
+def _require_test_scope(scope: str) -> None:
+    if type(scope) is not str or re.fullmatch(r"[a-z][a-z0-9-]{0,31}", scope) is None:
+        raise RuntimeError("Test storage scope requires a fixed internal label.")
+
+
+def _test_recovery_tree_is_empty(resources: WorkerTestResources) -> bool:
+    """Boundedly inspect only owned journal directories; never parse/delete records."""
+
+    root = resources.recovery_root
+    if not os.path.lexists(root):
+        return True
+    try:
+        if _is_reparse_point(root) or not root.is_dir():
+            return False
+        with os.scandir(root) as journals:
+            count = 0
+            for journal in journals:
+                count += 1
+                path = Path(journal.path)
+                if (
+                    count > _MAX_TEST_RECOVERY_JOURNALS
+                    or _is_reparse_point(path)
+                    or not journal.is_dir(follow_symlinks=False)
+                ):
+                    return False
+                with os.scandir(path) as members:
+                    if next(members, None) is not None:
+                        return False
+    except OSError:
+        return False
+    return True
 
 
 def _remove_stage_root(stage_root: Path) -> None:

@@ -36,7 +36,7 @@ from paperworkshell.overlays.exporting import (
     reject_flattened_pdf_export,
 )
 from paperworkshell.overlays.signature_rasters import SignatureImageOverlayRasterSource
-from paperworkshell.worker._windows_broker import WindowsResultPipe
+from paperworkshell.worker._windows_broker import WindowsResultPipe, retire_runtime_on_failure
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -394,6 +394,7 @@ class BrokeredFlattenedPdfExporter:
     def _revoke_permanently(self) -> None:
         self._revoked = True
 
+    @retire_runtime_on_failure
     def export(
         self,
         plan: FlattenedPdfExportPlan,

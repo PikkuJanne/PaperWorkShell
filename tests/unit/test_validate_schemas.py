@@ -59,6 +59,7 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
             Path("schemas/case-manifest-v1.schema.json"),
             Path("schemas/case-manifest-v2.schema.json"),
             Path("schemas/case-manifest-v3.schema.json"),
+            Path("schemas/case-manifest-v4.schema.json"),
             FIXTURE_INDEX_SCHEMA_PATH,
             TEMPLATE_SCHEMA_PATH,
             INVENTORY_SCHEMA_PATH,
@@ -91,6 +92,10 @@ class RepositorySchemaRegistryTests(unittest.TestCase):
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "manifests" / "v3" / "invalid",
             root / "tests" / "fixtures" / "manifests" / "v3" / "invalid",
+        )
+        shutil.copytree(
+            PROJECT_ROOT / "tests" / "fixtures" / "manifests" / "v4" / "invalid",
+            root / "tests" / "fixtures" / "manifests" / "v4" / "invalid",
         )
         shutil.copytree(
             PROJECT_ROOT / "tests" / "fixtures" / "worker-rpc" / "v1" / "invalid",

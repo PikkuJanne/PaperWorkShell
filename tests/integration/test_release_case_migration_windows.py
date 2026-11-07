@@ -9,12 +9,14 @@ from pathlib import Path
 
 import pytest
 
+from paperworkshell.__main__ import build_windows_startup_recovery_service
 from paperworkshell.domain.manifest_migrations import migrate_manifest_to_current
 from paperworkshell.domain.manifest_repository import (
     ManifestLoadStatus,
     ManifestRepositoryError,
     ManifestRepositoryErrorCode,
 )
+from paperworkshell.domain.recovery import ExportHistoryRecoveryResult
 from paperworkshell.domain.resource_policy import (
     CONSTRAINED_RESOURCE_POLICY_V1,
     NORMAL_RESOURCE_POLICY_V1,
@@ -22,7 +24,9 @@ from paperworkshell.domain.resource_policy import (
 )
 from paperworkshell.storage import manifest_migration_backup as backup_storage
 from paperworkshell.storage import manifest_repository as repository_storage
+from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
 from paperworkshell.storage.manifest_repository import WindowsManifestRepository
+from paperworkshell.storage.recovery import WindowsStartupRecoveryStore
 from paperworkshell.storage.workspace import CaseWorkspaceManager
 from tests.helpers.release_migration import CASE_ID, file_bytes, release_case, release_quota
 
@@ -30,6 +34,35 @@ pytestmark = pytest.mark.skipif(os.name != "nt", reason="Authenticated Windows s
 
 
 @pytest.mark.parametrize("version", [1, 2, 3])
+def test_listing_and_startup_do_not_initiate_migration_of_closed_cases(
+    tmp_path: Path, version: int
+) -> None:
+    manager, layout, _source, old_bytes = release_case(tmp_path, version)
+    originals = file_bytes(layout.originals)
+    index = WindowsCaseLifecycleStore(manager).list_cases()
+    assert [case.case_id for case in index.cases] == [CASE_ID]
+    assert index.cases[0].manifest_version == version
+    assert layout.manifest.read_bytes() == old_bytes
+    assert not list(layout.journal.glob("migration-source-v*.json"))
+    recovered = WindowsManifestRepository(manager).load(CASE_ID, migrate=False)
+    assert recovered.snapshot.schema_version == version
+    assert layout.manifest.read_bytes() == old_bytes
+    WindowsStartupRecoveryStore(
+        manager, settle_exports=lambda _case_id: ExportHistoryRecoveryResult()
+    ).scan_and_recover()
+    build_windows_startup_recovery_service(manager).recover_startup()
+    assert layout.manifest.read_bytes() == old_bytes
+    assert not list(layout.journal.glob("migration-source-v*.json"))
+    assert file_bytes(layout.originals) == originals
+    opened = WindowsCaseLifecycleStore(manager).open_case(CASE_ID)
+    try:
+        assert opened.summary.manifest_version == 4
+        assert (layout.journal / f"migration-source-v{version}.json").read_bytes() == old_bytes
+    finally:
+        opened.close()
+
+
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 @pytest.mark.parametrize("policy", [NORMAL_RESOURCE_POLICY_V1, CONSTRAINED_RESOURCE_POLICY_V1])
 def test_versioned_case_reopen_preserves_intent_sources_and_bounded_backup(
     tmp_path: Path, version: int, policy: ResourcePolicy
@@ -40,10 +73,10 @@ def test_versioned_case_reopen_preserves_intent_sources_and_bounded_backup(
         first = WindowsManifestRepository(manager).load(CASE_ID)
     assert first.snapshot.document == migrate_manifest_to_current(source)
     assert first.status is (
-        ManifestLoadStatus.CURRENT if version == 3 else ManifestLoadStatus.MIGRATED
+        ManifestLoadStatus.CURRENT if version == 4 else ManifestLoadStatus.MIGRATED
     )
     backups = list(layout.journal.glob("migration-source-v*.json"))
-    assert len(backups) == (0 if version == 3 else 1)
+    assert len(backups) == (0 if version == 4 else 1)
     if backups:
         assert backups[0].name == f"migration-source-v{version}.json"
         assert backups[0].read_bytes() == old_bytes
@@ -58,7 +91,7 @@ def test_versioned_case_reopen_preserves_intent_sources_and_bounded_backup(
     assert observation.snapshot.high_water.temp_bytes <= policy.maximum_temporary_storage_bytes
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_interruption_after_checkpoint_preserves_backup_and_recovers_exact_current(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: int
 ) -> None:

@@ -232,6 +232,18 @@ class OcrLanguageManager:
             )
             return self._snapshot
 
+    def review_snapshot(self) -> OcrLanguageSnapshot:
+        """Reuse presentation facts; every processing operation still re-admits bytes.
+
+        The cached snapshot is never runtime launch authority. Refresh and selection
+        explicitly authenticate again, as does require_selected_available before OCR.
+        """
+
+        with self._lock:
+            if self._snapshot.runtime_status is OcrLanguageRuntimeStatus.UNCHECKED:
+                return self.refresh()
+            return self._snapshot
+
     def select_language_codes(self, language_codes: tuple[str, ...]) -> OcrLanguageSnapshot:
         """Select an exact canonical set only when every language is available."""
 

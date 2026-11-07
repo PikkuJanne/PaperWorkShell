@@ -31,6 +31,7 @@ def test_every_chooser_preserves_policy_and_uses_qt_ownership_during_assistance(
     picker: _Picker, assisted: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         if assisted:
             window._assisted_session.changed(
@@ -39,6 +40,16 @@ def test_every_chooser_preserves_policy_and_uses_qt_ownership_during_assistance(
                 )
             )
             window._assisted_session._timer.stop()
+        # This unit check exercises chooser policy, with foreground explicitly
+        # active. Offscreen Qt can otherwise emit inactive while constructing an
+        # owned modal. The separate foreground-loss test still proves covering.
+        monkeypatch.setattr(
+            type(_application()),
+            "applicationState",
+            staticmethod(lambda: Qt.ApplicationState.ApplicationActive),
+        )
+        window.activateWindow()
+        _application().processEvents()
         if picker in ("package", "compression", "summary"):
             _open(window, commands, worker)
             assert window._package_review_state is not None
@@ -84,6 +95,7 @@ def test_every_chooser_preserves_policy_and_uses_qt_ownership_during_assistance(
             if picker == "import":
                 window._choose_import()
             elif picker == "pages":
+                monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
                 window._choose_pages_pdf_export()
             elif picker == "removal":
                 window._choose_removal_destination(False)
@@ -101,6 +113,7 @@ def test_genuine_qt_owned_picker_is_hidden_on_external_foreground_loss(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         controller = window._assisted_session
         controller.changed(

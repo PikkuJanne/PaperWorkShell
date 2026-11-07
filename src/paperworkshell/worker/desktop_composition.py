@@ -17,6 +17,9 @@ from paperworkshell.worker._windows_broker import (
     drain_windows_result_pipe_cleanup,
 )
 from paperworkshell.worker.client._windows import (
+    RuntimeAccessAuthority as RuntimeAccessAuthority,
+)
+from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
     WindowsProcessLauncher,
 )
@@ -63,6 +66,7 @@ from paperworkshell.worker.image_page_broker import (
 from paperworkshell.worker.image_transform_broker import (
     BrokeredImagePageTransformer,
     ImageTransformBrokerPolicy,
+    ImageTransformCacheStore,
 )
 from paperworkshell.worker.ocr_composition import (
     OCR_WORKER_MAXIMUM_PROCESSES as OCR_WORKER_MAXIMUM_PROCESSES,
@@ -107,6 +111,7 @@ from paperworkshell.worker.protocol.models import (
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     ResourceLimits,
 )
+from paperworkshell.worker.protocol.operation_scope import WorkerOperationScope
 from paperworkshell.worker.protocol.text_companion import TEXT_COMPANION_CAPABILITY
 from paperworkshell.worker.quality_ocr_review_composition import (
     QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES as QUALITY_OCR_REVIEW_WORKER_MAXIMUM_PROCESSES,
@@ -200,6 +205,7 @@ class DesktopWorkerCompositionConfig:
     thumbnail_policy: PdfThumbnailBrokerPolicy
     venv_launcher: Path | None = field(default=None, repr=False)
     recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
+    retain_runtime_access: bool = False
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -216,6 +222,7 @@ class DesktopWorkerCompositionConfig:
             or type(self.image_policy) is not ImageNormalizeBrokerPolicy
             or type(self.image_transform_policy) is not ImageTransformBrokerPolicy
             or type(self.thumbnail_policy) is not PdfThumbnailBrokerPolicy
+            or type(self.retain_runtime_access) is not bool
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -229,6 +236,7 @@ class DesktopWorkerCompositionConfig:
             working_directory=self.working_directory,
             venv_launcher=self.venv_launcher,
             recovery_authority_roots=self.recovery_authority_roots,
+            operation_scope=WorkerOperationScope.DESKTOP,
         )
         object.__setattr__(self, "_launch_config", launch_config)
 
@@ -303,6 +311,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         "_source_inspector",
         "_thumbnail_generator",
         "_worker",
+        "_launcher",
     )
 
     def __init__(
@@ -315,8 +324,11 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         image_page_transformer: BrokeredImagePageTransformer,
         signature_image_rasterizer: BrokeredSignatureImageRasterizer,
         heavy_operations: HeavyOperationCoordinator,
+        *,
+        launcher: WindowsProcessLauncher | None = None,
     ) -> None:
         self._worker = worker
+        self._launcher = launcher
         self._source_inspector = source_inspector
         self._thumbnail_generator = thumbnail_generator
         self._image_source_inspector = image_source_inspector
@@ -356,6 +368,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Expose bounded canonical transforms over committed image pages."""
 
         return self._image_page_transformer
+
+    @property
+    def runtime_access_authority(self) -> RuntimeAccessAuthority | None:
+        """Share only the installed fixed runtime, never a parser or case handle."""
+
+        return None if self._launcher is None else self._launcher.runtime_access_authority
 
     @property
     def signature_image_rasterizer(self) -> BrokeredSignatureImageRasterizer:
@@ -405,7 +423,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
             return
         pending: BaseException | None = None
         try:
-            self._worker.terminate()
+            self.release_case_resources()
         except BaseException as error:
             pending = error
         for drain in (
@@ -420,6 +438,24 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         if pending is not None:
             raise pending
         self._closed = True
+
+    def release_case_resources(self) -> None:
+        """Stop the parser and retire static access before the case lease closes."""
+
+        self._require_owner()
+        pending: BaseException | None = None
+        try:
+            self._worker.terminate()
+        except BaseException as error:
+            pending = error
+        if self._launcher is not None:
+            try:
+                self._launcher.release_case_resources()
+            except BaseException as error:
+                if pending is None:
+                    pending = error
+        if pending is not None:
+            raise pending
 
     def __enter__(self) -> Self:
         self._require_owner()
@@ -584,7 +620,11 @@ def create_desktop_worker_composition(
     _require_port(committed_signature_images, ("borrow_committed_signature_image",))
     _require_port(thumbnail_cache, ("lookup", "create_stage"))
 
-    launcher = WindowsProcessLauncher(config._launch_config)
+    launcher = (
+        WindowsProcessLauncher(config._launch_config, retain_runtime_access=True)
+        if config.retain_runtime_access
+        else WindowsProcessLauncher(config._launch_config)
+    )
     worker = WorkerClient(
         launcher,
         config.resource_policy,
@@ -617,6 +657,7 @@ def create_desktop_worker_composition(
         selected_image_pages,
         config.image_transform_policy,
         heavy_operations=heavy_operations,
+        cache=_image_transform_cache(thumbnail_cache),
     )
     signature_image_rasterizer = BrokeredSignatureImageRasterizer(
         worker,
@@ -635,6 +676,7 @@ def create_desktop_worker_composition(
         image_transformer,
         signature_image_rasterizer,
         heavy_operations,
+        launcher=launcher if config.retain_runtime_access else None,
     )
 
 
@@ -654,6 +696,7 @@ def create_desktop_worker_composition_config(
     thumbnail_limits: ResourceLimits,
     venv_launcher: Path | None = None,
     recovery_authority_roots: tuple[Path, ...] = (),
+    retain_runtime_access: bool = False,
 ) -> DesktopWorkerCompositionConfig:
     """Build broker policies behind the sole desktop-worker composition boundary."""
 
@@ -672,6 +715,7 @@ def create_desktop_worker_composition_config(
         thumbnail_policy=PdfThumbnailBrokerPolicy(thumbnail_limits),
         venv_launcher=venv_launcher,
         recovery_authority_roots=recovery_authority_roots,
+        retain_runtime_access=retain_runtime_access,
     )
 
 
@@ -704,6 +748,7 @@ def create_pdf_export_worker_composition(
     config: PdfExportWorkerCompositionConfig,
     *,
     heavy_operations: HeavyOperationCoordinator,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> PdfExportWorkerComposition:
     """Build a separate export-only client with explicit qpdf authority."""
 
@@ -713,7 +758,11 @@ def create_pdf_export_worker_composition(
             WorkerClientContext.CONFIGURATION,
         )
     _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
-    launcher = WindowsProcessLauncher(config._launch_config)
+    launcher = (
+        WindowsProcessLauncher(config._launch_config)
+        if runtime_access is None
+        else WindowsProcessLauncher(config._launch_config, runtime_access=runtime_access)
+    )
     worker = WorkerClient(
         launcher,
         config.resource_policy,
@@ -774,6 +823,16 @@ def create_pdf_export_worker_composition_config(
         recovery_authority_roots=recovery_authority_roots,
         operation_version=operation_version,
     )
+
+
+def _image_transform_cache(value: object) -> ImageTransformCacheStore | None:
+    methods = ("lookup_image_transform", "create_image_transform_stage")
+    present = tuple(callable(getattr(value, name, None)) for name in methods)
+    if any(present) and not all(present):
+        reject_client(
+            WorkerClientErrorCode.CONFIGURATION_INVALID, WorkerClientContext.CONFIGURATION
+        )
+    return cast(ImageTransformCacheStore, value) if all(present) else None
 
 
 def _require_port(value: object, methods: tuple[str, ...]) -> None:

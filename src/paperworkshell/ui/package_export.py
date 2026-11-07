@@ -9,7 +9,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -30,11 +29,13 @@ from paperworkshell.app.package_pdf_export import (
 from paperworkshell.app.package_workflow import PackageWorkflowError, PackageWorkflowErrorCode
 from paperworkshell.domain.package_export_errors import PackageExportError, PackageExportErrorCode
 from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
+from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.localization_layout import adapt_localized_content
 from paperworkshell.ui.presentation import set_static_busy
+from paperworkshell.ui.wheel_safe import WheelSafeComboBox as QComboBox
 
 _MODE_TEXT: Final[dict[PortalOutputMode, str]] = {
     PortalOutputMode.COMBINED_PDF: mark("Combined PDF"),
@@ -132,6 +133,7 @@ class PackageExportDialog(QDialog):
         parent: QWidget | None = None,
         *,
         initial_mode: PortalOutputMode | None = None,
+        input_labels: tuple[str, ...] = (),
     ) -> None:
         if (
             type(allowed_modes) is not tuple
@@ -139,6 +141,9 @@ class PackageExportDialog(QDialog):
             or any(type(mode) is not PortalOutputMode for mode in allowed_modes)
             or len(set(allowed_modes)) != len(allowed_modes)
             or (initial_mode is not None and initial_mode not in allowed_modes)
+            or type(input_labels) is not tuple
+            or len(input_labels) > NORMAL_RESOURCE_POLICY_V1.maximum_page_count
+            or any(type(label) is not str or not label.strip() for label in input_labels)
         ):
             raise ValueError("Package export requires distinct allowed output modes.")
         super().__init__(parent)
@@ -178,6 +183,27 @@ class PackageExportDialog(QDialog):
             tr("Package review guidance"),
         )
         content_layout.addWidget(guidance)
+
+        input_heading = QLabel(tr("Files and pages in this case"))
+        input_heading.setWordWrap(True)
+        input_heading.setVisible(bool(input_labels))
+        self._input_names = QPlainTextEdit()
+        self._input_names.setObjectName("packageExportInputNames")
+        self._input_names.setAccessibleName(tr("Files and pages in this case"))
+        self._input_names.setAccessibleDescription(
+            tr(
+                "Saved case page order. The package summary below describes the actual planned output order and requirements."
+            )
+        )
+        self._input_names.setReadOnly(True)
+        self._input_names.setTabChangesFocus(True)
+        self._input_names.setMinimumHeight(80)
+        self._input_names.setMaximumHeight(140)
+        self._input_names.setPlainText("\n".join(input_labels))
+        self._input_names.setVisible(bool(input_labels))
+        input_heading.setBuddy(self._input_names)
+        content_layout.addWidget(input_heading)
+        content_layout.addWidget(self._input_names)
 
         mode_label = QLabel(tr("Output &format"))
         self._mode = QComboBox()
@@ -297,13 +323,11 @@ class PackageExportDialog(QDialog):
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._status.setFrameShape(QFrame.Shape.StyledPanel)
         self._status.setStyleSheet(_FOCUS_STYLE)
-        content_layout.addWidget(self._status)
         self._progress = QProgressBar()
         self._progress.setObjectName("packageExportProgress")
         self._progress.setAccessibleName(tr("Package operation progress"))
         self._progress.setAccessibleDescription(tr("Package operation has not started."))
         self._progress.hide()
-        content_layout.addWidget(self._progress)
         self._export = self._button(
             tr("Export\npackage"),
             "packageExportStartButton",
@@ -405,10 +429,13 @@ class PackageExportDialog(QDialog):
         self._close.clicked.connect(self.reject)
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
+        layout.addWidget(self._status)
+        layout.addWidget(self._progress)
         layout.addWidget(self._close)
         tab_chain: tuple[QWidget, ...] = (
             self._close,
             self._scroll,
+            self._input_names,
             self._mode,
             self._refresh,
             self._text,

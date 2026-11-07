@@ -130,7 +130,7 @@ def test_future_current_is_not_downgraded_from_valid_current_checkpoint(tmp_path
     (layout.journal / "latest.json").write_bytes(current)
     future = json.loads(current)
     assert type(future) is dict
-    future["schema_version"] = 4
+    future["schema_version"] = 5
     future["future_shape"] = {"fraction": 1.25, "members": ["unknown"]}
     future["future_text"] = "x" * (MAX_JSON_STRING_CODEPOINTS + 1)
     layout.manifest.write_bytes(

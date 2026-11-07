@@ -62,6 +62,26 @@ def test_manager_is_lazy_and_refreshes_default_selection() -> None:
     assert snapshot.selected_available
 
 
+def test_review_reuses_snapshot_but_export_preflight_detects_removed_runtime() -> None:
+    discovery = _Discovery(
+        [
+            _result(OcrLanguageRuntimeStatus.AVAILABLE, "eng"),
+            _result(OcrLanguageRuntimeStatus.INVALID),
+        ]
+    )
+    manager = OcrLanguageManager(discovery)
+    initial = manager.review_snapshot()
+    assert initial.selected_available
+    for _ in range(3):
+        assert manager.review_snapshot() is initial
+    assert discovery.calls == 1
+    with pytest.raises(OcrError) as raised:
+        manager.require_selected_available()
+    assert raised.value.code is OcrErrorCode.LANGUAGE_UNAVAILABLE
+    assert discovery.calls == 2
+    assert not manager.snapshot.selected_available
+
+
 def test_multiple_language_selection_is_canonical_and_available() -> None:
     discovery = _Discovery(
         [

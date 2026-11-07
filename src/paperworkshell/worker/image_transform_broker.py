@@ -6,8 +6,9 @@ import hashlib
 import hmac
 import math
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Never
+from typing import Never, Protocol
 from uuid import UUID, uuid4
 
 from paperworkshell.domain.image_pages import (
@@ -19,6 +20,7 @@ from paperworkshell.domain.image_pages import (
     ImagePageError,
     ImagePageErrorCode,
     ImagePagePreviewProgressPhase,
+    ImageSourceFormat,
     reject_image_page,
 )
 from paperworkshell.domain.image_transforms import (
@@ -27,13 +29,17 @@ from paperworkshell.domain.image_transforms import (
     ImagePageTransformRequest,
     ImagePageTransformResult,
     ImageTransformArtifact,
+    ImageTransformLookupKey,
     decode_image_transform_artifact,
     image_page_transform_result_from_artifact,
 )
 from paperworkshell.domain.import_precheck import DetectedMediaType
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError, PdfThumbnailErrorCode
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
-from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    retire_runtime_on_failure,
+)
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -79,6 +85,49 @@ from paperworkshell.worker.protocol.models import (
 )
 
 _MAXIMUM_IDENTIFIER_ATTEMPTS = 32
+
+
+class ImageTransformCacheLookup(Protocol):
+    @property
+    def is_hit(self) -> bool: ...
+
+    @property
+    def corrupt_removed(self) -> bool: ...
+
+    @property
+    def artifact(self) -> ImageTransformArtifact | None: ...
+
+
+class ImageTransformCachePublication(Protocol):
+    @property
+    def artifact(self) -> ImageTransformArtifact: ...
+
+    @property
+    def published(self) -> bool: ...
+
+
+class ImageTransformCacheStage(AbstractContextManager["ImageTransformCacheStage"], Protocol):
+    @property
+    def key(self) -> ImageTransformLookupKey: ...
+
+    @property
+    def maximum_bytes(self) -> int: ...
+
+    def write_artifact(self, payload: bytes) -> None: ...
+
+    def validate(
+        self, *, expected_operation_id: UUID, expected_output_id: UUID
+    ) -> ImageTransformArtifact: ...
+
+    def publish(self) -> ImageTransformCachePublication: ...
+
+
+class ImageTransformCacheStore(Protocol):
+    def lookup_image_transform(self, key: ImageTransformLookupKey) -> ImageTransformCacheLookup: ...
+
+    def create_image_transform_stage(
+        self, key: ImageTransformLookupKey
+    ) -> ImageTransformCacheStage: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +187,7 @@ class BrokeredImagePageTransformer:
     """Execute canonical scan transforms against one immutable committed image."""
 
     __slots__ = (
+        "_cache",
         "_heavy_operations",
         "_id_factory",
         "_output_buffer_factory",
@@ -153,6 +203,7 @@ class BrokeredImagePageTransformer:
         policy: ImageTransformBrokerPolicy,
         *,
         heavy_operations: HeavyOperationCoordinator,
+        cache: ImageTransformCacheStore | None = None,
         id_factory: Callable[[], UUID] = uuid4,
         output_buffer_factory: Callable[[int], BoundedImageOutput] = (
             WindowsBoundedOutputBuffer.create
@@ -166,12 +217,14 @@ class BrokeredImagePageTransformer:
         ):
             reject_image_page(ImagePageErrorCode.MODEL_INVALID, "image.transform_broker")
         self._worker = worker
+        self._cache = cache
         self._sources = sources
         self._policy = policy
         self._heavy_operations = heavy_operations
         self._id_factory = id_factory
         self._output_buffer_factory = output_buffer_factory
 
+    @retire_runtime_on_failure
     def transform(
         self,
         request: ImagePageTransformRequest,
@@ -191,7 +244,7 @@ class BrokeredImagePageTransformer:
                     deadline=deadline,
                 ) as lease:
                     source = _resolved_source(request, lease)
-                    artifact = self._run(
+                    artifact = self._get_or_generate(
                         source,
                         request,
                         deadline=deadline,
@@ -203,8 +256,13 @@ class BrokeredImagePageTransformer:
             raise
         except SourceIngestError as error:
             _raise_image_source_error(error)
-        except PdfThumbnailError:
-            reject_image_page(ImagePageErrorCode.DESTINATION_FAILED, "image.transform_output")
+        except PdfThumbnailError as error:
+            code = (
+                ImagePageErrorCode.LIMIT_EXCEEDED
+                if error.code is PdfThumbnailErrorCode.LIMIT_EXCEEDED
+                else ImagePageErrorCode.DESTINATION_FAILED
+            )
+            reject_image_page(code, "image.transform_output")
         except WorkerClientError as error:
             if error.code in {
                 WorkerClientErrorCode.HANDSHAKE_TIMED_OUT,
@@ -235,9 +293,8 @@ class BrokeredImagePageTransformer:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: ImagePreviewPhaseSink,
-    ) -> ImageTransformArtifact:
+    ) -> tuple[ImageTransformArtifact, bytes]:
         _require_active(deadline, cancellation)
-        _report_phase(progress, ImagePagePreviewProgressPhase.LOOKUP)
         limits = _operation_limits(
             self._policy.limits,
             request.maximum_width_pixels,
@@ -280,7 +337,78 @@ class BrokeredImagePageTransformer:
         except ImagePageError:
             reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_artifact")
         _require_active(deadline, cancellation)
-        return artifact
+        return artifact, encoded
+
+    def _get_or_generate(
+        self,
+        source: _ResolvedTransformSource,
+        request: ImagePageTransformRequest,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ImagePreviewPhaseSink,
+    ) -> ImageTransformArtifact:
+        _require_active(deadline, cancellation)
+        _report_phase(progress, ImagePagePreviewProgressPhase.LOOKUP)
+        if self._cache is None:
+            artifact, _encoded = self._run(
+                source, request, deadline=deadline, cancellation=cancellation, progress=progress
+            )
+            return artifact
+        limits = _operation_limits(
+            self._policy.limits, request.maximum_width_pixels, request.maximum_height_pixels
+        )
+        key = ImageTransformLookupKey(
+            case_id=source.case_id,
+            source_id=source.source_id,
+            page_id=source.page_id,
+            source_byte_size=source.byte_size,
+            source_sha256=source.sha256,
+            source_format=ImageSourceFormat(source.content_kind),
+            intent=request.intent,
+            maximum_width_pixels=request.maximum_width_pixels,
+            maximum_height_pixels=request.maximum_height_pixels,
+        )
+        lookup = self._cache.lookup_image_transform(key)
+        if type(lookup.is_hit) is not bool or type(lookup.corrupt_removed) is not bool:
+            reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_lookup")
+        _require_active(deadline, cancellation)
+        if lookup.is_hit:
+            artifact = _require_cached_artifact(lookup.artifact, key)
+            _report_phase(progress, ImagePagePreviewProgressPhase.VALIDATING)
+            # The factory revalidates the unchanged request/snapshot contract.
+            image_page_transform_result_from_artifact(request, artifact)
+            return artifact
+        if lookup.artifact is not None:
+            reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_miss")
+        with self._cache.create_image_transform_stage(key) as stage:
+            if (
+                stage.key != key
+                or type(stage.maximum_bytes) is not int
+                or (stage.maximum_bytes != limits.output_bytes)
+            ):
+                reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_stage")
+            artifact, encoded = self._run(
+                source, request, deadline=deadline, cancellation=cancellation, progress=progress
+            )
+            _require_active(deadline, cancellation)
+            stage.write_artifact(encoded)
+            validated = stage.validate(
+                expected_operation_id=artifact.header.operation_id,
+                expected_output_id=artifact.header.output_id,
+            )
+            validated = _require_cached_artifact(validated, key)
+            if validated != artifact:
+                reject_image_page(
+                    ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_changed"
+                )
+            _require_active(deadline, cancellation)
+            publication = stage.publish()
+            if type(publication.published) is not bool:
+                reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_publication")
+            published = _require_cached_artifact(publication.artifact, key)
+            _require_active(deadline, cancellation)
+            return published
 
     def _run_worker(
         self,
@@ -415,6 +543,14 @@ class BrokeredImagePageTransformer:
             if type(value) is UUID and value.version == 4 and value not in forbidden:
                 return value
         reject_image_page(ImagePageErrorCode.INTERNAL_ERROR, "image.transform_identifier")
+
+
+def _require_cached_artifact(
+    artifact: object, key: ImageTransformLookupKey
+) -> ImageTransformArtifact:
+    if type(artifact) is not ImageTransformArtifact or not key.matches(artifact.header.cache_key):
+        reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_binding")
+    return artifact
 
 
 def _resolved_source(

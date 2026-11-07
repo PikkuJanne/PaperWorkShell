@@ -13,6 +13,7 @@ from paperworkshell.domain.case_lifecycle import (
     INTERMEDIATE_CASE_MANIFEST_VERSION,
     LEGACY_CASE_MANIFEST_VERSION,
     MAX_SAFE_MANIFEST_INTEGER,
+    REMOVAL_CASE_MANIFEST_VERSION,
     SUPPORTED_CASE_MANIFEST_VERSIONS,
     CaseLifecycleErrorCode,
     CaseSummary,
@@ -166,6 +167,7 @@ def probe_supported_manifest_schema_version(payload: bytes) -> int | None:
     selected = {
         str(LEGACY_CASE_MANIFEST_VERSION): LEGACY_CASE_MANIFEST_VERSION,
         str(INTERMEDIATE_CASE_MANIFEST_VERSION): INTERMEDIATE_CASE_MANIFEST_VERSION,
+        str(REMOVAL_CASE_MANIFEST_VERSION): REMOVAL_CASE_MANIFEST_VERSION,
         str(CURRENT_CASE_MANIFEST_VERSION): CURRENT_CASE_MANIFEST_VERSION,
     }.get(version)
     if selected is not None:
@@ -217,9 +219,11 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
         )
     expected_keys = _MANIFEST_KEYS
     collection_keys: tuple[str, ...] = _COLLECTION_KEYS
-    if version == CURRENT_CASE_MANIFEST_VERSION:
+    if version in {REMOVAL_CASE_MANIFEST_VERSION, CURRENT_CASE_MANIFEST_VERSION}:
         expected_keys = expected_keys | {"redaction_marks"}
         collection_keys = (*collection_keys, "redaction_marks")
+    if version == CURRENT_CASE_MANIFEST_VERSION and "case_name" in document:
+        expected_keys = expected_keys | {"case_name"}
     if frozenset(document) != expected_keys:
         reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.manifest_members")
     raw_case_id = document["case_id"]
@@ -251,6 +255,7 @@ def summary_from_manifest(document: dict[str, object], expected_case_id: UUID) -
         revision=revision,
         created_at=parse_utc_timestamp(document["created_at"]),
         updated_at=parse_utc_timestamp(document["updated_at"]),
+        case_name=cast(str, document.get("case_name", "")),
     )
 
 

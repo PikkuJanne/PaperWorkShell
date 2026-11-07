@@ -7,15 +7,23 @@ No sibling application, shared service, remote schema or network request is used
 ## Supported records and preservation
 
 The closed [migration registry](../../src/paperworkshell/domain/manifest_migrations.py)
-contains only the accepted v1-to-v2 and v2-to-v3 transitions. The existing
+contains the accepted v1-to-v2, v2-to-v3 and PWS-0811 v3-to-v4 transitions. The existing
 [Windows repository](../../src/paperworkshell/storage/manifest_repository.py)
 validates the complete frozen source and current result and commits the route
 through its existing authenticated compare-and-swap/checkpoint transaction.
 One open consumes one persistence revision, including a two-step v1 upgrade.
-Current v3 opens consume no revision and create no backup.
+Current v4 opens consume no revision and create no backup. A complete v1-to-v4
+route still consumes only one persistence revision.
+
+Migration is initiated only when the user explicitly opens a case. Listing cases
+validates their frozen supported schema without rewriting them. Startup recovery
+and its export-history reader use nonmigrating repository reads: necessary existing
+checkpoint recovery still runs, but inspecting a settled old case does not create a
+v4 manifest or migration backup. A legacy export-history retry that needs a new
+manifest write remains pending until that case is explicitly opened and upgraded.
 
 Only schema dispatch, the next revision and the empty v3 permanent-removal
-collection change. Sources/hashes, page identity/order, transforms and operation
+collection and empty v4 private case name change. Sources/hashes, page identity/order, transforms and operation
 order, populated or empty assets/overlays, groups, assignments, constraints,
 confirmations, template reference and export-history references preserve all
 values. Ordinary shapes never become permanent-removal marks. Document bytes
@@ -34,9 +42,10 @@ Before publishing the first migration checkpoint, the
 retains the exact validated source-manifest bytes at one fixed case-relative name:
 
 - `journal/migration-source-v1.json` for a settled v1 source;
-- `journal/migration-source-v2.json` for a settled v2 source.
+- `journal/migration-source-v2.json` for a settled v2 source;
+- `journal/migration-source-v3.json` for a settled v3/R9 source.
 
-At most those two backups exist per case. Each is bounded by the existing 8 MiB
+At most those three backups exist per case. Each is bounded by the existing 8 MiB
 manifest limit. It contains the protected manifest, not copies of original
 documents. It remains inside the same private case ACL boundary, counts against
 the existing complete-case quota and is removed only with explicit authenticated

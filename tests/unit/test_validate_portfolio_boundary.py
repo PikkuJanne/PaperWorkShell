@@ -594,13 +594,14 @@ dependencies = ["safe@../suite-runtime"]
                 encoding="utf-8",
             )
             evidence = root / "docs/release/RELEASE_EVIDENCE.md"
+            final_evidence_status, status_rows = re.subn(
+                r"(?m)^\|\s*Document status\s*\|[^\r\n]*$",
+                "| Document status | **FINAL — complete for an exact packaged M8 candidate** |",
+                evidence.read_text(encoding="utf-8"),
+            )
+            self.assertEqual(1, status_rows)
             evidence.write_text(
-                evidence.read_text(encoding="utf-8")
-                .replace(
-                    "DRAFT TEMPLATE — complete only for an exact packaged M8 candidate",
-                    "FINAL — complete for an exact packaged M8 candidate",
-                )
-                .replace("**TBD**", "**1.0.0**", 1)
+                final_evidence_status.replace("**TBD**", "**1.0.0**", 1)
                 .replace("**TBD**", "**Stable**", 1)
                 .replace("`0-draft`", "`1`", 1)
                 .replace("**TBD**", "**source-revision**", 1)

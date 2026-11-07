@@ -1591,7 +1591,9 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
     version = document.get("schema_version")
     if type(version) is int and version not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
         reject_page_operation(PageOperationErrorCode.VERSION_UNSUPPORTED, "snapshot.version")
-    root_members = _ROOT_MEMBERS | {"redaction_marks"} if version == 3 else _ROOT_MEMBERS
+    root_members = _ROOT_MEMBERS | {"redaction_marks"} if version in {3, 4} else _ROOT_MEMBERS
+    if version == 4 and "case_name" in document:
+        root_members = root_members | {"case_name"}
     _require_members(document, root_members, context="snapshot.root")
     if type(version) is not int or document["case_id"] != str(snapshot.case_id):
         reject_page_operation(PageOperationErrorCode.MANIFEST_INVALID, "snapshot.identity")
@@ -1644,7 +1646,7 @@ def _parse_snapshot(snapshot: ManifestSnapshot) -> _ParsedSnapshot:
     _collect_record_namespace(
         document["overlays"], "overlay_id", unrelated_namespace, "snapshot.overlays"
     )
-    if document.get("schema_version") == 3:
+    if document.get("schema_version") in {3, 4}:
         _collect_record_namespace(
             document.get("redaction_marks"),
             "mark_id",

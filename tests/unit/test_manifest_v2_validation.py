@@ -63,7 +63,7 @@ def test_v2_examples_validate_without_mutation() -> None:
 @pytest.mark.parametrize(
     ("filename", "expected_code"),
     [
-        ("future-version.json", "MANIFEST_VERSION_UNSUPPORTED"),
+        ("future-version.json", "MANIFEST_SCHEMA_IDENTITY_MISMATCH"),
         ("invalid-deskew-angle.json", "MANIFEST_SCHEMA_VALIDATION"),
         ("legacy-version.json", "MANIFEST_SCHEMA_IDENTITY_MISMATCH"),
         ("mismatched-operation-version.json", "MANIFEST_SCHEMA_VALIDATION"),
@@ -146,6 +146,6 @@ def test_version_and_schema_identity_dispatch_before_schema_execution() -> None:
     assert {issue.code for issue in validate_manifest(v2, _schema(1))} == {
         "MANIFEST_SCHEMA_IDENTITY_MISMATCH"
     }
-    assert {issue.code for issue in validate_manifest({"schema_version": 4}, {})} == {
+    assert {issue.code for issue in validate_manifest({"schema_version": 5}, {})} == {
         "MANIFEST_VERSION_UNSUPPORTED"
     }

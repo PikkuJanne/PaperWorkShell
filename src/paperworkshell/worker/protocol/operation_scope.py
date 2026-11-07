@@ -13,6 +13,7 @@ class WorkerOperationScope(StrEnum):
     """Authenticated parent-selected handler allowlists for one worker process."""
 
     ALL = "all-v1"
+    DESKTOP = "desktop-v1"
     REDACTION_EXPORT = "redaction-export-private-v1"
     REDACTION_SANITIZATION = "redaction-sanitization-private-v1"
     REDACTION_OCR = "redaction-ocr-private-v1"

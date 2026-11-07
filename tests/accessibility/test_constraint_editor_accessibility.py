@@ -39,6 +39,7 @@ from paperworkshell.templates.catalog import (
 )
 from paperworkshell.templates.loader import SafeTemplateLoader
 from paperworkshell.ui.constraints import ConstraintEditorDialog
+from tests.helpers.qt_layout import wait_for_geometry
 
 CASE_ID = UUID("81000000-0000-4000-8000-000000000001")
 EDITOR_ID = UUID("82000000-0000-4000-8000-000000000001")
@@ -205,6 +206,13 @@ def test_cancel_is_safe_default_and_scroll_keeps_controls_reachable_with_large_t
 
             dialog.resize(520, 360)
             app.processEvents()
+            wait_for_geometry(
+                lambda: all(
+                    dialog.rect().contains(button.mapTo(dialog, button.rect().topLeft()))
+                    and dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
+                    for button in (apply, cancel)
+                )
+            )
             assert scroll.widgetResizable()
             assert scroll.verticalScrollBar().maximum() > 0
             assert apply.isVisible()

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from threading import Barrier
 from uuid import UUID
@@ -68,9 +68,11 @@ class FakeStore:
         }
         self.failures: dict[str, Exception] = {}
 
-    def create_case(self) -> FakeLease:
+    def create_case(self, case_name: str = "") -> FakeLease:
         self.calls.append(("create", None))
         self._raise_failure("create")
+        if case_name:
+            self.create_lease._summary = replace(self.create_lease._summary, case_name=case_name)
         return self.create_lease
 
     def list_cases(self) -> CaseIndex:

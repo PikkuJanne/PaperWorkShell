@@ -381,8 +381,12 @@ class _Lifecycle:
     def active_case(self) -> CaseSummary | None:
         return self._active
 
-    def create_case(self) -> CaseSummary:
+    def create_case(self, case_name: str = "") -> CaseSummary:
         assert self._active is None
+        if case_name:
+            document = self._repository.current.document
+            document["case_name"] = case_name
+            self._repository.current = _snapshot(document)
         self._active = self._summary()
         return self._active
 
@@ -740,6 +744,7 @@ def _backend(
     document: Mapping[str, object],
     *,
     close_resources: Callable[[], None] = lambda: None,
+    release_case_resources: Callable[[], None] = lambda: None,
     ocr_languages: OcrLanguageManager | None = None,
     quality_analysis: _QualityAnalysis | None = None,
     signature_images: SignatureImageWorkflowPort | None = None,
@@ -755,6 +760,7 @@ def _backend(
             source_ingest,
             thumbnails,
             close_resources=close_resources,
+            release_case_resources=release_case_resources,
             ocr_languages=ocr_languages,
             quality_analysis=quality_analysis,
             signature_images=signature_images,
@@ -1005,6 +1011,28 @@ def test_list_create_open_and_close_expose_only_path_free_state() -> None:
     assert opened.case_id == CASE_ID
     assert opened.revision == 0
     assert backend.close_case() == OrganizerViewState.empty()
+
+
+def test_case_resource_cleanup_failure_keeps_saved_case_open_and_retryable() -> None:
+    attempts: list[int] = []
+
+    def release() -> None:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("synthetic exact runtime cleanup failed")
+
+    backend, repository, lifecycle, _, _ = _backend(_document(), release_case_resources=release)
+    backend.open_case(CASE_ID)
+    backend.rotate_clockwise(PAGE_IDS[0])
+    with pytest.raises(RuntimeError, match="runtime cleanup failed"):
+        backend.close_case()
+    assert lifecycle.close_calls == 0
+    assert backend.state.case_id == CASE_ID and not backend.state.autosave_pending
+    assert repository.save_calls == 1
+    backend.rotate_clockwise(PAGE_IDS[0])
+    assert backend.close_case() == OrganizerViewState.empty()
+    assert lifecycle.close_calls == 1 and repository.save_calls == 2
+    assert attempts == [1, 1]
 
 
 def test_startup_recovery_result_is_preserved_for_the_desktop_bridge() -> None:
@@ -2699,3 +2727,66 @@ def test_portal_constraints_unchanged_apply_is_noop_and_releases_authority() -> 
     reopened = backend.begin_portal_constraints()
     assert reopened.editor_session_id != opening.editor_session_id
     backend.cancel_portal_constraints(reopened)
+
+
+def test_named_case_and_rename_persist_without_changing_page_identity() -> None:
+    backend, repository, _lifecycle, _ingest, _thumbnails = _backend(_document())
+    created = backend.create_case("Helsinki – hakemus äö")
+    assert created.case_name == "Helsinki – hakemus äö"
+    source_before = repository.current.document["sources"]
+    page_ids = tuple(page.page_id for page in created.pages)
+    backend.rotate_clockwise(page_ids[0])
+    renamed = backend.rename_case("Updated synthetic case")
+    assert renamed.case_name == "Updated synthetic case"
+    assert renamed.pages[0].rotation_degrees == 90
+    assert repository.current.document["sources"] == source_before
+    assert tuple(page.page_id for page in renamed.pages) == page_ids
+    assert renamed.case_id == created.case_id
+    assert "Updated synthetic case" not in repr(renamed)
+    backend.close_case()
+    reopened = backend.open_case(CASE_ID)
+    assert reopened.case_name == renamed.case_name
+    assert reopened.pages[0].rotation_degrees == 90
+    assert not reopened.autosave_pending
+
+
+def test_failed_rename_remains_pending_and_survives_subsequent_page_edit() -> None:
+    backend, repository, _lifecycle, _ingest, _thumbnails = _backend(_document())
+    created = backend.create_case("Old synthetic name")
+    repository.fail_saves = 1
+    with pytest.raises(ManifestRepositoryError):
+        backend.rename_case("New synthetic name")
+    assert repository.current.document["case_name"] == "Old synthetic name"
+    assert backend.state.autosave_pending
+    assert backend.state.case_name == "New synthetic name"
+    backend.rotate_clockwise(created.pages[0].page_id)
+    saved = backend.flush_autosave()
+    assert saved.case_name == "New synthetic name"
+    assert not saved.autosave_pending
+    assert saved.pages[0].rotation_degrees == 90
+    saved_document = repository.current.document
+    assert saved_document["case_name"] == "New synthetic name"
+    backend.close_case()
+    reopened = backend.open_case(CASE_ID)
+    assert reopened.case_name == "New synthetic name"
+    assert reopened.pages[0].rotation_degrees == 90
+    backend.close_case()
+
+
+def test_source_display_names_disambiguate_duplicates_and_follow_stable_identity() -> None:
+    document = _document(page_count=1, include_image=True)
+    sources = cast(list[dict[str, object]], document["sources"])
+    for source in sources:
+        source["display_name"] = "Ääkköset scan.pdf"
+    backend, _repository, _lifecycle, _ingest, _thumbnails = _backend(document)
+    original = backend.open_case(CASE_ID)
+    assert [page.source_display_name for page in original.pages] == [
+        "Ääkköset scan.pdf (import 1)",
+        "Ääkköset scan.pdf (import 2)",
+    ]
+    source_identity = {page.page_id: page.source_display_name for page in original.pages}
+    moved = backend.move_page(original.pages[1].page_id, 1)
+    assert moved.pages[0].page_id == original.pages[1].page_id
+    assert {page.page_id: page.source_display_name for page in moved.pages} == source_identity
+    assert "Ääkköset scan.pdf" not in repr(moved)
+    backend.close_case()

@@ -22,6 +22,7 @@ from paperworkshell.domain.case_lifecycle import (
     CaseSummary,
     reject_case_lifecycle,
     require_case_id,
+    require_case_name,
 )
 from paperworkshell.domain.manifest_repository import (
     ManifestRepositoryError,
@@ -118,14 +119,15 @@ class WindowsCaseLifecycleStore:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._manifests = WindowsManifestRepository(manager)
 
-    def create_case(self) -> WindowsOpenCaseLease:
+    def create_case(self, case_name: str = "") -> WindowsOpenCaseLease:
         """Publish a schema-valid empty manifest last, then retain the new case lease."""
 
+        selected_name = require_case_name(case_name, allow_empty=True)
         authority: AuthenticatedCase | None = None
         try:
             layout = self._manager.provision()
             authority = self._manager.authenticate_case(layout.case_id, retain_lease=True)
-            payload = build_initial_manifest_bytes(layout.case_id, self._clock())
+            payload = build_initial_manifest_bytes(layout.case_id, self._clock(), selected_name)
             stage_name = f"{uuid4()}.tmp"
             stage_path = layout.temp / stage_name
             relative_parts = ("temp", stage_name)
@@ -180,7 +182,6 @@ class WindowsCaseLifecycleStore:
         unavailable: list[CaseIndexIssue] = []
         for case_id in case_ids:
             try:
-                self._manifests.load(case_id)
                 with self._manager.authenticate_case(case_id) as authority:
                     cases.append(_read_case_summary(authority))
             except ManifestRepositoryError as error:
@@ -295,14 +296,15 @@ class WindowsCaseLifecycleStore:
                 stage_handle.close()
 
 
-def build_initial_manifest_bytes(case_id: UUID, timestamp: datetime) -> bytes:
-    """Build the exact empty v3 manifest using one canonical UTC lifecycle timestamp."""
+def build_initial_manifest_bytes(case_id: UUID, timestamp: datetime, case_name: str = "") -> bytes:
+    """Build an empty v4 manifest with its private name and canonical UTC timestamp."""
 
     selected = require_case_id(case_id, context="case.initial_id")
     rendered_timestamp = _render_utc_timestamp(timestamp)
     document: dict[str, object] = {
         "schema_version": CURRENT_CASE_MANIFEST_VERSION,
         "case_id": str(selected),
+        "case_name": require_case_name(case_name, allow_empty=True),
         "revision": 0,
         "created_at": rendered_timestamp,
         "updated_at": rendered_timestamp,

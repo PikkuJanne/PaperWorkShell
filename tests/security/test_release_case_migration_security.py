@@ -29,7 +29,7 @@ def test_future_dispatch_never_creates_backup_or_changes_any_case_file(
     tmp_path: Path, target: str
 ) -> None:
     manager, layout, source, _payload = release_case(tmp_path)
-    source["schema_version"] = 4
+    source["schema_version"] = 5
     source["private_future_field"] = {"value": "PWS0804_PRIVATE_FUTURE_TOKEN"}
     path = layout.manifest if target == "manifest" else layout.journal / "latest.json"
     path.write_text(json.dumps(source), encoding="utf-8")
@@ -98,7 +98,7 @@ def test_interruption_immediately_after_backup_rename_keeps_exact_recovery_copy(
     assert not (layout.journal / "latest.json").exists()
     assert not list(layout.temp.iterdir())
     monkeypatch.undo()
-    assert WindowsManifestRepository(manager).load(CASE_ID).snapshot.schema_version == 3
+    assert WindowsManifestRepository(manager).load(CASE_ID).snapshot.schema_version == 4
 
 
 def test_migration_produces_no_content_bearing_routine_logs(
@@ -154,6 +154,6 @@ def test_migration_directory_rename_is_blocked_before_backup_write(
     assert old_bytes not in escaped_bytes, "source manifest bytes escaped the authenticated case"
     assert not moved, "a migration directory escaped the authenticated case"
     assert not outside.exists()
-    assert result is not None and result.snapshot.schema_version == 3
+    assert result is not None and result.snapshot.schema_version == 4
     assert (layout.journal / "migration-source-v1.json").read_bytes() == old_bytes
     assert not list(layout.temp.iterdir())

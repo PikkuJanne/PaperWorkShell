@@ -12,6 +12,7 @@ import paperworkshell.worker._windows_broker as broker_module
 from paperworkshell.app.page_previews import ImagePagePreviewGenerator
 from paperworkshell.app.pdf_thumbnails import ThumbnailPageGenerator
 from paperworkshell.app.source_ingest import SourceInspector
+from paperworkshell.domain.image_transforms import ImageTransformLookupKey
 from paperworkshell.domain.pdf_inspection import PdfInspectionError
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError
 from paperworkshell.worker import desktop_composition as composition_module
@@ -35,7 +36,11 @@ from paperworkshell.worker.desktop_composition import (
 )
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.image_page_broker import ImageNormalizeBrokerPolicy
-from paperworkshell.worker.image_transform_broker import ImageTransformBrokerPolicy
+from paperworkshell.worker.image_transform_broker import (
+    ImageTransformBrokerPolicy,
+    ImageTransformCacheLookup,
+    ImageTransformCacheStage,
+)
 from paperworkshell.worker.pdf_source_inspector import (
     PdfInspectionBrokerPolicy,
     PreparedSourceHandleBroker,
@@ -252,6 +257,28 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     assert composition.resource_snapshot() == worker.snapshot
     assert worker.resource_snapshot_calls == 1
     composition.close()
+
+
+def test_image_cache_is_one_optional_complete_typed_port() -> None:
+    class Cache:
+        def lookup_image_transform(self, key: ImageTransformLookupKey) -> ImageTransformCacheLookup:
+            raise AssertionError("Composition must not perform a cache lookup")
+
+        def create_image_transform_stage(
+            self, key: ImageTransformLookupKey
+        ) -> ImageTransformCacheStage:
+            raise AssertionError("Composition must not create a cache stage")
+
+    complete = Cache()
+    assert composition_module._image_transform_cache(complete) is complete
+    assert composition_module._image_transform_cache(_ThumbnailCache()) is None
+
+    class Incomplete:
+        def lookup_image_transform(self, _key: object) -> None:
+            return None
+
+    with pytest.raises(WorkerClientError):
+        composition_module._image_transform_cache(Incomplete())
 
 
 def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(

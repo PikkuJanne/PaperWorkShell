@@ -84,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(f"OK: validated {TASK_FILE} with {SCHEMA_FILE}.")
     print(
-        "OK: validated frozen case-manifest v1/v2 and current v3 with "
+        "OK: validated frozen case-manifest v1/v2/v3 and current v4 with "
         f"{MANIFEST_SCHEMA_PATH.as_posix()} and {CURRENT_MANIFEST_SCHEMA_PATH.as_posix()}."
     )
     print(f"OK: validated synthetic fixture index v1 with {FIXTURE_INDEX_SCHEMA_PATH.as_posix()}.")

@@ -118,7 +118,7 @@ def test_core_controls_have_names_descriptions_and_no_drag_requirement() -> None
 
         page_list = window.findChild(QListView, "pageList")
         assert page_list is not None
-        assert page_list.accessibleName() == "Active pages"
+        assert page_list.accessibleName() == "Pages"
         assert "visible organizer actions" in page_list.accessibleDescription()
         assert not page_list.dragEnabled()
         assert not page_list.acceptDrops()
@@ -890,7 +890,12 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
                 window._create_case_button,
                 window._open_case_button,
                 window._refresh_cases_button,
-                window._status_surface,
+            )
+            status_origin = window._status_surface.mapTo(window.centralWidget(), QPoint(0, 0))
+            assert (
+                window.centralWidget()
+                .rect()
+                .contains(QRect(status_origin, window._status_surface.size()))
             )
             for chooser_widget in chooser_controls:
                 scroll.ensureWidgetVisible(chooser_widget, 8, 8)
@@ -948,10 +953,17 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
                 window._quality_check_button,
                 window._quality_findings_view,
                 window._quality_go_to_page_button,
+            )
+            for fixed_widget in (
                 window._status_surface,
                 window._cancel_button,
                 window._retry_save_button,
-            )
+            ):
+                assert fixed_widget.isVisible()
+                fixed_origin = fixed_widget.mapTo(window.centralWidget(), QPoint(0, 0))
+                assert (
+                    window.centralWidget().rect().contains(QRect(fixed_origin, fixed_widget.size()))
+                )
             assert scroll.verticalScrollBar().maximum() > 0
             for organizer_widget in organizer_controls:
                 assert organizer_widget.isVisible()

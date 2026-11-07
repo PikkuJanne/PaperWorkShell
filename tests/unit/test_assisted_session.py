@@ -315,23 +315,30 @@ def test_assisted_actions_follow_the_visual_order_in_the_main_keyboard_chain(sur
     with _window() as (window, commands, worker):
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         worker.initialized.emit()
+        chain: tuple[QPushButton, ...]
         if surface == "active_assistance":
             worker.state_changed.emit(_state())
             window._assisted_session.changed(_snapshot())
             window._assisted_session._timer.stop()
-            before, action = window._import_button, window._assisted_lock_button
+            chain = (
+                window._import_button,
+                window._pages_pdf_export_button,
+                window._rename_case_button,
+                window._assisted_lock_button,
+                window._close_case_button,
+            )
         else:
-            before, action = window._refresh_cases_button, window._assisted_create_button
+            chain = (window._refresh_cases_button, window._assisted_create_button)
         window.activateWindow()
         _application().processEvents()
-        assert before.isVisible() and before.isEnabled()
-        assert action.isVisible() and action.isEnabled()
-        before.setFocus(Qt.FocusReason.TabFocusReason)
-        QTest.keyClick(before, Qt.Key.Key_Tab)
-        assert action.hasFocus()
-        if surface == "active_assistance":
-            QTest.keyClick(action, Qt.Key.Key_Tab)
-            assert window._close_case_button.hasFocus()
+        for control in chain:
+            assert control.isVisible() and control.isEnabled()
+        positions = [(control.y(), control.x()) for control in chain]
+        assert positions == sorted(positions)
+        chain[0].setFocus(Qt.FocusReason.TabFocusReason)
+        for before, action in zip(chain, chain[1:], strict=False):
+            QTest.keyClick(before, Qt.Key.Key_Tab)
+            assert action.hasFocus()
 
 
 def test_periodic_locked_checkpoints_do_not_revoke_an_inflight_unlock(

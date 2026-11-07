@@ -18,6 +18,7 @@ from paperworkshell.domain.case_lifecycle import (
     CURRENT_CASE_MANIFEST_VERSION,
     INTERMEDIATE_CASE_MANIFEST_VERSION,
     LEGACY_CASE_MANIFEST_VERSION,
+    REMOVAL_CASE_MANIFEST_VERSION,
 )
 from paperworkshell.domain.manifest_migrations import (
     migrate_manifest_to_current,
@@ -67,7 +68,8 @@ from paperworkshell.storage.workspace import (
 _SCHEMA_RESOURCES: Final = {
     LEGACY_CASE_MANIFEST_VERSION: "case-manifest-v1.schema.json",
     INTERMEDIATE_CASE_MANIFEST_VERSION: "case-manifest-v2.schema.json",
-    CURRENT_CASE_MANIFEST_VERSION: "case-manifest-v3.schema.json",
+    REMOVAL_CASE_MANIFEST_VERSION: "case-manifest-v3.schema.json",
+    CURRENT_CASE_MANIFEST_VERSION: "case-manifest-v4.schema.json",
 }
 _SCHEMA_FINGERPRINTS: Final = {
     LEGACY_CASE_MANIFEST_VERSION: (
@@ -76,8 +78,11 @@ _SCHEMA_FINGERPRINTS: Final = {
     INTERMEDIATE_CASE_MANIFEST_VERSION: (
         "af27d3d3569d660638371d840a35b754335b074021c39d20cc4f282df4c7e599"
     ),
-    CURRENT_CASE_MANIFEST_VERSION: (
+    REMOVAL_CASE_MANIFEST_VERSION: (
         "58d77bb8d279c2fae40f0a5fb050a34a851146ff4e794fa2765b87de543defb4"
+    ),
+    CURRENT_CASE_MANIFEST_VERSION: (
+        "481ce360cdb81c50512225bb8fc9f647f15b88d31adf0d74239aa3ea0960c6f4"
     ),
 }
 _MAX_SCHEMA_BYTES: Final = 2 * 1024 * 1024
@@ -141,28 +146,40 @@ class _ManifestTransactionInterruption(BaseException):
 class WindowsManifestRepository:
     """Save and recover complete case manifests through retained Windows handles."""
 
-    __slots__ = ("_id_factory", "_manager")
+    __slots__ = ("_id_factory", "_manager", "_migrate_on_load")
 
     def __init__(
         self,
         manager: CaseWorkspaceManager,
         *,
         id_factory: Callable[[], UUID] = uuid4,
+        migrate_on_load: bool = True,
     ) -> None:
-        if not callable(id_factory):
+        if not callable(id_factory) or type(migrate_on_load) is not bool:
             _reject(ManifestRepositoryErrorCode.MODEL_INVALID, "manifest.repository")
         self._manager = manager
         self._id_factory = id_factory
+        self._migrate_on_load = migrate_on_load
 
     def load(
         self,
         case_id: UUID,
         *,
         coordination_checkpoint: CoordinationCheckpoint | None = None,
+        migrate: bool | None = None,
     ) -> ManifestLoadResult:
-        """Return a fully validated current manifest, promoting one recoverable checkpoint."""
+        """Recover a valid record; migrate only for an explicit case-open operation.
+
+        Startup recovery passes ``migrate=False`` so inspecting unrelated closed
+        cases does not initiate a schema upgrade. Existing checkpoint recovery
+        remains available for every supported version.
+        """
 
         selected = _require_case_id(case_id, context="manifest.load_case")
+        if migrate is None:
+            migrate = self._migrate_on_load
+        if type(migrate) is not bool:
+            _reject(ManifestRepositoryErrorCode.MODEL_INVALID, "manifest.load_migration")
         if coordination_checkpoint is not None and not callable(coordination_checkpoint):
             _reject(ManifestRepositoryErrorCode.MODEL_INVALID, "manifest.load_checkpoint")
 
@@ -184,7 +201,7 @@ class WindowsManifestRepository:
                 coordination_checkpoint=checkpoint,
             ) as authority:
                 with authority.transaction_guard(coordination_checkpoint=checkpoint):
-                    return self._load_locked(authority)
+                    return self._load_locked(authority, migrate=migrate)
         except ManifestRepositoryError:
             raise
         except _ManifestTransactionInterruption as interruption:
@@ -284,7 +301,9 @@ class WindowsManifestRepository:
             if manifest_reservation is not None:
                 manifest_reservation.release()
 
-    def _load_locked(self, authority: AuthenticatedCase) -> ManifestLoadResult:
+    def _load_locked(
+        self, authority: AuthenticatedCase, *, migrate: bool = True
+    ) -> ManifestLoadResult:
         current_raw: _RawManifest | None = None
         current: _ObservedManifest | None = None
         current_error: ManifestRepositoryError | None = None
@@ -320,6 +339,7 @@ class WindowsManifestRepository:
                     authority,
                     current.snapshot,
                     ManifestLoadStatus.CURRENT,
+                    migrate=migrate,
                 )
             if (
                 checkpoint.case_id == current.validated.case_id
@@ -340,6 +360,7 @@ class WindowsManifestRepository:
                     authority,
                     restored,
                     ManifestLoadStatus.RECOVERED,
+                    migrate=migrate,
                     recovered_migration=(
                         current.validated.schema_version < CURRENT_CASE_MANIFEST_VERSION
                         and restored.schema_version == CURRENT_CASE_MANIFEST_VERSION
@@ -351,6 +372,7 @@ class WindowsManifestRepository:
                 authority,
                 current.snapshot,
                 ManifestLoadStatus.CURRENT,
+                migrate=migrate,
             )
 
         if checkpoint is None:
@@ -362,6 +384,7 @@ class WindowsManifestRepository:
             authority,
             restored,
             ManifestLoadStatus.RECOVERED,
+            migrate=migrate,
         )
 
     def _finish_loaded_locked(
@@ -371,10 +394,11 @@ class WindowsManifestRepository:
         status: ManifestLoadStatus,
         *,
         recovered_migration: bool = False,
+        migrate: bool = True,
     ) -> ManifestLoadResult:
-        """Return only v3, transactionally migrating a settled supported older state."""
+        """Return only v4, transactionally migrating a settled supported older state."""
 
-        if snapshot.schema_version == CURRENT_CASE_MANIFEST_VERSION:
+        if snapshot.schema_version == CURRENT_CASE_MANIFEST_VERSION or not migrate:
             selected_status = (
                 ManifestLoadStatus.RECOVERED_MIGRATED if recovered_migration else status
             )
@@ -382,6 +406,7 @@ class WindowsManifestRepository:
         if snapshot.schema_version not in {
             LEGACY_CASE_MANIFEST_VERSION,
             INTERMEDIATE_CASE_MANIFEST_VERSION,
+            REMOVAL_CASE_MANIFEST_VERSION,
         }:
             _reject(ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.migration_version")
         migrated = self._migrate_to_current_locked(authority, snapshot)
@@ -397,12 +422,16 @@ class WindowsManifestRepository:
         authority: AuthenticatedCase,
         source: ManifestSnapshot,
     ) -> ManifestSnapshot:
-        """Publish a copy-only transition to v3 through one journal boundary."""
+        """Publish a copy-only transition to v4 through one journal boundary."""
 
         if (
             source.case_id != authority.case_id
             or source.schema_version
-            not in {LEGACY_CASE_MANIFEST_VERSION, INTERMEDIATE_CASE_MANIFEST_VERSION}
+            not in {
+                LEGACY_CASE_MANIFEST_VERSION,
+                INTERMEDIATE_CASE_MANIFEST_VERSION,
+                REMOVAL_CASE_MANIFEST_VERSION,
+            }
             or source.revision >= MAX_SAFE_MANIFEST_INTEGER
         ):
             _reject(ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_source")
@@ -1042,7 +1071,7 @@ def _validate_loadable_manifest_payload(
     payload: bytes,
     expected_case_id: UUID,
 ) -> _ValidatedManifest:
-    """Validate a frozen v1/v2 input or current v3 input without mutation."""
+    """Validate a frozen v1/v2 input or current v4 input without mutation."""
 
     selected = _require_case_id(expected_case_id, context="manifest.validation_case")
     if type(payload) is not bytes or not 1 <= len(payload) <= MAX_MANIFEST_BYTES:

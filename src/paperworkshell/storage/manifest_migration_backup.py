@@ -30,7 +30,7 @@ from paperworkshell.storage.quotas import QuotaArea
 from paperworkshell.storage.workspace import AuthenticatedCase, CaseWorkspaceManager
 
 MIGRATION_BACKUP_NAMES: Final[Mapping[int, str]] = MappingProxyType(
-    {1: "migration-source-v1.json", 2: "migration-source-v2.json"}
+    {1: "migration-source-v1.json", 2: "migration-source-v2.json", 3: "migration-source-v3.json"}
 )
 
 
@@ -45,7 +45,7 @@ def retain_migration_source(
     """Retain one validated old record before its first migration checkpoint.
 
     The caller validates the complete source under its case transaction. Only
-    the two fixed names can be created; an existing exact copy is idempotent,
+    the three fixed names can be created; an existing exact copy is idempotent,
     while any different/unsafe object fails closed and is never replaced.
     """
 

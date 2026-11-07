@@ -11,8 +11,8 @@ from uuid import UUID
 import pytest
 
 from paperworkshell.domain.manifest_migrations import (
+    migrate_manifest_to_current,
     migrate_manifest_v1_to_v2,
-    migrate_manifest_v2_to_v3,
 )
 from paperworkshell.domain.manifest_repository import (
     MAX_SAFE_MANIFEST_INTEGER,
@@ -72,9 +72,7 @@ def _install_v1(manifest_path: Path) -> dict[str, object]:
 
 
 def _current_candidate(source: dict[str, object]) -> dict[str, object]:
-    intermediate = migrate_manifest_v1_to_v2(source)
-    intermediate["revision"] = source["revision"]
-    return migrate_manifest_v2_to_v3(intermediate)
+    return migrate_manifest_to_current(source)
 
 
 def test_load_migrates_v1_losslessly_through_journal_and_is_idempotent(tmp_path: Path) -> None:
@@ -159,7 +157,7 @@ def test_v2_migrates_once_without_changing_existing_intent(tmp_path: Path) -> No
     loaded = WindowsManifestRepository(manager).load(CASE_ID)
 
     assert loaded.status is ManifestLoadStatus.MIGRATED
-    assert loaded.snapshot.document == migrate_manifest_v2_to_v3(source)
+    assert loaded.snapshot.document == migrate_manifest_to_current(source)
     assert loaded.snapshot.document["redaction_marks"] == []
     assert WindowsManifestRepository(manager).load(CASE_ID).status is ManifestLoadStatus.CURRENT
 
@@ -174,7 +172,7 @@ def test_old_v2_checkpoint_recovers_then_migrates_to_v3(tmp_path: Path) -> None:
     recovered = WindowsManifestRepository(manager).load(CASE_ID)
 
     assert recovered.status is ManifestLoadStatus.RECOVERED_MIGRATED
-    assert recovered.snapshot.document == migrate_manifest_v2_to_v3(old_checkpoint)
+    assert recovered.snapshot.document == migrate_manifest_to_current(old_checkpoint)
     assert recovered.snapshot.revision == cast(int, source["revision"]) + 2
     assert recovered.snapshot.document["sources"] == source["sources"]
     assert manifest_path.read_bytes() == (layout.journal / "latest.json").read_bytes()

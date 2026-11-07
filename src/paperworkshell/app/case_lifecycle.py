@@ -17,6 +17,7 @@ from paperworkshell.domain.case_lifecycle import (
     CaseSummary,
     reject_case_lifecycle,
     require_case_id,
+    require_case_name,
 )
 
 
@@ -36,7 +37,7 @@ class OpenCaseLease(Protocol):
 class CaseLifecycleStore(Protocol):
     """Filesystem-independent lifecycle operations consumed by the application service."""
 
-    def create_case(self) -> OpenCaseLease:
+    def create_case(self, case_name: str = "") -> OpenCaseLease:
         """Atomically publish and lease a new valid case."""
 
     def list_cases(self) -> CaseIndex:
@@ -76,13 +77,16 @@ class CaseLifecycleService:
         with self._lock:
             return None if self._active is None else self._active.summary
 
-    def create_case(self) -> CaseSummary:
+    def create_case(self, case_name: str = "") -> CaseSummary:
         """Create and activate a case only after its storage commit succeeds."""
 
+        selected_name = require_case_name(case_name, allow_empty=True)
         with self._lock:
             self._require_no_active_case()
             return self._activate_from_store(
-                self._store.create_case,
+                (lambda: self._store.create_case(selected_name))
+                if selected_name
+                else self._store.create_case,
                 failure_code=CaseLifecycleErrorCode.CREATE_FAILED,
                 context="case.create",
             )

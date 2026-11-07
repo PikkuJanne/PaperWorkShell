@@ -83,7 +83,16 @@ A hardened v1.0 requires completion of all milestones, including the redaction s
 
 ### 1.5.1 Current internal-delivery sequence
 
-The maintainer's 2026-11-04 reset makes **PWS-0810** the active internal-delivery
+The maintainer's **2026-11-06 repair assignment** makes **PWS-0811** the current
+internal task. Implement the supplied R9 feedback, measure and repair avoidable
+waiting, build a unique successor, and verify its installed interface and real
+exported files before another comparable human session. Preserve R9, all existing
+cases and accepted historical evidence. The seventeen issue groups and fourteen
+verification scenarios in the supplied repair bundle are coverage identifiers,
+not pre-existing repository tasks. This remains internal delivery, independently
+of the deferred public phase below.
+
+The maintainer's earlier 2026-11-04 reset made **PWS-0810** the internal-delivery
 task: hand over a usable unsigned Windows 11 x64 installer, normal launch path,
 finite installed core-workflow evidence, concrete defect repairs and a short
 first-use guide. Reuse accepted evidence within its exact recorded scope. R9 is

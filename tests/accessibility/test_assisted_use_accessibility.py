@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from paperworkshell.ui.assisted_use import AssistedConsentDialog, AssistedLockScreen
+from tests.helpers.qt_layout import wait_for_geometry
 
 
 def _application() -> QApplication:
@@ -52,6 +53,7 @@ def test_controls_have_names_roles_descriptions_and_deliberate_keyboard_consent(
         cancel = dialog.findChild(QPushButton, "assistedConsentCancel")
         assert cancel is not None and cancel.hasFocus()
         for kind, name in (
+            (QLineEdit, "assistedCaseName"),
             (QComboBox, "assistedRetentionDays"),
             (QLineEdit, "assistedPassphrase"),
             (QLineEdit, "assistedPassphraseConfirmation"),
@@ -77,17 +79,20 @@ def test_controls_have_names_roles_descriptions_and_deliberate_keyboard_consent(
 
 def test_password_fields_expose_password_state_and_preserve_logical_tab_order() -> None:
     with _dialog() as dialog:
+        name = dialog.findChild(QLineEdit, "assistedCaseName")
         retention = dialog.findChild(QComboBox, "assistedRetentionDays")
         first = dialog.findChild(QLineEdit, "assistedPassphrase")
         repeated = dialog.findChild(QLineEdit, "assistedPassphraseConfirmation")
         consent = dialog.findChild(QCheckBox, "assistedConsentConfirmation")
-        assert retention is not None and first is not None
+        assert name is not None and retention is not None and first is not None
         assert repeated is not None and consent is not None
         for entry in (first, repeated):
             interface = QAccessible.queryAccessibleInterface(entry)
             assert interface is not None
             assert interface.state().passwordEdit
-        retention.setFocus(Qt.FocusReason.TabFocusReason)
+        name.setFocus(Qt.FocusReason.TabFocusReason)
+        QTest.keyClick(name, Qt.Key.Key_Tab)
+        assert retention.hasFocus()
         QTest.keyClick(retention, Qt.Key.Key_Tab)
         assert first.hasFocus()
         QTest.keyClick(first, Qt.Key.Key_Tab)
@@ -105,6 +110,18 @@ def test_enlarged_text_keeps_policy_scrollable_and_actions_reachable() -> None:
         _application().processEvents()
         scroll = dialog.findChild(QScrollArea, "assistedConsentScroll")
         assert scroll is not None
+        footer_buttons: list[QPushButton] = []
+        for name in ("assistedConsentStart", "assistedConsentCancel"):
+            button = dialog.findChild(QPushButton, name)
+            assert button is not None
+            footer_buttons.append(button)
+        wait_for_geometry(
+            lambda: all(
+                dialog.rect().contains(button.mapTo(dialog, button.rect().topLeft()))
+                and dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
+                for button in footer_buttons
+            )
+        )
         assert scroll.verticalScrollBar().maximum() > 0
         scroll.setFocus(Qt.FocusReason.TabFocusReason)
         QTest.keyClick(scroll, Qt.Key.Key_PageDown)
@@ -133,6 +150,7 @@ def test_consent_field_labels_remain_readable_and_scroll_into_view(enlarged: boo
             scroll = dialog.findChild(QScrollArea, "assistedConsentScroll")
             assert scroll is not None
             for text, control_name in (
+                ("Case name", "assistedCaseName"),
                 ("Case expires after", "assistedRetentionDays"),
                 ("Local case passphrase", "assistedPassphrase"),
                 ("Repeat passphrase", "assistedPassphraseConfirmation"),
@@ -147,6 +165,17 @@ def test_consent_field_labels_remain_readable_and_scroll_into_view(enlarged: boo
                 assert label.height() >= label.heightForWidth(label.width()) > 0
                 scroll.ensureWidgetVisible(label)
                 application.processEvents()
+
+                def label_is_revealed(target: QLabel = label) -> bool:
+                    scroll.ensureWidgetVisible(target)
+                    viewport = scroll.viewport()
+                    return viewport.rect().contains(
+                        target.mapTo(viewport, target.rect().topLeft())
+                    ) and viewport.rect().contains(
+                        target.mapTo(viewport, target.rect().bottomRight())
+                    )
+
+                wait_for_geometry(label_is_revealed)
                 assert (
                     scroll.viewport().rect().contains(label.mapTo(scroll.viewport(), QPoint(0, 0)))
                 )

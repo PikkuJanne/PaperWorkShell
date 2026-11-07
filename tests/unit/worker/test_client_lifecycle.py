@@ -731,9 +731,64 @@ def test_operation_result_snapshot_preserves_protocol_resource_category() -> Non
     assert snapshot.error_category is ErrorCategory.RESOURCE_LIMIT
 
 
-def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:
+@pytest.mark.parametrize("succeeded", [True, False])
+def test_only_successful_terminal_operation_can_retain_static_runtime_access(
+    succeeded: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, record, _ = _ready_client()
+    reuse_calls: list[bool] = []
+    monkeypatch.setattr(
+        record.process, "allow_runtime_reuse", lambda: reuse_calls.append(True), raising=False
+    )
+    operation_id, start = _start_and_accept(client, record)
+    result = record.worker_peer.prepare_outbound(
+        MessageType.OPERATION_RESULT,
+        OperationResultPayload(
+            OperationOutcome.SUCCEEDED if succeeded else OperationOutcome.FAILED,
+            (),
+            None
+            if succeeded
+            else ErrorPayload(
+                ErrorCode.WORKER_OPERATION_FAILED,
+                ErrorCategory.RESOURCE_LIMIT,
+                RetryAction.RETRY,
+                False,
+                (),
+            ),
+        ),
+        request_id=start.request_id,
+        operation_id=operation_id,
+    )
+    _queue(record, result)
+    client.pump()
+    client.terminate()
+    assert reuse_calls == ([True] if succeeded else [])
+    assert record.process.terminate_calls == 1 and record.process.close_calls == 1
+
+
+def test_protocol_fault_never_marks_runtime_access_reusable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, record, generation = _ready_client()
+    reuse_calls: list[bool] = []
+    monkeypatch.setattr(
+        record.process, "allow_runtime_reuse", lambda: reuse_calls.append(True), raising=False
+    )
+    with pytest.raises(WorkerClientError):
+        client.accept_payload(generation, b"malformed synthetic RPC")
+    assert reuse_calls == []
+    assert record.process.terminate_calls == 1 and record.process.close_calls == 1
+
+
+def test_cancel_ack_is_nonterminal_and_success_may_win_the_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     clock = FakeClock()
     client, _launcher, record, _generation = _ready_client(clock=clock)
+    reuse_calls: list[bool] = []
+    monkeypatch.setattr(
+        record.process, "allow_runtime_reuse", lambda: reuse_calls.append(True), raising=False
+    )
     operation_id, start = _start_and_accept(client, record)
 
     cancel_request = client.cancel()
@@ -763,6 +818,8 @@ def test_cancel_ack_is_nonterminal_and_success_may_win_the_race() -> None:
     result_snapshot = client.query().last_result
     assert result_snapshot is not None
     assert result_snapshot.outcome is OperationOutcome.SUCCEEDED
+    client.terminate()
+    assert reuse_calls == []
 
 
 def test_terminal_payload_before_ordered_deadline_event_wins() -> None:

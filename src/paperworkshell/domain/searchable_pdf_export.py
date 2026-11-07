@@ -118,6 +118,7 @@ class SearchablePdfExportErrorCode(StrEnum):
     SOURCE_INCONSISTENT = "SEARCHABLE_PDF_SOURCE_INCONSISTENT"
     TRANSFORM_UNSUPPORTED = "SEARCHABLE_PDF_TRANSFORM_UNSUPPORTED"
     OCR_LANGUAGE_UNAVAILABLE = "SEARCHABLE_PDF_OCR_LANGUAGE_UNAVAILABLE"
+    OCR_FAILED = "SEARCHABLE_PDF_OCR_FAILED"
     LIMIT_EXCEEDED = "SEARCHABLE_PDF_LIMIT_EXCEEDED"
     REPORT_INVALID = "SEARCHABLE_PDF_REPORT_INVALID"
     RESULT_INVALID = "SEARCHABLE_PDF_RESULT_INVALID"
@@ -156,6 +157,11 @@ _SAFE_ERROR_MESSAGES: Final[dict[SearchablePdfExportErrorCode, str]] = {
         "The selected OCR languages are not installed and verified. "
         "Review OCR language settings before creating the searchable PDF."
     ),
+    SearchablePdfExportErrorCode.OCR_FAILED: (
+        "Text recognition failed or was blocked on a scanned page. No PDF was saved. "
+        "Check OCR languages and retry, or explicitly turn off Make scanned text searchable "
+        "to export without OCR. Your saved case is unchanged."
+    ),
     SearchablePdfExportErrorCode.LIMIT_EXCEEDED: (
         "The searchable-PDF request exceeds a configured safety limit."
     ),
@@ -177,6 +183,7 @@ class SearchablePdfExportError(ValueError):
 
     code: SearchablePdfExportErrorCode
     context: str
+    output_page_number: int | None = None
     safe_message: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -185,6 +192,14 @@ class SearchablePdfExportError(ValueError):
         if type(self.context) is not str or _CONTEXT_TOKEN.fullmatch(self.context) is None:
             self.context = "searchable_pdf.export"
         self.safe_message = _SAFE_ERROR_MESSAGES[self.code]
+        if (
+            self.code is not SearchablePdfExportErrorCode.OCR_FAILED
+            or type(self.output_page_number) is not int
+            or not 1 <= self.output_page_number <= MAX_SEARCHABLE_PDF_PAGES
+        ):
+            self.output_page_number = None
+        if self.output_page_number is not None:
+            self.safe_message = f"Output page {self.output_page_number}: " + self.safe_message
         self.args = (self.code.value, self.context, self.safe_message)
 
     def __repr__(self) -> str:
@@ -197,10 +212,14 @@ class SearchablePdfExportError(ValueError):
 def reject_searchable_pdf_export(
     code: SearchablePdfExportErrorCode,
     context: str,
+    *,
+    output_page_number: int | None = None,
 ) -> Never:
     """Raise one closed failure without retaining an active source exception."""
 
-    error = SearchablePdfExportError(code=code, context=context)
+    error = SearchablePdfExportError(
+        code=code, context=context, output_page_number=output_page_number
+    )
     try:
         raise error from None
     finally:

@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from typing import Final, cast
 
-from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Slot
-from PySide6.QtGui import QPalette
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Slot
+from PySide6.QtGui import QPainter, QPaintEvent, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
+    QLabel,
     QLayout,
     QLayoutItem,
     QProgressBar,
@@ -24,6 +25,8 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyleHintReturn,
     QStyleOption,
+    QStyleOptionButton,
+    QStyleOptionMenuItem,
     QWidget,
 )
 
@@ -60,6 +63,32 @@ QMenuBar::item:selected, QMenu::item:selected {
 """
 
 
+class ElidingTextLabel(QLabel):
+    """Keep one visible line and the complete native accessible text."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(160, self.fontMetrics().height() + 8)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(0, self.fontMetrics().height() + 8)
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        return self.fontMetrics().height() + 8
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.setFont(self.font())
+        painter.drawText(
+            self.contentsRect(),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.fontMetrics().elidedText(
+                self.text(), Qt.TextElideMode.ElideMiddle, self.contentsRect().width()
+            ),
+        )
+        painter.end()
+
+
 class AccessibleNativeStyle(QProxyStyle):
     """Retain native contrast painting while enlarging interactive geometry."""
 
@@ -77,6 +106,25 @@ class AccessibleNativeStyle(QProxyStyle):
         # base contracts and ask the native style for its original geometry.
         widget = args[0] if args else keywords.get("widget", keywords.get("w"))
         result = self.baseStyle().sizeFromContents(type, option, size, widget)
+        if type == QStyle.ContentsType.CT_PushButton and isinstance(option, QStyleOptionButton):
+            # Some Windows native button hints reserve only four pixels around
+            # translated labels. Keep the whole action readable in a fitted row.
+            text_width = max(
+                (
+                    option.fontMetrics.horizontalAdvance(line.replace("&", ""))
+                    for line in option.text.splitlines()
+                ),
+                default=0,
+            )
+            result.setWidth(max(result.width(), text_width + 12))
+        if type == QStyle.ContentsType.CT_MenuItem and isinstance(option, QStyleOptionMenuItem):
+            label, _, shortcut = option.text.partition("\t")
+            metrics = option.fontMetrics
+            # Native Windows menu sizing behind a palette stylesheet can omit
+            # the shortcut column. Reserve both columns from actual font metrics.
+            width = metrics.horizontalAdvance(label.replace("&", ""))
+            shortcut_width = max(option.reservedShortcutWidth, metrics.horizontalAdvance(shortcut))
+            result.setWidth(max(result.width(), width + shortcut_width + 72))
         if type in (
             QStyle.ContentsType.CT_PushButton,
             QStyle.ContentsType.CT_ToolButton,
@@ -173,7 +221,9 @@ def install_presentation_policy(application: QApplication) -> None:
 def adapt_dialog_button_box(button_box: QDialogButtonBox) -> None:
     """Keep verbose acceptance/recovery actions inside a narrow dialog footer."""
     button_box.setOrientation(Qt.Orientation.Vertical)
-    button_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    # Child buttons get measured text minima below. Let the outer footer shrink
+    # first so a previously fitted row can switch to a stack on a narrow resize.
+    button_box.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     # QWidget* is nullable in Qt; the PySide6 stub omits that annotation.
     button_box.setFocusProxy(cast(QWidget, None))
     _FooterTextWrap(button_box)
@@ -192,6 +242,10 @@ class _FooterTextWrap(QObject):
         self._box = box
         self._refreshing = False
         self._text: dict[QPushButton, tuple[str, str]] = {}
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(0)
+        self._refresh_timer.timeout.connect(self._refresh)
         box.installEventFilter(self)
         self._refresh()
 
@@ -204,7 +258,9 @@ class _FooterTextWrap(QObject):
             QEvent.Type.FontChange,
             QEvent.Type.StyleChange,
         ):
-            self._refresh()
+            # Changing native QDialogButtonBox orientation rebuilds its layout;
+            # do that between events, never while Qt is laying out a child.
+            self._refresh_timer.start()
         return False
 
     def _refresh(self) -> None:
@@ -212,22 +268,35 @@ class _FooterTextWrap(QObject):
             return
         self._refreshing = True
         try:
+            geometry_changed = False
+            complete_widths: list[int] = []
+            measured_heights: list[int] = []
             for button in self._box.buttons():
-                if not isinstance(button, QPushButton):
+                if not isinstance(button, QPushButton) or button.isHidden():
                     continue
                 if button not in self._text:
                     standard_text = _STANDARD_BUTTON_TEXT.get(self._box.standardButton(button))
                     if standard_text is not None:
                         button.setText(tr(standard_text))
                     button.installEventFilter(self)
-                    button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+                    button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
                     button.setMinimumWidth(MINIMUM_CONTROL_TARGET)
                     self._text[button] = (button.text(), button.text())
                 source, applied = self._text[button]
                 if button.text() != applied:
                     source = button.text()
                 metrics = button.fontMetrics()
-                width = max(80, button.width() - 28)
+                complete_widths.append(
+                    max(
+                        (
+                            metrics.horizontalAdvance(row.replace("&", ""))
+                            for row in source.split("\n")
+                        ),
+                        default=0,
+                    )
+                    + 28
+                )
+                width = max(80, self._box.width() - 28)
                 rows: list[str] = []
                 for paragraph in source.split("\n"):
                     row = ""
@@ -243,9 +312,84 @@ class _FooterTextWrap(QObject):
                 self._text[button] = (source, rendered)
                 if button.text() != rendered:
                     button.setText(rendered)
-                button.setMinimumHeight(
-                    max(MINIMUM_CONTROL_TARGET, len(rows) * metrics.lineSpacing() + 16)
+                    geometry_changed = True
+                minimum_width = max(
+                    MINIMUM_CONTROL_TARGET,
+                    max(
+                        (metrics.horizontalAdvance(row.replace("&", "")) for row in rows),
+                        default=0,
+                    )
+                    + 12,
                 )
+                if button.minimumWidth() != minimum_width:
+                    button.setMinimumWidth(minimum_width)
+                    geometry_changed = True
+                minimum_height = max(
+                    MINIMUM_CONTROL_TARGET,
+                    len(rows) * metrics.lineSpacing() + 16,
+                    button.sizeHint().height(),
+                    button.minimumSizeHint().height(),
+                )
+                measured_heights.append(minimum_height)
+                if button.minimumHeight() != minimum_height:
+                    button.setMinimumHeight(minimum_height)
+                    geometry_changed = True
+            layout = self._box.layout()
+            if layout is not None:
+                margins = layout.contentsMargins()
+                required_width = (
+                    sum(complete_widths)
+                    + max(0, layout.spacing()) * max(0, len(complete_widths) - 1)
+                    + margins.left()
+                    + margins.right()
+                )
+                orientation = (
+                    Qt.Orientation.Horizontal
+                    if required_width <= self._box.width()
+                    else Qt.Orientation.Vertical
+                )
+                if self._box.orientation() is not orientation:
+                    self._box.setOrientation(orientation)
+                    geometry_changed = True
+            if geometry_changed:
+                # Native QDialogButtonBox can keep its earlier row allocation
+                # after a wrapped button's minimum changes. Recompute the
+                # shared footer before the parent allocates its final height.
+                layout = self._box.layout()
+                if layout is not None:
+                    layout.invalidate()
+                    layout.activate()
+                self._box.updateGeometry()
+            layout = self._box.layout()
+            if layout is not None:
+                # The footer cannot borrow space from its own button targets
+                # when a neighboring wrapped label needs extra height.
+                margins = layout.contentsMargins()
+                measured_height = (
+                    max(measured_heights, default=0)
+                    if self._box.orientation() is Qt.Orientation.Horizontal
+                    else sum(measured_heights)
+                    + max(0, layout.spacing()) * max(0, len(measured_heights) - 1)
+                )
+                # Native layout caches can lag behind a freshly measured
+                # child for one event. Its current target must already fit.
+                minimum_height = max(
+                    layout.minimumSize().height(),
+                    measured_height + margins.top() + margins.bottom(),
+                )
+                if self._box.minimumHeight() != minimum_height:
+                    # Fixed vertical policies prevent surplus-height stretching
+                    # while native size hints can still grow immediately when
+                    # a newly added button is polished or inherits a new font.
+                    self._box.setMinimumHeight(minimum_height)
+                    parent = self._box.parentWidget()
+                    parent_layout = parent.layout() if parent is not None else None
+                    if parent_layout is not None:
+                        # Reallocate the surrounding scroll/body area in this
+                        # same refresh, before a taller footer can be painted
+                        # at its previous position below a narrowed window.
+                        parent_layout.invalidate()
+                        parent_layout.activate()
         finally:
             self._refreshing = False
 

@@ -16,7 +16,7 @@ from itertools import pairwise
 from typing import Final
 from uuid import UUID
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAccessible,
     QAccessibleAnnouncementEvent,
@@ -24,13 +24,13 @@ from PySide6.QtGui import (
     QKeyEvent,
     QKeySequence,
     QPixmap,
+    QResizeEvent,
     QShortcut,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
-    QSpinBox,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -59,7 +59,6 @@ from paperworkshell.app.core_overlay_tools import (
 from paperworkshell.domain.case_lifecycle import CaseLifecycleErrorCode
 from paperworkshell.domain.manifest_repository import ManifestRepositoryErrorCode
 from paperworkshell.domain.page_coordinates import (
-    NORMALIZED_PAGE_MILLIONTHS,
     NormalizedPageBox,
     PageCoordinateError,
     PageCoordinateTransform,
@@ -91,7 +90,17 @@ from paperworkshell.ui.overlay_canvas import (
     MIN_EDITOR_ZOOM_PERCENT,
     OverlayEditorCanvas,
 )
+from paperworkshell.ui.presentation import ElidingTextLabel as _PageIdentityLabel
 from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeComboBox as QComboBox,
+)
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeDoubleSpinBox as QDoubleSpinBox,
+)
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeSpinBox as QSpinBox,
+)
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = """
 QLabel {
@@ -160,6 +169,7 @@ class CoreOverlayToolsDialog(QDialog):
         page_preview: QPixmap | None = None,
         page_display_size: RenderedImageSize | None = None,
         pointer_mapping_enabled: bool = True,
+        page_label: str = "",
     ) -> None:
         if type(state) is not CoreOverlayToolsState or not is_core_overlay_announcement_safe(
             state.announcement
@@ -185,7 +195,7 @@ class CoreOverlayToolsDialog(QDialog):
             raise ValueError("pointer_mapping_enabled must be a bool")
 
         self.setObjectName("coreOverlayToolsDialog")
-        self.setWindowTitle(tr("Edit visual overlays"))
+        self.setWindowTitle(tr("Add text or marks"))
         self.setAccessibleName(tr("Edit visual overlays for selected page"))
         self.setAccessibleDescription(
             tr(
@@ -193,13 +203,14 @@ class CoreOverlayToolsDialog(QDialog):
             )
         )
         self.setModal(True)
-        self.resize(1180, 780)
+        available = self.screen().availableGeometry()
+        self.resize(min(1180, available.width() - 32), min(780, available.height() - 32))
 
         self._content = QWidget()
         self._content.setObjectName("coreOverlayToolsContent")
         content_layout = QVBoxLayout(self._content)
 
-        heading = QLabel(tr("Edit visual overlays"))
+        heading = QLabel(tr("Add text or marks"))
         heading.setObjectName("coreOverlayToolsHeading")
         heading.setAccessibleName(tr("Edit visual overlays"))
         heading.setStyleSheet("font-weight: 600;")
@@ -207,7 +218,7 @@ class CoreOverlayToolsDialog(QDialog):
 
         guidance = QLabel(
             tr(
-                "Select any overlay in the native list, then use exact properties or named movement controls. Add creates the five core mark types; signature-image removal stays in its explicit organizer workflow. Positions and sizes use the full page before crop or rotation. Alt+Arrow moves; Alt+Shift+Arrow resizes."
+                "Add text or a checkmark, then edit its settings. Drag the selected mark or use page percentages and keyboard controls. Save changes keeps this draft; Cancel discards it. Alt+Arrow moves; Alt+Shift+Arrow resizes."
             )
         )
         guidance.setObjectName("coreOverlayToolsGuidance")
@@ -217,18 +228,27 @@ class CoreOverlayToolsDialog(QDialog):
         guidance.setWordWrap(True)
         content_layout.addWidget(guidance)
 
-        content_layout.addWidget(
-            self._build_canvas_group(
-                page_transform or PageCoordinateTransform(),
-                page_preview,
-                page_display_size,
-                pointer_mapping_enabled,
-            )
+        self._canvas_group = self._build_canvas_group(
+            page_transform or PageCoordinateTransform(),
+            page_preview,
+            page_display_size,
+            pointer_mapping_enabled,
         )
-        content_layout.addWidget(self._build_add_group())
-        content_layout.addWidget(self._build_list_group())
-        content_layout.addWidget(self._build_properties_group())
-        content_layout.addLayout(self._build_edit_actions())
+        self._settings_panel = QWidget()
+        self._settings_panel.setObjectName("overlayEditorSettingsPanel")
+        settings = QVBoxLayout(self._settings_panel)
+        settings.setContentsMargins(0, 0, 0, 0)
+        settings.addWidget(self._build_add_group())
+        settings.addWidget(self._build_properties_group())
+        settings.addWidget(self._build_list_group())
+        settings.addLayout(self._build_edit_actions())
+        self._editor_layout = QGridLayout()
+        self._editor_layout.addWidget(self._settings_panel, 0, 0)
+        self._editor_layout.addWidget(self._canvas_group, 0, 1)
+        self._editor_layout.setColumnStretch(0, 1)
+        self._editor_layout.setColumnStretch(1, 1)
+        self._editor_stacked = False
+        content_layout.addLayout(self._editor_layout)
 
         self._status = QLabel(localized_overlay_announcement(state.announcement))
         self._status.setObjectName("coreOverlayToolsStatus")
@@ -258,11 +278,11 @@ class CoreOverlayToolsDialog(QDialog):
         self._buttons.setObjectName("coreOverlayToolsDialogButtons")
         self._buttons.setAccessibleName(tr("Apply or cancel visual overlay changes"))
         self._apply_button = self._buttons.addButton(
-            tr("Apply overlay changes"),
+            tr("Save changes"),
             QDialogButtonBox.ButtonRole.AcceptRole,
         )
         self._apply_button.setObjectName("applyFormMarksButton")
-        self._apply_button.setAccessibleName(tr("Apply overlay changes"))
+        self._apply_button.setAccessibleName(tr("Save changes"))
         self._apply_button.setAccessibleDescription(
             tr("Request saving the complete local visual overlay draft.")
         )
@@ -278,14 +298,31 @@ class CoreOverlayToolsDialog(QDialog):
         adapt_dialog_button_box(self._buttons)
 
         layout = QVBoxLayout(self)
+        self._page_label = _PageIdentityLabel(page_label)
+        self._page_label.setObjectName("overlayEditorPageLabel")
+        self._page_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._page_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self._page_label.setToolTip(page_label)
+        self._page_label.setAccessibleName(page_label or tr("Selected page"))
+        self._page_label.setVisible(bool(page_label))
+        layout.addWidget(self._page_label)
+        layout.addWidget(self._value_row)
         layout.addWidget(self._scroll, 1)
         layout.addWidget(self._buttons)
 
         self._connect_property_tracking()
+        self._focus_reveal_control: QWidget | None = None
+        self._focus_reveal_timer = QTimer(self)
+        self._focus_reveal_timer.setSingleShot(True)
+        self._focus_reveal_timer.setInterval(0)
+        self._focus_reveal_timer.timeout.connect(self._reveal_focused_control)
+        self._content.installEventFilter(self)
+        self._scroll.viewport().installEventFilter(self)
         self._build_shortcuts()
         self._set_tab_order()
         self._refresh_from_state()
         QTimer.singleShot(0, self._set_initial_focus)
+        QTimer.singleShot(0, lambda: self._fit_page(announce=False))
 
     @property
     def state(self) -> CoreOverlayToolsState:
@@ -361,11 +398,11 @@ class CoreOverlayToolsDialog(QDialog):
         self._canvas_scroll.setWidgetResizable(False)
         self._canvas_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._canvas_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._canvas_scroll.setMinimumHeight(340)
+        self._canvas_scroll.setMinimumHeight(260)
         self._canvas_scroll.setWidget(self._canvas)
         layout.addWidget(self._canvas_scroll, 1)
 
-        display_controls = QVBoxLayout()
+        display_controls = WrappingActionLayout()
         zoom_label = QLabel(tr("Zoom"))
         self._zoom_combo = QComboBox()
         self._zoom_combo.setObjectName("overlayEditorZoomCombo")
@@ -604,7 +641,19 @@ class CoreOverlayToolsDialog(QDialog):
             tr("Choose one of the five core form-mark types, then add it to the selected page.")
         )
         layout = QVBoxLayout(group)
-        label = QLabel(tr("New mark type"))
+        quick = WrappingActionLayout()
+        self._add_text_button = QPushButton(tr("Add text"))
+        self._add_text_button.setObjectName("addTextButton")
+        self._add_text_button.setAccessibleName(tr("Add text"))
+        self._add_text_button.clicked.connect(lambda: self._add_kind(OverlayKind.TEXT))
+        self._add_checkmark_button = QPushButton(tr("Add checkmark"))
+        self._add_checkmark_button.setObjectName("addCheckmarkButton")
+        self._add_checkmark_button.setAccessibleName(tr("Add checkmark"))
+        self._add_checkmark_button.clicked.connect(lambda: self._add_kind(OverlayKind.CHECKMARK))
+        quick.addWidget(self._add_text_button)
+        quick.addWidget(self._add_checkmark_button)
+        layout.addLayout(quick)
+        label = QLabel(tr("Other mark type"))
         label.setObjectName("newOverlayTypeLabel")
         self._tool_combo = QComboBox()
         self._tool_combo.setObjectName("newOverlayTypeCombo")
@@ -645,14 +694,15 @@ class CoreOverlayToolsDialog(QDialog):
         self._overlay_list.setAcceptDrops(False)
         self._overlay_list.setDropIndicatorShown(False)
         self._overlay_list.setWordWrap(True)
+        self._overlay_list.setMaximumHeight(120)
         self._overlay_list.currentRowChanged.connect(self._selected_row_changed)
         layout.addWidget(self._overlay_list)
         return group
 
     def _build_properties_group(self) -> QGroupBox:
-        self._properties_group = QGroupBox(tr("Selected visual-mark properties"))
+        self._properties_group = QGroupBox(tr("Mark settings"))
         self._properties_group.setObjectName("coreOverlayPropertiesGroup")
-        self._properties_group.setAccessibleName(tr("Selected visual-mark properties"))
+        self._properties_group.setAccessibleName(tr("Mark settings"))
         self._properties_group.setAccessibleDescription(
             tr("Edit the selected mark's value, formatting, and exact full-page normalized box.")
         )
@@ -675,8 +725,13 @@ class CoreOverlayToolsDialog(QDialog):
         # truncating it to a valid-looking 4,096-code-point value.
         self._value_edit.setMaxLength(_TEXT_INPUT_MAX_UTF16_UNITS)
         self._value_label.setBuddy(self._value_edit)
-        layout.addWidget(self._value_label, 1, 0)
-        layout.addWidget(self._value_edit, 1, 1, 1, 2)
+        self._value_row = QWidget()
+        self._value_row.setObjectName("overlayEditorValueRow")
+        value_layout = QGridLayout(self._value_row)
+        value_layout.setContentsMargins(0, 0, 0, 0)
+        value_layout.addWidget(self._value_label, 0, 0)
+        value_layout.addWidget(self._value_edit, 0, 1)
+        value_layout.setColumnStretch(1, 1)
 
         self._font_label = QLabel(tr("Font"))
         self._font_label.setObjectName("coreOverlayFontLabel")
@@ -724,24 +779,24 @@ class CoreOverlayToolsDialog(QDialog):
 
         self._left, self._left_percent = self._coordinate_control(
             "coreOverlayLeftSpin",
-            tr("Left position in normalized page millionths"),
-            tr("Distance from the full page's left edge, from 0 through 1,000,000."),
+            tr("Left position in percent"),
+            tr("Distance from the full page's left edge, from 0 through 100 percent."),
         )
         self._top, self._top_percent = self._coordinate_control(
             "coreOverlayTopSpin",
-            tr("Top position in normalized page millionths"),
-            tr("Distance from the full page's top edge, from 0 through 1,000,000."),
+            tr("Top position in percent"),
+            tr("Distance from the full page's top edge, from 0 through 100 percent."),
         )
         self._width, self._width_percent = self._coordinate_control(
             "coreOverlayWidthSpin",
-            tr("Width in normalized page millionths"),
-            tr("Visual-mark width on the full page, from 1 through 1,000,000."),
+            tr("Width in percent"),
+            tr("Visual-mark width as a percentage of the full page."),
             positive=True,
         )
         self._height, self._height_percent = self._coordinate_control(
             "coreOverlayHeightSpin",
-            tr("Height in normalized page millionths"),
-            tr("Visual-mark height on the full page, from 1 through 1,000,000."),
+            tr("Height in percent"),
+            tr("Visual-mark height as a percentage of the full page."),
             positive=True,
         )
         for row, (label_text, control, percent) in enumerate(
@@ -760,7 +815,9 @@ class CoreOverlayToolsDialog(QDialog):
             layout.addWidget(control, row, 1)
             layout.addWidget(percent, row, 2)
 
-        self._apply_properties_button = QPushButton(tr("Apply property changes"))
+        self._apply_properties_button = QPushButton(
+            tr("Apply property changes"), self._properties_group
+        )
         self._apply_properties_button.setObjectName("applyCoreOverlayPropertiesButton")
         self._apply_properties_button.setAccessibleName(tr("Apply selected visual-mark properties"))
         self._apply_properties_button.setAccessibleDescription(
@@ -769,7 +826,7 @@ class CoreOverlayToolsDialog(QDialog):
             )
         )
         self._apply_properties_button.clicked.connect(self._apply_properties)
-        layout.addWidget(self._apply_properties_button, 9, 0, 1, 3)
+        self._apply_properties_button.setVisible(False)
         return self._properties_group
 
     def _coordinate_control(
@@ -779,21 +836,23 @@ class CoreOverlayToolsDialog(QDialog):
         accessible_description: str,
         *,
         positive: bool = False,
-    ) -> tuple[QSpinBox, QLabel]:
-        control = QSpinBox()
+    ) -> tuple[QDoubleSpinBox, QLabel]:
+        control = QDoubleSpinBox()
         control.setObjectName(object_name)
         control.setAccessibleName(tr(accessible_name))
         accessible_description += tr(" Enter applies the selected mark's local properties.")
         control.setAccessibleDescription(tr(accessible_description))
         control.setProperty("pwsCoordinateBaseDescription", accessible_description)
-        control.setRange(1 if positive else 0, NORMALIZED_PAGE_MILLIONTHS)
-        control.setSingleStep(1_000)
-        control.setGroupSeparatorShown(True)
+        control.setDecimals(4)
+        control.setRange(0.0001 if positive else 0.0, 100.0)
+        control.setSingleStep(0.1)
+        control.setSuffix(" %")
         percent = QLabel(tr("0.0000 percent"))
         percent.setObjectName(f"{object_name}Percent")
         percent.setAccessibleName(tr("{value1} percentage", value1=accessible_name))
         percent.setTextFormat(Qt.TextFormat.PlainText)
         percent.setWordWrap(True)
+        percent.setVisible(False)
         control.valueChanged.connect(
             lambda value, target=percent, source=control, base=accessible_description: (
                 self._update_coordinate_accessibility(source, target, base, value)
@@ -803,12 +862,12 @@ class CoreOverlayToolsDialog(QDialog):
 
     def _update_coordinate_accessibility(
         self,
-        control: QSpinBox,
+        control: QDoubleSpinBox,
         percent: QLabel,
         base_description: str,
-        value: int,
+        value: float,
     ) -> None:
-        value_text = _percent_text(value)
+        value_text = _percent_text(_normalized_percent(value))
         percent.setText(value_text)
         control.setAccessibleDescription(
             tr("{value1} Current value: {value2}.", value1=base_description, value2=value_text)
@@ -983,6 +1042,9 @@ class CoreOverlayToolsDialog(QDialog):
 
     def _set_tab_order(self) -> None:
         chain: tuple[QWidget, ...] = (
+            self._add_text_button,
+            self._add_checkmark_button,
+            self._value_edit,
             self._zoom_combo,
             self._zoom_out_button,
             self._zoom_in_button,
@@ -1000,7 +1062,6 @@ class CoreOverlayToolsDialog(QDialog):
             self._tool_combo,
             self._add_button,
             self._overlay_list,
-            self._value_edit,
             self._font_size,
             self._color_combo,
             self._left,
@@ -1020,7 +1081,7 @@ class CoreOverlayToolsDialog(QDialog):
         self._tab_chain = chain
         for current, following in pairwise(chain):
             QWidget.setTabOrder(current, following)
-        QWidget.setTabOrder(self._status, self._zoom_combo)
+        QWidget.setTabOrder(self._status, self._add_text_button)
 
     def focusNextPrevChild(self, forward: bool) -> bool:  # noqa: FBT001, N802
         """Keep one closed logical Tab cycle across the nested scroll areas."""
@@ -1057,6 +1118,7 @@ class CoreOverlayToolsDialog(QDialog):
     def _mark_properties_dirty(self, *_args: object) -> None:
         if not self._loading and self._state.selected_record is not None:
             self._properties_dirty = True
+            self._preview_properties()
 
     def _mark_value_edited(self, *_args: object) -> None:
         self._value_edited = True
@@ -1096,9 +1158,121 @@ class CoreOverlayToolsDialog(QDialog):
         else:
             self._focus_visible_control(self._overlay_list)
 
+    def _add_kind(self, kind: OverlayKind) -> None:
+        index = self._tool_combo.findData(kind.value)
+        self._tool_combo.setCurrentIndex(index)
+        self._add_selected_type()
+
+    def _property_box(self) -> NormalizedPageBox:
+        return NormalizedPageBox(
+            _normalized_percent(self._left.value()),
+            _normalized_percent(self._top.value()),
+            _normalized_percent(self._width.value()),
+            _normalized_percent(self._height.value()),
+        )
+
+    def _preview_properties(self) -> None:
+        """Paint the in-progress fields without committing character-by-character history."""
+        record = self._state.selected_record
+        if record is None or not self._loaded_value_preserved:
+            return
+        try:
+            preview = self._state.replace_selected_box(self._property_box())
+            if type(record.payload) is TextualOverlayPayload:
+                color = self._color_combo.currentData()
+                if type(color) is not str:
+                    return
+                preview = preview.edit_selected(
+                    value=self._value_edit.text(),
+                    font_size_points=self._font_size.value(),
+                    color_value=color,
+                )
+            elif type(record.payload) is MarkOverlayPayload:
+                color = self._color_combo.currentData()
+                if type(color) is not str:
+                    return
+                preview = preview.edit_selected(color_value=color)
+        except OverlayError, PageCoordinateError:
+            return
+        self._canvas.set_records(preview.editor_records, preview.selected_overlay_id)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if not hasattr(self, "_editor_layout"):
+            return
+        stacked = self.width() < 850
+        if stacked != self._editor_stacked:
+            self._editor_layout.removeWidget(self._canvas_group)
+            self._editor_layout.addWidget(
+                self._canvas_group, 1 if stacked else 0, 0 if stacked else 1
+            )
+            self._editor_layout.setColumnStretch(1, 0 if stacked else 1)
+            self._editor_stacked = stacked
+
     def _focus_visible_control(self, control: QWidget) -> None:
         control.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(control, 8, 8)
+        self._focus_reveal_control = control
+        self._reveal_focused_control()
+        self._focus_reveal_control = control
+        self._focus_reveal_timer.start()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if (
+            event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.Resize)
+            and self.isVisible()
+            and watched in (self._content, self._scroll.viewport())
+        ):
+            focused = QApplication.focusWidget()
+            if focused is not None and self._content.isAncestorOf(focused):
+                self._focus_reveal_control = focused
+                self._focus_reveal_timer.start()
+        return super().eventFilter(watched, event)
+
+    def _reveal_focused_control(self) -> None:
+        """Reveal newly shown fields after their wrapping layout has settled."""
+
+        control = self._focus_reveal_control
+        self._focus_reveal_control = None
+        focused = QApplication.focusWidget()
+        if (
+            control is None
+            or not self.isVisible()
+            or not control.isVisible()
+            or not self._content.isAncestorOf(control)
+            or focused is None
+            or (focused is not control and not control.isAncestorOf(focused))
+        ):
+            return
+        content_layout = self._content.layout()
+        if content_layout is not None:
+            content_layout.activate()
+        viewport = self._scroll.viewport()
+        horizontal_margin = min(8, max(0, (viewport.width() - control.width()) // 2))
+        vertical_margin = min(8, max(0, (viewport.height() - control.height()) // 2))
+        self._scroll.ensureWidgetVisible(control, horizontal_margin, vertical_margin)
+        # QScrollArea may reveal only a line edit's input-method cursor rect.
+        # Keep the complete field/frame visible when it fits the viewport.
+        top_left = control.mapTo(viewport, control.rect().topLeft())
+        bottom_right = control.mapTo(viewport, control.rect().bottomRight())
+        for start, end, length, margin, bar in (
+            (
+                top_left.x(),
+                bottom_right.x(),
+                viewport.width(),
+                horizontal_margin,
+                self._scroll.horizontalScrollBar(),
+            ),
+            (
+                top_left.y(),
+                bottom_right.y(),
+                viewport.height(),
+                vertical_margin,
+                self._scroll.verticalScrollBar(),
+            ),
+        ):
+            delta = start - margin if start < margin else max(0, end - (length - 1 - margin))
+            if delta:
+                bar.setValue(bar.value() + delta)
 
     def _apply_properties(self) -> None:
         if self._apply_pending:
@@ -1126,12 +1300,7 @@ class CoreOverlayToolsDialog(QDialog):
             self._focus_visible_control(self._status)
             return False
         try:
-            box = NormalizedPageBox(
-                self._left.value(),
-                self._top.value(),
-                self._width.value(),
-                self._height.value(),
-            )
+            box = self._property_box()
             state = self._state.replace_selected_box(box)
             if type(record.payload) is TextualOverlayPayload:
                 color = self._color_combo.currentData()
@@ -1381,7 +1550,7 @@ class CoreOverlayToolsDialog(QDialog):
         target = min((value for value in _ZOOM_CHOICES if value > current), default=current)
         self._set_zoom(target)
 
-    def _fit_page(self) -> None:
+    def _fit_page(self, *, announce: bool = True) -> None:
         if self._apply_pending:
             return
         viewport = self._canvas_scroll.viewport().size()
@@ -1401,13 +1570,14 @@ class CoreOverlayToolsDialog(QDialog):
             self._canvas_scroll.verticalScrollBar(),
         ):
             bar.setValue((bar.minimum() + bar.maximum()) // 2)
-        self._set_status(
-            tr(
-                "Page preview fit at {value1} percent and centered. Saved overlay positions and sizes were not changed.",
-                value1=choice,
-            ),
-            announce=True,
-        )
+        if announce:
+            self._set_status(
+                tr(
+                    "Page preview fit at {value1} percent and centered. Saved overlay positions and sizes were not changed.",
+                    value1=choice,
+                ),
+                announce=True,
+            )
 
     def _pan(self, *, horizontal: int, vertical: int) -> None:
         if self._apply_pending or horizontal not in {-1, 0, 1} or vertical not in {-1, 0, 1}:
@@ -1476,8 +1646,8 @@ class CoreOverlayToolsDialog(QDialog):
             self._overlay_list.setFocus(Qt.FocusReason.OtherFocusReason)
             self._scroll.ensureWidgetVisible(self._overlay_list, 8, 8)
             return
-        self._tool_combo.setFocus(Qt.FocusReason.OtherFocusReason)
-        self._scroll.ensureWidgetVisible(self._tool_combo, 8, 8)
+        self._add_text_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._add_text_button, 8, 8)
 
     def _transition(
         self,
@@ -1552,6 +1722,7 @@ class CoreOverlayToolsDialog(QDialog):
                 }
             )
             self._properties_group.setEnabled(selected)
+            self._value_row.setEnabled(selected)
             self._remove_button.setEnabled(selected_core)
             self._apply_properties_button.setEnabled(selected)
             self._snap_selected_button.setEnabled(selected)
@@ -1655,8 +1826,11 @@ class CoreOverlayToolsDialog(QDialog):
                 descriptor = core_overlay_tool_descriptor(record.kind)
                 if descriptor.value_label is None or descriptor.value_description is None:
                     raise ValueError("textual descriptor is incomplete")
-                self._value_label.setText(tr(descriptor.value_label))
-                self._value_edit.setAccessibleName(tr(descriptor.value_label))
+                value_label = (
+                    tr("Text") if record.kind is OverlayKind.TEXT else tr(descriptor.value_label)
+                )
+                self._value_label.setText(value_label)
+                self._value_edit.setAccessibleName(value_label)
                 self._value_edit.setAccessibleDescription(
                     tr(descriptor.value_description)
                     + tr(" Enter applies the selected mark's local properties.")
@@ -1680,10 +1854,10 @@ class CoreOverlayToolsDialog(QDialog):
                 color = None
             if color is not None:
                 self._set_color(color)
-            self._left.setValue(record.box.x)
-            self._top.setValue(record.box.y)
-            self._width.setValue(record.box.width)
-            self._height.setValue(record.box.height)
+            self._left.setValue(record.box.x / 10_000)
+            self._top.setValue(record.box.y / 10_000)
+            self._width.setValue(record.box.width / 10_000)
+            self._height.setValue(record.box.height / 10_000)
             for control, percent in (
                 (self._left, self._left_percent),
                 (self._top, self._top_percent),
@@ -1827,6 +2001,7 @@ class CoreOverlayToolsDialog(QDialog):
 
     def _set_text_controls_visible(self, visible: bool) -> None:
         for widget in (
+            self._value_row,
             self._value_label,
             self._value_edit,
             self._font_label,
@@ -1876,6 +2051,8 @@ class CoreOverlayToolsDialog(QDialog):
             self._pan_center_button,
         ):
             control.setEnabled(enabled)
+        self._add_text_button.setEnabled(enabled)
+        self._add_checkmark_button.setEnabled(enabled)
         self._tool_combo.setEnabled(enabled)
         self._add_button.setEnabled(enabled)
         self._overlay_list.setEnabled(enabled)
@@ -1890,6 +2067,7 @@ class CoreOverlayToolsDialog(QDialog):
             self._update_pan_actions()
         else:
             self._properties_group.setEnabled(False)
+            self._value_row.setEnabled(False)
             self._remove_button.setEnabled(False)
             self._undo_button.setEnabled(False)
             self._redo_button.setEnabled(False)
@@ -1930,6 +2108,10 @@ class CoreOverlayToolsDialog(QDialog):
             announce=True,
             assertive=True,
         )
+
+
+def _normalized_percent(value: float) -> int:
+    return int(Decimal(str(value)) * Decimal(10_000))
 
 
 def _percent_text(value: int) -> str:

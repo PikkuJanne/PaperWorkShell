@@ -12,6 +12,7 @@ import unittest
 from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from tools import dev as dev_tools
@@ -48,7 +49,7 @@ def _initialize_repository(root: Path, *, ignored_directory: bool = False) -> st
     if ignored_directory:
         (root / ".gitignore").write_text("ignored/\n", encoding="utf-8")
         baseline_files.append(".gitignore")
-    (root / "baseline.txt").write_text("synthetic baseline\n", encoding="utf-8")
+    (root / "baseline.txt").write_bytes(b"synthetic baseline\n")
     commands = (
         (git, "init"),
         (git, "add", *baseline_files),
@@ -60,7 +61,7 @@ def _initialize_repository(root: Path, *, ignored_directory: bool = False) -> st
             "user.email=quality@example.invalid",
             "commit",
             "-m",
-            "synthetic baseline",
+            "add synthetic baseline fixture",
         ),
     )
     for command in commands:
@@ -562,9 +563,10 @@ class SecretScanningSecurityTests(unittest.TestCase):
             root = Path(temporary)
             _initialize_repository(root)
             # Two committed files: 2 refs + 2 historical paths + 2 blobs +
-            # 1 commit + 2 working files = 9 distinct scan items. Counting the
-            # identical index paths again made this bounded repository need 11.
-            with patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 10):
+            # 1 commit + 2 working files = 9 logical items. The reviewed policy
+            # admits two groups of 6 here; the former single-group rule failed.
+            # Exact historical/index coverage still avoids another two inputs.
+            with patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 6):
                 inspected: list[bytes] = []
                 summary = inspect_repository_contents(root, inspected.append)
                 self.assertEqual(2, summary.index_blob_count)
@@ -573,6 +575,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 self.assertIn(b"synthetic baseline\n", inspected)
                 self.assertEqual(2, inspected.count(b"baseline.txt"))
                 self.assertEqual(2, inspected.count(b"synthetic baseline\n"))
+                self.assertEqual(1, inspected.count(b"add synthetic baseline fixture\n"))
                 with (
                     patch("tools.dev._gitleaks_executable", return_value="synthetic-scanner"),
                     patch("tools.dev._scan_mirror"),
@@ -582,10 +585,11 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 ):
                     self.assertEqual(0, scan_repository(root))
 
-            # Unique work still fails against the same limit, before a scanner
-            # can start. No input or budget category is exempted.
+            # Nine items exceed two groups of four. This deliberately tests the
+            # amended aggregate bound rather than silently preserving the old
+            # eight-versus-nine expectation after changing policy.
             with (
-                patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 8),
+                patch("tools.dev.MAX_SECRET_SCAN_ITEMS", 4),
                 self.assertRaises(SecretScanError) as overflow,
             ):
                 inspect_repository_contents(root, lambda _content: None)
@@ -687,7 +691,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 _commit_all(git, root, "add unchanged bounded synthetic input")
                 # Raw scanning now shares the already-required Git path read.
                 # Keep this mirror-specific proof tight after removing that read.
-                work_limit = (7 if relative_path.suffix == ".tf" else 6) * len(payload) + 16384
+                work_limit = 6 * len(payload) + 16384
                 budget = _SecretScanEnumerationBudget()
                 working_mirrors: list[str] = []
                 source_reads = 0
@@ -749,9 +753,12 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 self.assertEqual(0, result, output)
                 self.assertNotIn(relative_path.as_posix(), working_mirrors)
                 self.assertEqual(3, source_reads)
-                saved_work = (len(payload) + len(dev_tools.RAW_SCAN_SENTINEL)) * (
-                    2 if relative_path.suffix == ".tf" else 1
-                )
+                saved_work = len(payload) + len(dev_tools.RAW_SCAN_SENTINEL)
+                if relative_path.suffix == ".tf":
+                    saved_work += dev_tools._alias_metadata_work(
+                        Path("source") / relative_path,
+                        Path("path-rule-shadow/item-00000001/pws-rule.tf"),
+                    )
                 self.assertLessEqual(budget.work_bytes, work_limit)
                 self.assertGreater(budget.work_bytes + saved_work, work_limit)
 
@@ -809,7 +816,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
                     ]
                 )
                 with (
-                    patch("tools.dev._read_git_blob", return_value=payload),
+                    patch("tools.dev._read_git_objects", return_value=iter((payload,))),
                     patch("tools.dev._scan_mirror", side_effect=outcomes) as scan,
                 ):
                     if fails is not None:
@@ -868,7 +875,9 @@ class SecretScanningSecurityTests(unittest.TestCase):
             self.assertEqual("SECRET_SCAN_INPUT_INVALID", changed.exception.code)
             mirror.assert_not_called()
 
-    def test_historical_path_recreated_as_untracked_still_gets_its_own_mirror(self) -> None:
+    def test_recreated_untracked_path_reuses_completed_mirror_but_keeps_all_live_reads(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             git = _initialize_repository(root)
@@ -881,7 +890,21 @@ class SecretScanningSecurityTests(unittest.TestCase):
             _commit_all(git, root, "remove synthetic path before recreation")
             source.write_bytes(payload)
             original_batch = dev_tools._scan_working_path_batch
+            original_read = dev_tools._read_scan_input
+            original_add = dev_tools._SecretScanBatcher.add
             untracked_inputs: list[tuple[Path, bytes, str]] = []
+            live_reads: list[Path] = []
+            raw_inputs: list[bytes] = []
+
+            def read(repository: Path, path: Path, **kwargs: Any) -> bytes | None:
+                if repository == root and path == relative_path:
+                    live_reads.append(path)
+                return original_read(repository, path, **kwargs)
+
+            def add(batcher: _SecretScanBatcher, label: str, content: bytes) -> None:
+                if label.startswith("untracked source"):
+                    raw_inputs.append(content)
+                original_add(batcher, label, content)
 
             def observe(
                 gitleaks: str,
@@ -906,15 +929,18 @@ class SecretScanningSecurityTests(unittest.TestCase):
             captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
             with (
                 patch("tools.dev._scan_working_path_batch", new=observe),
+                patch("tools.dev._read_scan_input", new=read),
+                patch("tools.dev._SecretScanBatcher.add", new=add),
                 redirect_stdout(captured_stdout),
                 redirect_stderr(captured_stderr),
             ):
                 result = scan_repository(root)
             output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
             self.assertEqual(0, result, output)
-            self.assertEqual(
-                [(relative_path, payload, "untracked source item 1")], untracked_inputs
-            )
+            self.assertEqual([], untracked_inputs)
+            self.assertEqual(3, len(live_reads))
+            self.assertIn(relative_path.as_posix().encode(), raw_inputs)
+            self.assertIn(payload, raw_inputs)
 
     def test_completed_path_coverage_respects_existing_item_limit(self) -> None:
         with (
@@ -1058,6 +1084,9 @@ class SecretScanningSecurityTests(unittest.TestCase):
             selected_entries = [entry for entry in entries if entry.relative_path in selected_paths]
             self.assertEqual(4, len(selected_entries))
             self.assertEqual(2, len({entry.object_id for entry in selected_entries}))
+            objects = {(entry.object_id, entry.object_size) for entry in selected_entries}
+            self.assertEqual(2, len(objects))
+            self.assertEqual([0, len(payload)], sorted(size for _, size in objects))
             trusted_ignore = root / "trusted-empty-ignore"
             trusted_ignore.touch()
             shutil.copy2(PROJECT_ROOT / ".gitleaks.toml", _trusted_gitleaks_config(trusted_ignore))
@@ -1073,9 +1102,30 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 budget=budget,
             )
 
-        # Both empty associations retain framing; the shared blob is read once
-        # in this bounded batch, and both aliases retain their own mirror.
-        self.assertEqual(4 * len(payload) + 6 * len(dev_tools.RAW_SCAN_SENTINEL), budget.work_bytes)
+        # Both empty original files retain framing and every alias remains.
+        # One shared-body read plus two original-body writes remain; the two
+        # unwritten alias payloads are replaced by explicit link-path metadata.
+        alias_metadata = sum(
+            dev_tools._alias_metadata_work(
+                Path(f"source/item-{number:08d}") / name,
+                Path(f"path-rule-shadow/item-{number:08d}/pws-rule.tf"),
+            )
+            for number, name in ((2, "empty.tf"), (4, "shared.tf"))
+        )
+        # Each distinct object sends one request line and returns a header
+        # plus a delimiter after its body, even for the empty object.
+        request_bytes = sum(len(f"{oid}\n".encode("ascii")) for oid, _ in objects)
+        response_framing = sum(
+            len(f"{oid} blob {size}\n".encode("ascii")) + len(b"\n") for oid, size in objects
+        )
+        self.assertEqual(
+            3 * len(payload)
+            + 4 * len(dev_tools.RAW_SCAN_SENTINEL)
+            + alias_metadata
+            + request_bytes
+            + response_framing,
+            budget.work_bytes,
+        )
 
     def test_complete_scan_reuses_path_read_for_raw_objects_without_losing_associations(
         self,
@@ -1131,7 +1181,6 @@ class SecretScanningSecurityTests(unittest.TestCase):
 
             captured_stdout, captured_stderr = io.StringIO(), io.StringIO()
             with (
-                patch("tools.dev._read_git_blob", wraps=dev_tools._read_git_blob) as reads,
                 patch("tools.dev._capture_bytes", wraps=dev_tools._capture_bytes) as captures,
                 patch("tools.dev._scan_mirror", new=observe_mirror),
                 redirect_stdout(captured_stdout),
@@ -1140,7 +1189,12 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 result = scan_repository(root)
             output = f"{captured_stdout.getvalue()}\n{captured_stderr.getvalue()}"
             self.assertEqual(0, result, output)
-            read_ids = [call.args[2] for call in reads.call_args_list]
+            read_ids = [
+                oid.decode("ascii")
+                for call in captures.call_args_list
+                if tuple(call.args[0][1:3]) == ("cat-file", "--batch")
+                for oid in call.kwargs["input_bytes"].splitlines()
+            ]
             # Every original path and the .tf alias still get their own completed
             # mirror. Their existing read supplies the complete raw input too.
             self.assertEqual(1, read_ids.count(shared_id))
@@ -1175,9 +1229,20 @@ class SecretScanningSecurityTests(unittest.TestCase):
             for single_batch in (True, False):
                 expected_reads = 1 if single_batch else 2
                 batch_limit = (sentinel_bytes + len(payload)) * (2 if single_batch else 1)
-                # Actual reads, every original/alias write, and the one deduplicated
-                # raw frame all count. The unchanged batcher retains the raw bytes.
-                expected_work = (expected_reads + 4) * len(payload) + 4 * sentinel_bytes + 1
+                # Every original and alias is still scanned. The alias shares
+                # its private payload inode, charging link-path metadata instead
+                # of an unwritten second payload; raw framing remains charged.
+                alias_metadata = dev_tools._alias_metadata_work(
+                    Path("source/item-00000002/shared.tf"),
+                    Path("path-rule-shadow/item-00000002/pws-rule.tf"),
+                )
+                expected_work = (
+                    (expected_reads + 3) * len(payload) + 3 * sentinel_bytes + 1 + alias_metadata
+                )
+                transport_work = expected_reads * dev_tools._git_object_transport_work(
+                    [(entries[0].object_id, "blob", len(payload))]
+                )
+                expected_work += transport_work
                 for work_limit in (expected_work, expected_work - 1):
                     with self.subTest(single_batch=single_batch, work_limit=work_limit):
                         budget = _SecretScanEnumerationBudget()
@@ -1205,13 +1270,16 @@ class SecretScanningSecurityTests(unittest.TestCase):
                             patch("tools.dev.MAX_SECRET_SCAN_BATCH_BYTES", batch_limit),
                             patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", work_limit),
                             patch(
-                                "tools.dev._read_git_blob", wraps=dev_tools._read_git_blob
-                            ) as reads,
+                                "tools.dev._capture_bytes", wraps=dev_tools._capture_bytes
+                            ) as captures,
                             patch("tools.dev._scan_mirror", new=observe),
                         ):
                             self.assertEqual(
                                 expected_reads * len(payload),
                                 dev_tools._path_blob_read_work(entries),
+                            )
+                            self.assertEqual(
+                                transport_work, dev_tools._path_blob_transport_work(entries)
                             )
                             if work_limit < expected_work:
                                 with self.assertRaises(SecretScanError) as overflow:
@@ -1239,7 +1307,15 @@ class SecretScanningSecurityTests(unittest.TestCase):
                                 budget=budget,
                                 raw_batcher=batcher,
                             )
-                        self.assertEqual(expected_reads, reads.call_count)
+                        object_requests = [
+                            call.kwargs["input_bytes"]
+                            for call in captures.call_args_list
+                            if tuple(call.args[0][1:3]) == ("cat-file", "--batch")
+                        ]
+                        self.assertEqual(expected_reads, len(object_requests))
+                        self.assertEqual(
+                            expected_reads, sum(len(item.splitlines()) for item in object_requests)
+                        )
                         self.assertEqual(expected_work, budget.work_bytes)
                         self.assertEqual(2, len(coverage))
                         self.assertEqual(
@@ -1699,8 +1775,33 @@ class SecretScanningSecurityTests(unittest.TestCase):
             shutil.copy2(PROJECT_ROOT / ".gitleaks.toml", _trusted_gitleaks_config(trusted_ignore))
             gitleaks = _gitleaks_executable()
             for basename, content in cases:
+                mirrors: list[tuple[str, int, int]] = []
+                paths: list[Path] = []
+                original_scan = dev_tools._scan_mirror
+
+                def observe_alias(
+                    tool: str,
+                    ignore: Path,
+                    mirror: Path,
+                    target: Path,
+                    label: str,
+                    budget: _SecretScanEnumerationBudget,
+                    *,
+                    _mirrors: list[tuple[str, int, int]] = mirrors,
+                    _paths: list[Path] = paths,
+                    _scanner: Callable[..., None] = original_scan,
+                ) -> None:
+                    for path in mirror.rglob("*"):
+                        if path.is_file():
+                            observed = path.stat()
+                            self.assertEqual(2, observed.st_nlink)
+                            _mirrors.append((mirror.name, observed.st_dev, observed.st_ino))
+                            _paths.append(path)
+                    _scanner(tool, ignore, mirror, target, label, budget)
+
                 with (
                     self.subTest(basename=basename),
+                    patch("tools.dev._scan_mirror", new=observe_alias),
                     self.assertRaises(SecretScanError) as raised,
                 ):
                     _scan_working_path_batch(
@@ -1713,6 +1814,9 @@ class SecretScanningSecurityTests(unittest.TestCase):
                     )
 
                 self.assertEqual("SECRET_SCAN_FINDING", raised.exception.code)
+                self.assertEqual({"source", "path-rule-shadow"}, {item[0] for item in mirrors})
+                self.assertEqual(1, len({(item[1], item[2]) for item in mirrors}))
+                self.assertTrue(paths and all(not path.exists() for path in paths))
 
     def test_direct_and_auto_merge_tree_refs_retain_path_blob_associations(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -2049,9 +2153,20 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(0, replaced.returncode, replaced.stderr)
+            fixture_root = root.resolve(strict=True)
+            fixture_git = (root / ".git").resolve(strict=True)
+            self.assertEqual(fixture_root / ".git", fixture_git)
+            fixture_command = (git, f"--git-dir={fixture_git}", f"--work-tree={fixture_root}")
+            # Only this fixture reset must honor the replace ref. The scanner
+            # still runs in the hardened environment that ignores replacement.
+            reset_environment = os.environ.copy()
+            self.assertNotIn("GIT_COMMON_DIR", reset_environment)
+            self.assertNotIn("GIT_INDEX_FILE", reset_environment)
+            reset_environment.pop("GIT_NO_REPLACE_OBJECTS", None)
             cleaned = subprocess.run(
-                (git, "reset", "--hard", "HEAD"),
+                (*fixture_command, "reset", "--hard", "HEAD"),
                 cwd=root,
+                env=reset_environment,
                 check=False,
                 shell=False,
                 capture_output=True,
@@ -2059,6 +2174,22 @@ class SecretScanningSecurityTests(unittest.TestCase):
             )
             self.assertEqual(0, cleaned.returncode, cleaned.stderr)
             self.assertFalse(path_constrained.exists())
+            indexed = subprocess.run(
+                (
+                    *fixture_command,
+                    "ls-files",
+                    "--cached",
+                    "-z",
+                    "--",
+                    path_constrained.relative_to(root).as_posix(),
+                ),
+                cwd=root,
+                check=False,
+                shell=False,
+                capture_output=True,
+            )
+            self.assertEqual(0, indexed.returncode, indexed.stderr)
+            self.assertEqual(b"", indexed.stdout)
 
             captured_stdout = io.StringIO()
             captured_stderr = io.StringIO()

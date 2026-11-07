@@ -1,15 +1,15 @@
 """Accessible keyboard-first checklist assignment editor.
 
 The editor receives only the detached, path-free checklist state prepared by
-the application layer.  Page rows intentionally expose positions rather than
-source names or document content.  Pointer drag-and-drop is an optional UUID-
+the application layer.  Page names are an explicit display-only mapping; logs and drag payloads never
+receive source names or document content.  Pointer drag-and-drop is an optional UUID-
 only shortcut for the same provisional Add action that is available by
 keyboard.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from itertools import pairwise
 from typing import Final, cast
 from uuid import UUID
@@ -31,7 +31,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -61,6 +60,7 @@ from paperworkshell.domain.checklist import (
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.ui.localization_layout import adapt_localized_content
 from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
+from paperworkshell.ui.wheel_safe import WheelSafeComboBox as QComboBox
 
 CHECKLIST_PAGE_MIME_TYPE: Final = "application/x-paperworkshell-checklist-page-ids-v1"
 _MAX_DRAG_PAGE_COUNT: Final = 4_096
@@ -293,8 +293,11 @@ class ChecklistRequirementListModel(QAbstractListModel):
 class ChecklistPageListModel(QAbstractListModel):
     """Pages without confirmed assignment; only unassigned rows can drag."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, page_labels: Mapping[UUID, str] | None = None
+    ) -> None:
         super().__init__(parent)
+        self._page_labels = dict(page_labels or {})
         self._rows: tuple[ChecklistPageView, ...] = ()
         self._assignments: dict[UUID, ChecklistAssignmentView] = {}
 
@@ -336,7 +339,8 @@ class ChecklistPageListModel(QAbstractListModel):
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
         }:
-            return tr("Page {value1} — {value2}", value1=page.position, value2=state)
+            label = self._page_labels.get(page.page_id, tr("Page {value1}", value1=page.position))
+            return tr("{value1} — {value2}", value1=label, value2=state)
         if role == int(Qt.ItemDataRole.AccessibleDescriptionRole):
             return tr(
                 "Case page position {value1}. {value2}. ", value1=page.position, value2=state
@@ -407,8 +411,11 @@ class ChecklistPageListModel(QAbstractListModel):
 class ChecklistAssignmentListModel(QAbstractListModel):
     """Ordered logical documents for the selected requirement."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, page_labels: Mapping[UUID, str] | None = None
+    ) -> None:
         super().__init__(parent)
+        self._page_labels = dict(page_labels or {})
         self._rows: tuple[ChecklistAssignmentView, ...] = ()
 
     def replace(self, rows: tuple[ChecklistAssignmentView, ...]) -> None:
@@ -440,6 +447,15 @@ class ChecklistAssignmentListModel(QAbstractListModel):
             value3=len(assignment.page_ids),
             value4=page_word,
         )
+        labels = tuple(
+            dict.fromkeys(
+                self._page_labels[page_id]
+                for page_id in assignment.page_ids
+                if page_id in self._page_labels
+            )
+        )
+        if labels:
+            text = "\n".join(labels) + "\n" + text
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
@@ -487,8 +503,11 @@ class ChecklistAssignmentListModel(QAbstractListModel):
 class ChecklistAssignedPageListModel(QAbstractListModel):
     """Ordered page positions for one selected logical document."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, page_labels: Mapping[UUID, str] | None = None
+    ) -> None:
         super().__init__(parent)
+        self._page_labels = dict(page_labels or {})
         self._rows: tuple[ChecklistPageView, ...] = ()
 
     def replace(self, rows: tuple[ChecklistPageView, ...]) -> None:
@@ -517,6 +536,9 @@ class ChecklistAssignedPageListModel(QAbstractListModel):
             value2=row + 1,
             value3=len(self._rows),
         )
+        label = self._page_labels.get(page.page_id)
+        if label:
+            text = label + "\n" + text
         if role in {
             int(Qt.ItemDataRole.DisplayRole),
             int(Qt.ItemDataRole.AccessibleTextRole),
@@ -559,7 +581,14 @@ class ChecklistEditorDialog(QDialog):
     apply_requested = Signal(object)
     state_changed = Signal(object)
 
-    def __init__(self, state: ChecklistEditorState, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        state: ChecklistEditorState,
+        parent: QWidget | None = None,
+        *,
+        page_labels: Mapping[UUID, str] | None = None,
+        checklist_title: str = "Generic application packet",
+    ) -> None:
         if type(state) is not ChecklistEditorState:
             raise ValueError("state must be a ChecklistEditorState")
         super().__init__(parent)
@@ -569,11 +598,11 @@ class ChecklistEditorDialog(QDialog):
 
         self.setObjectName("checklistEditorDialog")
         self.setModal(True)
-        self.setWindowTitle(tr("Review checklist assignments"))
-        self.setAccessibleName(tr("Review checklist assignments"))
+        self.setWindowTitle(tr("Document checklist"))
+        self.setAccessibleName(tr("Document checklist"))
         self.setAccessibleDescription(
             tr(
-                "Assign case pages to checklist categories without exposing source names. Adding by keyboard or drag remains pending until Confirm. Automation suggestions require Accept or Reject. Cancel is the safe default."
+                "Use an optional checklist to collect documents for a particular application. Add pages to a requirement, then confirm that you reviewed the document. Save incomplete work safely. Automation suggestions require your review. Cancel is the safe default."
             )
         )
 
@@ -581,9 +610,9 @@ class ChecklistEditorDialog(QDialog):
         content.setObjectName("checklistEditorContent")
         content_layout = QVBoxLayout(content)
 
-        heading = QLabel(tr("Review checklist assignments"))
+        heading = QLabel(tr("Document checklist"))
         heading.setObjectName("checklistEditorHeading")
-        heading.setAccessibleName(tr("Review checklist assignments"))
+        heading.setAccessibleName(tr("Document checklist"))
         heading.setTextFormat(Qt.TextFormat.PlainText)
         heading.setWordWrap(True)
         heading_font = QFont(heading.font())
@@ -591,10 +620,16 @@ class ChecklistEditorDialog(QDialog):
         heading_font.setPointSizeF(max(heading_font.pointSizeF(), 14.0))
         heading.setFont(heading_font)
         content_layout.addWidget(heading)
+        template_label = QLabel(checklist_title)
+        template_label.setObjectName("checklistTemplateLabel")
+        template_label.setTextFormat(Qt.TextFormat.PlainText)
+        template_label.setWordWrap(True)
+        template_label.setAccessibleName(checklist_title)
+        content_layout.addWidget(template_label)
 
         guidance = QLabel(
             tr(
-                "Add groups selected pages as one document. Added documents are not complete: select the document and choose Confirm. Suggestions made by automation never count until you choose Accept suggestion. Every drag action has a named keyboard button."
+                "Use a checklist when a submission asks for specific documents. Ordinary PDF export, text and searchable scans work without it. Add pages to the selected requirement, then confirm after reviewing their content. Saving an incomplete checklist does not make it ready."
             )
         )
         guidance.setObjectName("checklistEditorGuidance")
@@ -646,7 +681,7 @@ class ChecklistEditorDialog(QDialog):
         page_group.setAccessibleName(tr("Pages without a confirmed assignment"))
         page_group.setAccessibleDescription(
             tr(
-                "Unassigned, added, and suggested page rows are identified only by case page position. Only unassigned rows can be added or dragged."
+                "Each row identifies its filename, source page and output position. Only unassigned rows can be added or dragged."
             )
         )
         page_layout = QVBoxLayout(page_group)
@@ -723,6 +758,15 @@ class ChecklistEditorDialog(QDialog):
                 "Unassign the selected user-added or confirmed document and return its pages to the unassigned list."
             ),
         )
+        confirmation_help = QLabel(
+            tr(
+                "Confirm means: I reviewed this document and it satisfies this requirement. Adding pages alone does not confirm their content."
+            )
+        )
+        confirmation_help.setObjectName("checklistConfirmationPurpose")
+        confirmation_help.setWordWrap(True)
+        confirmation_help.setTextFormat(Qt.TextFormat.PlainText)
+        assignment_layout.addWidget(confirmation_help)
         self._confirm_button.clicked.connect(self._confirm_assignment)
         self._accept_button.clicked.connect(self._accept_suggestion)
         self._reject_button.clicked.connect(self._reject_suggestion)
@@ -837,7 +881,6 @@ class ChecklistEditorDialog(QDialog):
         self._status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._status.setStyleSheet(_FOCUS_VISIBLE_TEXT_STYLE)
         self._status.setFrameShape(QFrame.Shape.StyledPanel)
-        content_layout.addWidget(self._status)
         content_layout.addStretch(1)
 
         self._scroll = QScrollArea()
@@ -862,7 +905,7 @@ class ChecklistEditorDialog(QDialog):
             )
         )
         self._apply_button = self._button(
-            tr("Apply checklist changes"),
+            tr("Save checklist"),
             "checklistApplyButton",
             tr(
                 "Request saving the complete local checklist draft. The dialog stays open until the save succeeds or fails safely."
@@ -888,12 +931,13 @@ class ChecklistEditorDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._scroll, 1)
+        layout.addWidget(self._status)
         layout.addWidget(buttons)
 
         self._requirement_model = ChecklistRequirementListModel(self)
-        self._page_model = ChecklistPageListModel(self)
-        self._assignment_model = ChecklistAssignmentListModel(self)
-        self._assigned_page_model = ChecklistAssignedPageListModel(self)
+        self._page_model = ChecklistPageListModel(self, page_labels=page_labels)
+        self._assignment_model = ChecklistAssignmentListModel(self, page_labels=page_labels)
+        self._assigned_page_model = ChecklistAssignedPageListModel(self, page_labels=page_labels)
         self._requirement_list.setModel(self._requirement_model)
         self._page_list.setModel(self._page_model)
         self._assignment_list.setModel(self._assignment_model)
@@ -958,7 +1002,8 @@ class ChecklistEditorDialog(QDialog):
             QWidget.setTabOrder(current, following)
 
         self._refresh()
-        self.resize(900, 760)
+        available = self.screen().availableGeometry()
+        self.resize(min(900, available.width() - 32), min(760, available.height() - 32))
         self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
 
     @property
@@ -1229,6 +1274,7 @@ class ChecklistEditorDialog(QDialog):
             assignment_id=None if added is None else added.assignment_id,
         )
         self._assignment_list.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._scroll.ensureWidgetVisible(self._confirm_button, 8, 8)
 
     def _confirm_assignment(self) -> None:
         assignment = self._current_assignment()

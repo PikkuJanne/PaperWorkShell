@@ -84,6 +84,7 @@ def test_consent_is_not_implied_by_enter_or_api_acceptance() -> None:
 def test_consent_requires_sufficient_matching_passphrase_and_shows_safe_errors() -> None:
     with _dialog() as dialog:
         _agree(dialog)
+        _entry(dialog, "assistedCaseName").setText("Application support")
         first = _entry(dialog, "assistedPassphrase")
         repeated = _entry(dialog, "assistedPassphraseConfirmation")
         first.setText("short")
@@ -118,6 +119,26 @@ def test_only_closed_retention_choices_are_available() -> None:
         for index, days in enumerate((1, 7, 30)):
             retention.setCurrentIndex(index)
             assert dialog.retention_days == days
+
+
+def test_assisted_creation_requires_a_nonblank_case_name_in_the_consent_dialog() -> None:
+    with _dialog() as dialog:
+        name = _entry(dialog, "assistedCaseName")
+        assert name.accessibleName() == "Case name"
+        assert "case chooser" in name.accessibleDescription()
+        assert name.text() == ""
+        _agree(dialog)
+        _entry(dialog, "assistedPassphrase").setText("synthetic case phrase")
+        _entry(dialog, "assistedPassphraseConfirmation").setText("synthetic case phrase")
+        for empty_name in ("", "   "):
+            name.setText(empty_name)
+            dialog.accept()
+            assert dialog.result() == QDialog.DialogCode.Rejected
+            assert name.hasFocus()
+        name.setText("  Äänekoski <support>  ")
+        dialog.accept()
+        assert dialog.result() == QDialog.DialogCode.Accepted
+        assert dialog.case_name == "Äänekoski <support>"
 
 
 def test_escape_and_close_clear_password_widgets_without_consent() -> None:

@@ -47,7 +47,7 @@ def test_versioned_compatibility_index_binds_accepted_synthetic_inputs() -> None
         assert hashlib.sha256((ROOT / expected).read_bytes()).hexdigest() == item["sha256"]
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 @pytest.mark.parametrize("kind", ["minimal", "representative"])
 def test_frozen_versions_preserve_every_value_outside_reviewed_dispatch(
     version: int, kind: str
@@ -63,8 +63,10 @@ def test_frozen_versions_preserve_every_value_outside_reviewed_dispatch(
     before = copy.deepcopy(source)
     migrated = migrate_manifest_to_current(source)
     expected = copy.deepcopy(source)
+    if version < 4:
+        expected.update(schema_version=4, revision=cast(int, source["revision"]) + 1)
+        expected["case_name"] = ""
     if version < 3:
-        expected.update(schema_version=3, revision=cast(int, source["revision"]) + 1)
         expected["redaction_marks"] = []
     assert migrated == expected
     assert source == before
@@ -80,19 +82,22 @@ def test_registry_is_closed_contiguous_and_current_has_no_work() -> None:
     assert [(step.source_version, step.target_version) for step in MANIFEST_MIGRATION_REGISTRY] == [
         (1, 2),
         (2, 3),
+        (3, 4),
     ]
     assert manifest_migration_path(1) == MANIFEST_MIGRATION_REGISTRY
     assert manifest_migration_path(2) == MANIFEST_MIGRATION_REGISTRY[1:]
-    assert manifest_migration_path(3) == ()
+    assert manifest_migration_path(3) == MANIFEST_MIGRATION_REGISTRY[2:]
+    assert manifest_migration_path(4) == ()
     assert tuple(MIGRATION_BACKUP_NAMES.values()) == (
         "migration-source-v1.json",
         "migration-source-v2.json",
+        "migration-source-v3.json",
     )
     with pytest.raises(TypeError):
         cast(dict[int, str], MIGRATION_BACKUP_NAMES)[1] = "../outside.json"
 
 
-@pytest.mark.parametrize("version", [0, 4, 999_999])
+@pytest.mark.parametrize("version", [0, 5, 999_999])
 def test_unknown_versions_fail_before_transforming_caller_state(version: int) -> None:
     source: dict[str, object] = {"schema_version": version, "revision": 0}
     before = copy.deepcopy(source)
@@ -115,9 +120,10 @@ def test_complete_route_consumes_one_remaining_revision() -> None:
         "revision": MAX_SAFE_MANIFEST_INTEGER - 1,
     }
     assert migrate_manifest_to_current(source) == {
-        "schema_version": 3,
+        "schema_version": 4,
         "revision": MAX_SAFE_MANIFEST_INTEGER,
         "redaction_marks": [],
+        "case_name": "",
     }
 
 

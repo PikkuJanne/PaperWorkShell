@@ -6,7 +6,6 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 
 import pytest
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QDialogButtonBox, QScrollArea
 
@@ -66,11 +65,21 @@ def test_editing_dialogs_keep_complete_footer_inside_constrained_viewport(
                 assert scroll.horizontalScrollBar().maximum() == 0
             footer = dialog.findChild(QDialogButtonBox)
             assert footer is not None
-            assert footer.orientation() == Qt.Orientation.Vertical
-            for button in footer.buttons():
-                if button.isVisible():
-                    assert dialog.rect().contains(button.mapTo(dialog, button.rect().topLeft()))
-                    assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
+            visible = [button for button in footer.buttons() if button.isVisible()]
+            for index, button in enumerate(visible):
+                assert footer.rect().contains(button.geometry())
+                assert dialog.rect().contains(button.mapTo(dialog, button.rect().topLeft()))
+                assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))
+                assert (
+                    button.width()
+                    >= max(
+                        button.fontMetrics().horizontalAdvance(line.replace("&", ""))
+                        for line in button.text().splitlines()
+                    )
+                    + 12
+                )
+                for other in visible[index + 1 :]:
+                    assert not button.geometry().intersects(other.geometry())
     finally:
         app.setFont(original_font)
 

@@ -4,14 +4,13 @@ This bundle turns the initial PaperWorkShell product concept into a repository-r
 
 PaperWorkShell is a local-first desktop application for organizing PDFs and images, reviewing configured packaging rules, and exporting document packages. Users review the content and submit the resulting files themselves.
 
-**Internal build ready for use.**
-[PWS-0810's result and launch/sample instructions](docs/development/pws0810-internal-delivery-20261104.md)
-record the completed finite installed-app check and final preservation/metadata
-validation of preserved R9. R9 was sufficient; no application repair or R10 was
-needed. Public signing, SignPath contact/onboarding/publication and remaining
-release-only qualification are deferred; the unsigned candidate is not a
-qualified public release. Earlier release plans and accepted evidence remain
-preserved within their recorded scope.
+**Internal repairs in progress: PWS-0811.** The maintainer's 6 November 2026
+report requires repairs and current installed-app/output verification before a
+successor handoff. The [repair work log](docs/development/pws0811-repairs-20261106.md)
+records this work. [PWS-0810's earlier R9 observations](docs/development/pws0810-internal-delivery-20261104.md)
+remain historical evidence within their original scope. R9 and existing cases are
+preserved. Public signing, provider contact/publication and remaining release-only
+qualification remain deferred; an internal build is not a qualified public release.
 
 PaperWorkShell targets **Windows 11 x64 only**. Publisher and maintainer: **Janne Vuorela**. Official
 distribution is free for everyone, including commercial users. Project-owned material uses

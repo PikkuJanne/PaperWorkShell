@@ -34,7 +34,7 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
-from paperworkshell.worker._windows_broker import WindowsResultPipe
+from paperworkshell.worker._windows_broker import WindowsResultPipe, retire_runtime_on_failure
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -267,6 +267,7 @@ class BrokeredPdfSourceInspector:
         self._pipe_factory = pipe_factory
         self._id_factory = id_factory
 
+    @retire_runtime_on_failure
     def inspect(
         self,
         source: PreparedSourceSummary,
@@ -321,6 +322,7 @@ class BrokeredPdfSourceInspector:
         _report_progress(progress, source.pending_id, 1)
         return completed
 
+    @retire_runtime_on_failure
     def inspect_structural(
         self,
         source: PreparedSourceSummary,
@@ -386,6 +388,7 @@ class BrokeredPdfSourceInspector:
                 cancellation=cancellation,
             )
 
+    @retire_runtime_on_failure
     def inspect_committed(
         self,
         snapshot: ManifestSnapshot,

@@ -16,7 +16,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton, QSpinBox
+from PySide6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QLabel, QPushButton
 
 from paperworkshell.app.core_overlay_tools import CoreOverlayToolsState
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
@@ -227,7 +227,7 @@ def test_window_shortcut_opens_dialog_and_cancel_releases_backend_before_focus_r
 
         button = window.findChild(QPushButton, "editFormMarksButton")
         assert button is not None and button.isEnabled()
-        assert button.accessibleName() == "Edit visual overlays"
+        assert button.accessibleName() == "Add text or marks"
         QTest.keyClick(
             window,
             Qt.Key.Key_F,
@@ -580,10 +580,10 @@ def test_shutdown_queues_latest_retained_draft_before_backend_shutdown() -> None
         assert ordered_requests == [("apply", first_draft)]
         assert dialog.set_apply_failed("OVERLAY_TEST_SAVE_FAILED", "Try saving again.")
         QTest.keyClick(add_button, Qt.Key.Key_Space)
-        left = dialog.findChild(QSpinBox, "coreOverlayLeftSpin")
+        left = dialog.findChild(QDoubleSpinBox, "coreOverlayLeftSpin")
         assert left is not None
-        left.setValue(left.value() + 1_234)
-        visible_left = left.value()
+        left.setValue(left.value() + 0.1234)
+        visible_left = round(left.value() * 10_000)
         assert dialog.state.selected_record is not None
         assert dialog.state.selected_record.box.x != visible_left
 

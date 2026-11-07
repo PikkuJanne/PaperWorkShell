@@ -12,17 +12,18 @@ from uuid import UUID
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QPixmap
+import pytest
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QLabel,
     QListWidget,
     QPushButton,
-    QSpinBox,
     QWidget,
 )
 
@@ -37,6 +38,7 @@ from paperworkshell.domain.page_coordinates import (
 from paperworkshell.overlays.models import OverlayKind
 from paperworkshell.ui.overlay_canvas import OverlayEditorCanvas
 from paperworkshell.ui.overlay_tools import CoreOverlayToolsDialog
+from tests.helpers.qt_layout import wait_for_geometry
 
 ROOT = Path(__file__).resolve().parents[2]
 REPRESENTATIVE = ROOT / "schemas" / "examples" / "case-manifest-v2-representative.json"
@@ -106,10 +108,10 @@ def test_every_released_overlay_kind_is_listed_selected_and_geometry_exposed() -
         state = _state(page_id)
         with _dialog(state) as dialog:
             overlay_list = _widget(dialog, QListWidget, "coreOverlayList")
-            left = _widget(dialog, QSpinBox, "coreOverlayLeftSpin")
-            top = _widget(dialog, QSpinBox, "coreOverlayTopSpin")
-            width = _widget(dialog, QSpinBox, "coreOverlayWidthSpin")
-            height = _widget(dialog, QSpinBox, "coreOverlayHeightSpin")
+            left = _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin")
+            top = _widget(dialog, QDoubleSpinBox, "coreOverlayTopSpin")
+            width = _widget(dialog, QDoubleSpinBox, "coreOverlayWidthSpin")
+            height = _widget(dialog, QDoubleSpinBox, "coreOverlayHeightSpin")
             capability = _widget(dialog, QLabel, "overlayEditorSelectionCapability")
             remove = _widget(dialog, QPushButton, "removeCoreOverlayButton")
             assert overlay_list.count() == len(state.editor_records)
@@ -120,10 +122,10 @@ def test_every_released_overlay_kind_is_listed_selected_and_geometry_exposed() -
                 assert selected is not None and selected.overlay_id == expected.overlay_id
                 observed.add(selected.kind)
                 assert (left.value(), top.value(), width.value(), height.value()) == (
-                    expected.box.x,
-                    expected.box.y,
-                    expected.box.width,
-                    expected.box.height,
+                    expected.box.x / 10_000,
+                    expected.box.y / 10_000,
+                    expected.box.width / 10_000,
+                    expected.box.height / 10_000,
                 )
                 assert expected.kind.value.replace("_", " ").split()[0] in (
                     overlay_list.item(row).text().casefold()
@@ -228,7 +230,7 @@ def test_deskewed_schematic_refuses_pointer_editing_but_keeps_exact_controls() -
         assert dialog.state.history is before
         assert canvas.focusPolicy() is Qt.FocusPolicy.NoFocus
         assert "complete keyboard path" in canvas.accessibleDescription()
-        assert _widget(dialog, QSpinBox, "coreOverlayLeftSpin").isEnabled()
+        assert _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin").isEnabled()
 
 
 def test_pointer_drag_commits_one_geometry_command_and_list_selection_stays_native() -> None:
@@ -256,6 +258,77 @@ def test_pointer_drag_commits_one_geometry_command_and_list_selection_stays_nati
         assert overlay_list.currentItem().data(Qt.ItemDataRole.UserRole) == record.overlay_id
         undone = dialog.state.undo()
         assert undone.history.overlays == before
+
+
+@pytest.mark.parametrize("drag_y", (0, 18), ids=("stationary-click", "vertical-drag"))
+def test_selecting_saved_text_keeps_pointer_delta_stable_through_editor_reflow(
+    drag_y: int,
+) -> None:
+    base = _state()
+    record = base.editor_records[0]
+    assert base.selected_overlay_id is None and record.kind is OverlayKind.TEXT
+    with _dialog(base) as dialog:
+        dialog.resize(1_002, 704)
+        _application().processEvents()
+        canvas = _widget(dialog, OverlayEditorCanvas, "overlayEditorCanvas")
+        text_row = _widget(dialog, QWidget, "overlayEditorValueRow")
+        screen = canvas._screen_box_for(record)
+        assert screen is not None and not text_row.isVisible()
+        start = QPoint(
+            round((screen.left + screen.right) / 2), round((screen.top + screen.bottom) / 2)
+        )
+        assert canvas.visibleRegion().contains(start)
+        initial_origin = canvas.mapToGlobal(QPoint())
+        initial_page = canvas._page_rect()
+        press_global = canvas.mapToGlobal(start)
+        end_global = press_global + QPoint(0, drag_y)
+        start_normalized = canvas._normalized_point(QPointF(start))
+        end_normalized = canvas._normalized_point(QPointF(start + QPoint(0, drag_y)))
+        expected = NormalizedPageBox(
+            record.box.x,
+            record.box.y + end_normalized.y - start_normalized.y,
+            record.box.width,
+            record.box.height,
+        )
+
+        def send_pointer(
+            kind: QEvent.Type,
+            global_point: QPoint,
+            button: Qt.MouseButton,
+            buttons: Qt.MouseButton,
+        ) -> None:
+            event = QMouseEvent(
+                kind,
+                QPointF(canvas.mapFromGlobal(global_point)),
+                QPointF(global_point),
+                button,
+                buttons,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            QApplication.sendEvent(canvas, event)
+
+        left = Qt.MouseButton.LeftButton
+        none = Qt.MouseButton.NoButton
+        send_pointer(QEvent.Type.MouseButtonPress, press_global, left, left)
+        wait_for_geometry(
+            lambda: text_row.isVisible() and canvas.mapToGlobal(QPoint()).y() > initial_origin.y()
+        )
+        assert canvas._page_rect() == initial_page
+        assert dialog.state.selected_overlay_id == record.overlay_id
+        assert dialog.state.history == base.history
+        if drag_y:
+            send_pointer(QEvent.Type.MouseMove, end_global, none, left)
+        send_pointer(QEvent.Type.MouseButtonRelease, end_global, left, none)
+
+        selected = dialog.state.selected_record
+        assert selected is not None
+        assert selected.box == expected
+        assert selected.payload == record.payload
+        assert QWidget.mouseGrabber() is not canvas
+        if drag_y:
+            assert dialog.state.undo().history.overlays == base.history.overlays
+        else:
+            assert dialog.state.history == base.history
 
 
 def test_resize_handle_click_without_drag_is_a_no_op_at_every_zoom_and_rotation() -> None:
@@ -396,8 +469,8 @@ def test_extreme_preview_and_schematic_aspects_are_preserved() -> None:
             ),
         ):
             try:
-                base = canvas.base_canvas_size
-                assert (base.width() - 48, base.height() - 48) == expected_page_size
+                page = canvas._page_rect()
+                assert (round(page.width()), round(page.height())) == expected_page_size
             finally:
                 canvas.deleteLater()
                 app.processEvents()

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from paperworkshell.app.scan_review import ScanReviewDraft, ScanReviewPreviewVariant
 from paperworkshell.domain.image_transforms import ImageTransformIntent
 from paperworkshell.ui.scan_review import ScanReviewDialog
+from tests.helpers.qt_layout import wait_for_geometry
 
 CASE_ID = UUID("23000000-0000-4000-8000-000000000011")
 PAGE_ID = UUID("23000000-0000-4000-8000-000000000012")
@@ -283,6 +284,14 @@ def test_enlarged_text_keeps_actions_visible_and_every_review_control_scroll_rea
                 assert widget.isVisible()
                 scroll.ensureWidgetVisible(widget, 8, 8)
                 app.processEvents()
+
+                def target_is_revealed(target: QWidget = widget) -> bool:
+                    scroll.ensureWidgetVisible(target, 8, 8)
+                    return QRect(
+                        target.mapTo(scroll.viewport(), QPoint(0, 0)), target.size()
+                    ).intersects(scroll.viewport().rect())
+
+                wait_for_geometry(target_is_revealed)
                 origin = widget.mapTo(scroll.viewport(), QPoint(0, 0))
                 assert QRect(origin, widget.size()).intersects(scroll.viewport().rect())
 

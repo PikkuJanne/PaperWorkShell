@@ -83,6 +83,31 @@ def _summary(status: PackageSummaryStatus = PackageSummaryStatus.PLANNED) -> Pac
     )
 
 
+def test_input_filenames_are_visible_plain_text_separate_from_authoritative_summary() -> None:
+    app = _application()
+    labels = (
+        "Form Ää.PDF — source page 1, output page 1",
+        "scan.png — source page 1, output page 2",
+    )
+    dialog = PackageExportDialog(tuple(PortalOutputMode), input_labels=labels)
+    try:
+        summary = _summary()
+        dialog.show_review(summary, export_allowed=True)
+        dialog.show()
+        app.processEvents()
+        names = _widget(dialog, QPlainTextEdit, "packageExportInputNames")
+        text = _widget(dialog, QPlainTextEdit, "packageExportSummaryText")
+        assert names.isVisible() and names.isReadOnly()
+        assert names.toPlainText().splitlines() == list(labels)
+        assert labels[0] not in text.toPlainText()
+        assert "application.pdf" in text.toPlainText()
+        assert "saved case page order" in names.accessibleDescription().casefold()
+    finally:
+        dialog.hide()
+        dialog.deleteLater()
+        app.processEvents()
+
+
 def test_only_saved_allowed_modes_are_available_and_export_requires_fresh_review() -> None:
     app = _application()
     dialog = PackageExportDialog((PortalOutputMode.ZIP,), initial_mode=PortalOutputMode.ZIP)

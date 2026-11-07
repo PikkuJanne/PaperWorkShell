@@ -268,20 +268,29 @@ scanning. Every scan forces a scanner-created empty ignore file and ignores inli
 is streamed through one scanner budget: the subprocess is terminated at 16 MiB, and each raw
 record—including duplicate history records before deduplication and repeated integrity
 snapshots—counts toward an independent 50,000-record limit shared by initial capture and final
-verification. A separate aggregate check limits selected refs, historical path/blob pairs, Git
-objects, index entries, and current paths to 10,000 logical items. Keeping the raw-record budget
-independent prevents the scanner's own consistency passes from consuming the logical-source
-allowance while both dimensions remain fail-closed and bounded.
+verification. [ADR 0021](../adr/0021-bounded-repository-scan-groups.md) explicitly amends the former
+global 10,000-item rule: selected refs, historical path/blob pairs, Git objects, index entries and
+current paths may occupy two logical groups of 10,000, at most 20,000 total. Each category,
+combined historical/uncovered-index path coverage, resident raw payload and optional digest cache
+remain bounded at 10,000. A successful serial flush precedes a new dedup epoch; forgetting a
+completed proof may cause a charged rescan, never an omission. Logical groups are not a claim of
+exactly two physical tool invocations or 10,000 total filesystem inodes. Descriptor metadata may
+grow inside the same finite transport caps. No budget resets between groups.
 One 512 MiB logical-work budget also covers source/configuration reads, Git-object reads, bounded
 scanner batches, mirror writes, and repeated path associations; anticipated historical/index work
 plus known ref/path inputs and framing overhead are combined with completed preflight work and
 rejected before Gitleaks starts. The historical/index path forecast accounts for one Git-object
-read and one mirror write, with one additional mirror write for a filename-rule alias. It does
-not charge those same operations twice; runtime byte charges and scan coverage are unchanged.
+read and one mirror payload write. Each filename-rule alias is a verified same-batch hardlink to
+that scanner-created private payload; its logical path metadata is charged instead of an
+unwritten duplicate payload. Source/runtime/case files are never linked. Ordinary contained
+ancestors, a fresh destination, source link count one and exact post-link identity/size/time/link
+count two are required; unsupported or uncertain linking fails closed. All original and alias
+files still receive their separate scans. Alias CPU and all deadlines remain enforced.
 One ten-minute scan-wide deadline covers enumeration, filesystem work, tool probes, and scanning,
 with each subprocess receiving only the remaining time and a
 terminal deadline check. The larger deadline accommodates the complete reviewed history without
-changing any byte, item, metadata, logical-work, child-process, or cleanup limit.
+changing any byte, metadata, logical-work, child-process, or cleanup limit. The later ADR 0021
+logical-item amendment is explicit above and does not amend worker/document ResourcePolicy.
 Deterministic per-item mirror namespaces avoid quadratic path-conflict batching.
 The local policy has one reviewed false-positive exception: the inherited `generic-api-key` rule
 may ignore only the exact extracted value `PRIVATE-PARENT-PWS0104-CANARY`, a fixed public label
@@ -290,7 +299,11 @@ family. The security lane scans the exact value successfully and proves that a o
 neighbor plus a runtime-assembled realistic access-key shape still fail.
 Refs, registered worktrees, the selected index, tracked/untracked path sets, and scanned
 working-file digests are snapshotted and rechecked; mutations observed between those checkpoints
-fail closed. This is a bounded snapshot check, not an atomic repository lock: a writer must be
+fail closed. Each initial/final validated stage-zero index capture also supplies its ordered
+tracked path list; no duplicate `ls-files --cached` transport is needed. Full index and explicit
+derived membership equality, independent untracked membership and all three live-file reads
+remain. The former extra, separately timed cached-path observation points are removed rather
+than claimed as preserved. This is a bounded snapshot check, not an atomic repository lock: a writer must be
 quiescent, and a change after the terminal observation is input to the next scan.
 Replacement-object semantics and commit-graph acceleration are
 disabled so physical object parent links are inspected. Shallow repositories and nonempty legacy

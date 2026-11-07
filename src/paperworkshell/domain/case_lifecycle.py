@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -11,11 +12,13 @@ from uuid import UUID
 
 LEGACY_CASE_MANIFEST_VERSION: Final = 1
 INTERMEDIATE_CASE_MANIFEST_VERSION: Final = 2
-CURRENT_CASE_MANIFEST_VERSION: Final = 3
+REMOVAL_CASE_MANIFEST_VERSION: Final = 3
+CURRENT_CASE_MANIFEST_VERSION: Final = 4
 SUPPORTED_CASE_MANIFEST_VERSIONS: Final = frozenset(
     {
         LEGACY_CASE_MANIFEST_VERSION,
         INTERMEDIATE_CASE_MANIFEST_VERSION,
+        REMOVAL_CASE_MANIFEST_VERSION,
         CURRENT_CASE_MANIFEST_VERSION,
     }
 )
@@ -28,6 +31,7 @@ class CaseLifecycleErrorCode(StrEnum):
     """Closed registry of safe case-lifecycle failures."""
 
     CASE_ID_INVALID = "CASE_ID_INVALID"
+    CASE_NAME_INVALID = "CASE_NAME_INVALID"
     ACTIVE_CASE_CONFLICT = "CASE_ACTIVE_CONFLICT"
     ACTIVE_CASE_MISMATCH = "CASE_ACTIVE_MISMATCH"
     NO_ACTIVE_CASE = "CASE_ACTIVE_NONE"
@@ -47,6 +51,9 @@ class CaseLifecycleErrorCode(StrEnum):
 
 
 _SAFE_ERROR_MESSAGES: Final[dict[CaseLifecycleErrorCode, str]] = {
+    CaseLifecycleErrorCode.CASE_NAME_INVALID: (
+        "Enter a case name using 1 to 200 characters on one line."
+    ),
     CaseLifecycleErrorCode.CASE_ID_INVALID: (
         "The selected case does not have a valid internal identifier."
     ),
@@ -131,6 +138,21 @@ def require_case_id(value: object, *, context: str = "case.id") -> UUID:
     return value
 
 
+def require_case_name(value: object, *, allow_empty: bool = False) -> str:
+    """Accept ordinary private display text without interpreting it as a path."""
+
+    if type(value) is not str:
+        reject_case_lifecycle(CaseLifecycleErrorCode.CASE_NAME_INVALID, "case.name")
+    selected = value.strip()
+    if (
+        (not selected and not allow_empty)
+        or len(selected) > 200
+        or any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in selected)
+    ):
+        reject_case_lifecycle(CaseLifecycleErrorCode.CASE_NAME_INVALID, "case.name")
+    return selected
+
+
 class CaseDeletionConfirmation(StrEnum):
     """Exact destructive intent accepted by the lifecycle boundary."""
 
@@ -159,9 +181,12 @@ class CaseSummary:
     revision: int
     created_at: datetime
     updated_at: datetime
+    case_name: str = field(default="", repr=False)
 
     def __post_init__(self) -> None:
         require_case_id(self.case_id, context="case.summary_id")
+        if require_case_name(self.case_name, allow_empty=True) != self.case_name:
+            reject_case_lifecycle(CaseLifecycleErrorCode.MANIFEST_INVALID, "case.summary_name")
         if (
             type(self.manifest_version) is not int
             or self.manifest_version not in SUPPORTED_CASE_MANIFEST_VERSIONS

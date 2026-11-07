@@ -12,7 +12,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -24,6 +24,7 @@ MINIMUM_GIT_VERSION: Final = (2, 45)
 MAX_SECRET_SCAN_BYTES: Final = 50 * 1024 * 1024
 MAX_REPOSITORY_PATH_BYTES: Final = 32_767
 MAX_SECRET_SCAN_ITEMS: Final = 10_000
+MAX_SECRET_SCAN_LOGICAL_GROUPS: Final = 2
 MAX_SECRET_SCAN_METADATA_RECORDS: Final = 50_000
 MAX_SECRET_SCAN_METADATA_BYTES: Final = 16 * 1024 * 1024
 MAX_SECRET_SCAN_WORK_BYTES: Final = 512 * 1024 * 1024
@@ -36,6 +37,8 @@ TOOL_VERSION_OUTPUT_BYTES: Final = 4096
 TOOL_VERSION_TIMEOUT_SECONDS: Final = 10
 RAW_SCAN_SENTINEL: Final = b"PaperWorkShell raw-byte scan\n"
 MAX_SECRET_SCAN_BATCH_BYTES: Final = MAX_SECRET_SCAN_BYTES + len(RAW_SCAN_SENTINEL) + 1
+MAX_GIT_OBJECT_BATCH_ITEMS: Final = 64
+MAX_GIT_OBJECT_BATCH_BODY_BYTES: Final = 1024 * 1024
 TRUSTED_GITLEAKS_CONFIG_NAME: Final = "trusted-gitleaks.toml"
 WINDOWS_FORBIDDEN_COMPONENT_CHARACTERS: Final = frozenset('<>:"\\|?*')
 WINDOWS_RESERVED_BASENAMES: Final = frozenset(
@@ -295,6 +298,29 @@ class _PathBlobEntry:
     relative_path: Path
     object_id: str
     object_size: int
+
+
+@dataclass(frozen=True, repr=False)
+class _PreparedMirrorInput:
+    path: Path
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+
+
+def _require_snapshot_item_capacity(counts: Sequence[int], *, path_count: int) -> None:
+    """Admit two finite logical groups; resident categories remain bounded."""
+
+    if (
+        any(count < 0 or count > MAX_SECRET_SCAN_ITEMS for count in counts)
+        or sum(counts) > MAX_SECRET_SCAN_ITEMS * MAX_SECRET_SCAN_LOGICAL_GROUPS
+        or not 0 <= path_count <= MAX_SECRET_SCAN_ITEMS
+    ):
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE",
+            "Repository enumeration exceeds the bounded scanner logical-group capacity.",
+        )
 
 
 @dataclass(frozen=True)
@@ -1033,6 +1059,7 @@ class _SecretScanBatcher:
         self._payload_size = 0
 
     def add(self, source_label: str, content: bytes) -> None:
+        self._budget.checkpoint()
         if len(content) > MAX_SECRET_SCAN_BYTES:
             raise SecretScanError(
                 "SECRET_SCAN_INPUT_TOO_LARGE",
@@ -1041,10 +1068,18 @@ class _SecretScanBatcher:
         digest = hashlib.sha256(content).digest()
         if digest in self._seen_digests:
             return
+        if len(self._seen_digests) >= MAX_SECRET_SCAN_ITEMS:
+            # Only completed scanning permits forgetting a dedup proof. Work,
+            # metadata and deadline accounting are shared across epochs.
+            self.flush()
+            self._seen_digests.clear()
         self._seen_digests.add(digest)
         item_size = len(RAW_SCAN_SENTINEL) + len(content) + 1
         self._budget.consume_work(item_size)
-        if self._items and self._payload_size + item_size > MAX_SECRET_SCAN_BATCH_BYTES:
+        if self._items and (
+            self._payload_size + item_size > MAX_SECRET_SCAN_BATCH_BYTES
+            or len(self._items) >= MAX_SECRET_SCAN_ITEMS
+        ):
             self.flush()
         self._items.append((source_label, content))
         self._payload_size += item_size
@@ -1157,11 +1192,20 @@ def _scan_git_blobs(
     budget: _SecretScanEnumerationBudget,
     covered_inputs: frozenset[tuple[str, int]] = frozenset(),
 ) -> int:
-    for index, (object_id, object_size) in enumerate(blobs, start=1):
-        if (object_id, object_size) in covered_inputs:
-            continue
+    selected = [
+        (index, object_id, object_size)
+        for index, (object_id, object_size) in enumerate(blobs, start=1)
+        if (object_id, object_size) not in covered_inputs
+    ]
+    contents = _read_git_objects(
+        git,
+        root,
+        [(oid, "blob", size) for _, oid, size in selected],
+        category,
+        budget,
+    )
+    for (index, _, _), content in zip(selected, contents, strict=True):
         source_label = f"{category} item {index}"
-        content = _read_git_blob(git, root, object_id, object_size, source_label, budget)
         batcher.add(source_label, content)
     return len(blobs)
 
@@ -1194,17 +1238,9 @@ def _scan_git_message_objects(
     batcher: _SecretScanBatcher,
     budget: _SecretScanEnumerationBudget,
 ) -> int:
-    for index, (object_id, object_type, object_size) in enumerate(objects, start=1):
+    contents = _read_git_objects(git, root, objects, "historical commit/tag object", budget)
+    for index, content in enumerate(contents, start=1):
         source_label = f"historical commit/tag object {index}"
-        content = _read_git_object(
-            git,
-            root,
-            object_id,
-            object_type,
-            object_size,
-            source_label,
-            budget,
-        )
         batcher.add(source_label, content)
     return len(objects)
 
@@ -1246,6 +1282,189 @@ def _read_git_object(
     if completed.returncode != 0 or len(completed.stdout) != object_size:
         raise SecretScanError("SECRET_SCAN_GIT_FAILED", f"Git could not read {source_label}.")
     return completed.stdout
+
+
+def _git_object_batch_headers(objects: Sequence[tuple[str, str, int]]) -> list[bytes]:
+    if not objects or len(objects) > MAX_GIT_OBJECT_BATCH_ITEMS:
+        raise SecretScanError("SECRET_SCAN_INPUT_TOO_LARGE", "Git object batch exceeds its limit.")
+    total = 0
+    headers = []
+    for object_id, object_type, object_size in objects:
+        try:
+            encoded_id = object_id.encode("ascii")
+        except UnicodeEncodeError as error:
+            raise SecretScanError(
+                "SECRET_SCAN_GIT_FAILED", "Git object data is invalid."
+            ) from error
+        _object_id(encoded_id)
+        if (
+            object_type not in {"blob", "commit", "tag"}
+            or type(object_size) is not int
+            or object_size < 0
+        ):
+            raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git object data is invalid.")
+        total += object_size
+        if total > MAX_GIT_OBJECT_BATCH_BODY_BYTES:
+            raise SecretScanError(
+                "SECRET_SCAN_INPUT_TOO_LARGE", "Git object batch exceeds its limit."
+            )
+        headers.append(f"{object_id} {object_type} {object_size}\n".encode("ascii"))
+    return headers
+
+
+def _parse_git_object_batch(
+    objects: Sequence[tuple[str, str, int]],
+    output: bytes,
+    budget: _SecretScanEnumerationBudget,
+) -> tuple[bytes, ...]:
+    """Validate every frame before exposing any body to a callback."""
+    headers = _git_object_batch_headers(objects)
+    expected_size = sum(size for _, _, size in objects) + sum(map(len, headers)) + len(objects)
+    if len(output) != expected_size:
+        raise SecretScanError(
+            "SECRET_SCAN_GIT_FAILED", "Git object batch is incomplete or invalid."
+        )
+    position = 0
+    spans = []
+    for (_, _, size), expected_header in zip(objects, headers, strict=True):
+        header_end = position + len(expected_header)
+        header = output[position:header_end]
+        if header != expected_header:
+            raise SecretScanError(
+                "SECRET_SCAN_GIT_FAILED", "Git object batch is misbound or invalid."
+            )
+        body_end = header_end + size
+        if output[body_end : body_end + 1] != b"\n":
+            raise SecretScanError(
+                "SECRET_SCAN_GIT_FAILED", "Git object batch delimiter is invalid."
+            )
+        # Headers are actual returned metadata records. Body delimiters are
+        # transport framing bytes, not additional enumeration records.
+        budget.consume_metadata(header)
+        budget.consume_records(header, b"\n")
+        budget.consume_metadata(b"\n")
+        spans.append((header_end, body_end))
+        position = body_end + 1
+    if position != len(output):
+        raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git object batch has trailing data.")
+    budget.checkpoint()
+    return tuple(output[start:end] for start, end in spans)
+
+
+def _read_git_object_batch(
+    git: str,
+    root: Path,
+    objects: Sequence[tuple[str, str, int]],
+    budget: _SecretScanEnumerationBudget,
+) -> tuple[bytes, ...]:
+    headers = _git_object_batch_headers(objects)
+    request = b"".join(object_id.encode("ascii") + b"\n" for object_id, _, _ in objects)
+    framing_size = sum(map(len, headers)) + len(objects)
+    body_size = sum(size for _, _, size in objects)
+    # Each body is charged once. All new request/header/delimiter bytes also
+    # consume the same work budget; requests are input bytes, not returned rows.
+    budget.consume_work(body_size + framing_size + len(request))
+    budget.consume_metadata(request)
+    if framing_size > budget.remaining_metadata_bytes:
+        raise SecretScanError("SECRET_SCAN_INPUT_TOO_LARGE", "Git batch framing exceeds its limit.")
+    if budget.records + len(objects) > MAX_SECRET_SCAN_METADATA_RECORDS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE", "Git batch records exceed their limit."
+        )
+    completed = _capture_bytes(
+        (git, "cat-file", "--batch"),
+        cwd=root,
+        input_bytes=request,
+        stdout_limit=body_size + framing_size,
+        timeout_seconds=budget.subprocess_timeout(SCANNER_SUBPROCESS_TIMEOUT_SECONDS),
+    )
+    if completed.returncode != 0:
+        raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git object batch could not be read.")
+    return _parse_git_object_batch(objects, completed.stdout, budget)
+
+
+def _git_object_chunks(
+    objects: Sequence[tuple[str, str, int]],
+) -> Iterator[tuple[tuple[str, str, int], ...]]:
+    """One deterministic metadata-only plan shared by admission and reading."""
+    if len(objects) > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_TOO_LARGE", "Git object category exceeds its limit."
+        )
+    chunk: list[tuple[str, str, int]] = []
+    chunk_size = 0
+    for specification in objects:
+        object_id, object_type, object_size = specification
+        try:
+            _object_id(object_id.encode("ascii"))
+        except UnicodeEncodeError as error:
+            raise SecretScanError(
+                "SECRET_SCAN_GIT_FAILED", "Git object data is invalid."
+            ) from error
+        if object_type not in {"blob", "commit", "tag"}:
+            raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git object type is invalid.")
+        if type(object_size) is not int or object_size < 0 or object_size > MAX_SECRET_SCAN_BYTES:
+            raise SecretScanError(
+                "SECRET_SCAN_INPUT_TOO_LARGE", "Git object exceeds its byte limit."
+            )
+        if chunk and (
+            len(chunk) >= MAX_GIT_OBJECT_BATCH_ITEMS
+            or chunk_size + object_size > MAX_GIT_OBJECT_BATCH_BODY_BYTES
+        ):
+            yield tuple(chunk)
+            chunk.clear()
+            chunk_size = 0
+        if object_size > MAX_GIT_OBJECT_BATCH_BODY_BYTES:
+            yield (specification,)
+        else:
+            chunk.append(specification)
+            chunk_size += object_size
+    if chunk:
+        yield tuple(chunk)
+
+
+def _git_object_transport_work(objects: Sequence[tuple[str, str, int]]) -> int:
+    """Exact new request/header/delimiter bytes, excluding already charged bodies."""
+    work = 0
+    for chunk in _git_object_chunks(objects):
+        if len(chunk) == 1 and chunk[0][2] > MAX_GIT_OBJECT_BATCH_BODY_BYTES:
+            continue
+        headers = _git_object_batch_headers(chunk)
+        work += sum(len(oid) + 1 for oid, _, _ in chunk) + sum(map(len, headers)) + len(chunk)
+    return work
+
+
+def _read_git_objects(
+    git: str,
+    root: Path,
+    objects: Sequence[tuple[str, str, int]],
+    source_label: str,
+    budget: _SecretScanEnumerationBudget,
+) -> Iterator[bytes]:
+    """Read ordered finite chunks; retain the old path for one large object.
+
+    No process or body cache survives a chunk. Complete response validation
+    precedes callbacks, and pending body references are dropped before the next
+    capture. The shared scanner budgets and hardened capture remain unchanged.
+    """
+    item_number = 1
+    for chunk in _git_object_chunks(objects):
+        if len(chunk) == 1 and chunk[0][2] > MAX_GIT_OBJECT_BATCH_BODY_BYTES:
+            object_id, object_type, object_size = chunk[0]
+            yield _read_git_object(
+                git,
+                root,
+                object_id,
+                object_type,
+                object_size,
+                f"{source_label} item {item_number}",
+                budget,
+            )
+        else:
+            bodies = _read_git_object_batch(git, root, chunk, budget)
+            yield from bodies
+            del bodies
+        item_number += len(chunk)
 
 
 def _read_git_control_file(
@@ -1604,7 +1823,29 @@ def _historical_objects(
     object_ids.update(roots.extra_object_ids)
     object_ids.update(roots.blob_ids)
     object_ids.update(entry.object_id for entry in path_entries)
-    metadata = _git_object_metadata(git, root, sorted(object_ids), budget)
+    # Path enumeration has already authenticated these immutable IDs as blobs
+    # with exact sizes. Avoid physically requesting those metadata rows again;
+    # new body-transport frame rows remain explicitly charged to the same cap.
+    if len(path_entries) > MAX_SECRET_SCAN_ITEMS:
+        raise SecretScanError("SECRET_SCAN_INPUT_TOO_LARGE", "Git path category exceeds its limit.")
+    known_blobs: dict[str, int] = {}
+    for entry in path_entries:
+        previous = known_blobs.setdefault(entry.object_id, entry.object_size)
+        if previous != entry.object_size:
+            raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git object sizes conflict.")
+    unknown_metadata = _git_object_metadata(
+        git,
+        root,
+        sorted(object_ids - known_blobs.keys()),
+        budget,
+    )
+    unknown = {object_id: (object_type, size) for object_id, object_type, size in unknown_metadata}
+    metadata = [
+        (object_id, "blob", known_blobs[object_id])
+        if object_id in known_blobs
+        else (object_id, *unknown[object_id])
+        for object_id in sorted(object_ids)
+    ]
     if any(object_type not in {"blob", "commit", "tag", "tree"} for _, object_type, _ in metadata):
         raise SecretScanError(
             "SECRET_SCAN_GIT_FAILED", "Git history contains an invalid object type."
@@ -1817,20 +2058,121 @@ def _write_mirror_input(
     content: bytes,
     source_label: str,
     budget: _SecretScanEnumerationBudget,
-) -> None:
+) -> _PreparedMirrorInput:
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         payload = RAW_SCAN_SENTINEL + content
         budget.consume_work(len(payload))
         with target.open("xb") as stream:
             written = stream.write(payload)
+            stream.flush()
+            prepared = os.fstat(stream.fileno())
         if written != len(payload):
             raise OSError("short scanner-mirror write")
+        if (
+            not stat.S_ISREG(prepared.st_mode)
+            or prepared.st_nlink != 1
+            or prepared.st_ino == 0
+            or prepared.st_size != len(payload)
+            or getattr(prepared, "st_file_attributes", 0) & 0x400
+        ):
+            raise OSError("unsafe scanner-mirror identity")
+        return _PreparedMirrorInput(
+            target, prepared.st_dev, prepared.st_ino, prepared.st_size, prepared.st_mtime_ns
+        )
     except OSError as error:
         raise SecretScanError(
             "SECRET_SCAN_INPUT_INVALID",
             f"{source_label} could not be prepared for path-aware scanning.",
         ) from error
+
+
+def _alias_metadata_work(source: Path, target: Path) -> int:
+    return len(os.fsencode(source.as_posix())) + len(os.fsencode(target.as_posix()))
+
+
+def _require_private_mirror_ancestors(root: Path, path: Path) -> None:
+    path.relative_to(root)
+    for ancestor in (path.parent, *path.parent.parents):
+        if ancestor == root.parent:
+            break
+        try:
+            observed = ancestor.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(observed.st_mode) or getattr(observed, "st_file_attributes", 0) & 0x400:
+            raise OSError("unsafe scanner-mirror ancestor")
+
+
+def _link_mirror_alias(
+    private_root: Path,
+    source: _PreparedMirrorInput,
+    target: Path,
+    source_label: str,
+    budget: _SecretScanEnumerationBudget,
+) -> None:
+    """Link only a just-created private payload; every alias is still scanned."""
+
+    try:
+        source_relative = source.path.relative_to(private_root)
+        target_relative = target.relative_to(private_root)
+        _safe_mirror_target(private_root, source_relative, source_label)
+        _safe_mirror_target(private_root, target_relative, source_label)
+        if source_relative.parts[0] != "source" or target_relative.parts[0] != "path-rule-shadow":
+            raise OSError("invalid private scanner-mirror scope")
+        _require_private_mirror_ancestors(private_root, source.path)
+        _require_private_mirror_ancestors(private_root, target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _require_private_mirror_ancestors(private_root, target)
+        before = source.path.lstat()
+        expected = (source.device, source.inode, source.size, source.modified_ns)
+
+        def identity(item: os.stat_result) -> tuple[int, int, int, int]:
+            return item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns
+
+        if (
+            identity(before) != expected
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or getattr(before, "st_file_attributes", 0) & 0x400
+        ):
+            raise OSError("changed private scanner-mirror source")
+        if os.path.lexists(target):
+            raise OSError("scanner-mirror alias already exists")
+        # Charge the link's logical path metadata. There is no second payload
+        # construction/write, and no discount to either scanner invocation.
+        budget.consume_work(_alias_metadata_work(source_relative, target_relative))
+        os.link(source.path, target, follow_symlinks=False)
+        for observed in (source.path.lstat(), target.lstat()):
+            if (
+                identity(observed) != expected
+                or not stat.S_ISREG(observed.st_mode)
+                or observed.st_nlink != 2
+                or getattr(observed, "st_file_attributes", 0) & 0x400
+            ):
+                raise OSError("scanner-mirror alias identity mismatch")
+        _require_private_mirror_ancestors(private_root, source.path)
+        _require_private_mirror_ancestors(private_root, target)
+        budget.checkpoint()
+    except (OSError, ValueError, IndexError, NotImplementedError) as error:
+        raise SecretScanError(
+            "SECRET_SCAN_INPUT_INVALID",
+            f"{source_label} could not create a verified private scanner alias.",
+        ) from error
+
+
+def _path_blob_mirror_work(entries: Sequence[_PathBlobEntry]) -> int:
+    work = 0
+    for number, entry in enumerate(entries, 1):
+        work += entry.object_size + len(RAW_SCAN_SENTINEL)
+        alias = _path_rule_alias(entry.relative_path)
+        if alias is not None:
+            namespace = Path(f"item-{number:08d}")
+            work += _alias_metadata_work(
+                Path("source") / namespace / entry.relative_path,
+                Path("path-rule-shadow") / namespace / alias,
+            )
+    return work
 
 
 def _path_rule_alias(relative_path: Path) -> Path | None:
@@ -1933,6 +2275,18 @@ def _path_blob_read_work(entries: Sequence[_PathBlobEntry]) -> int:
     )
 
 
+def _path_blob_transport_work(entries: Sequence[_PathBlobEntry]) -> int:
+    return sum(
+        _git_object_transport_work(
+            [
+                (group[0][1].object_id, "blob", group[0][1].object_size)
+                for group in _path_blob_groups(batch)
+            ]
+        )
+        for batch in _path_blob_batches(entries, category="Git path/blob")
+    )
+
+
 def _scan_path_aware_blobs(
     gitleaks: str,
     git: str,
@@ -1959,17 +2313,17 @@ def _scan_path_aware_blobs(
             mirror_root = temporary_root / "source"
             shadow_root = temporary_root / "path-rule-shadow"
             shadow_written = False
-            for group in _path_blob_groups(batch):
+            groups = _path_blob_groups(batch)
+            contents = _read_git_objects(
+                git,
+                repository_root,
+                [(group[0][1].object_id, "blob", group[0][1].object_size) for group in groups],
+                f"{category} batch {batch_number}",
+                budget,
+            )
+            for group, content in zip(groups, contents, strict=True):
                 entry_number, entry = group[0]
                 source_label = f"{category} item {batch_number}.{entry_number}"
-                content = _read_git_blob(
-                    git,
-                    repository_root,
-                    entry.object_id,
-                    entry.object_size,
-                    source_label,
-                    budget,
-                )
                 if raw_batcher is not None:
                     raw_batcher.add(f"{source_label} raw blob", content)
                 digest = hashlib.sha256(content).digest()
@@ -1984,7 +2338,7 @@ def _scan_path_aware_blobs(
                         source_label,
                     )
                     covered.add((entry.relative_path.as_posix(), digest))
-                    _write_mirror_input(mirror_target, content, source_label, budget)
+                    prepared = _write_mirror_input(mirror_target, content, source_label, budget)
                     rule_alias = _path_rule_alias(entry.relative_path)
                     if rule_alias is not None:
                         shadow_target = _safe_mirror_target(
@@ -1992,7 +2346,9 @@ def _scan_path_aware_blobs(
                             Path(f"item-{entry_number:08d}") / rule_alias,
                             source_label,
                         )
-                        _write_mirror_input(shadow_target, content, source_label, budget)
+                        _link_mirror_alias(
+                            temporary_root, prepared, shadow_target, source_label, budget
+                        )
                         shadow_written = True
             _scan_mirror(
                 gitleaks,
@@ -2032,7 +2388,7 @@ def _scan_working_path_batch(
         shadow_written = False
         for item_number, (relative_path, content, source_label) in enumerate(items, start=1):
             mirror_target = _safe_mirror_target(mirror_root, relative_path, source_label)
-            _write_mirror_input(mirror_target, content, source_label, budget)
+            prepared = _write_mirror_input(mirror_target, content, source_label, budget)
             rule_alias = _path_rule_alias(relative_path)
             if rule_alias is not None:
                 shadow_target = _safe_mirror_target(
@@ -2040,7 +2396,7 @@ def _scan_working_path_batch(
                     Path(f"item-{item_number:08d}") / rule_alias,
                     source_label,
                 )
-                _write_mirror_input(shadow_target, content, source_label, budget)
+                _link_mirror_alias(temporary_root, prepared, shadow_target, source_label, budget)
                 shadow_written = True
         _scan_mirror(
             gitleaks,
@@ -2194,7 +2550,10 @@ def _scan_working_paths(
             scanned += 1
             continue
         item_size = len(RAW_SCAN_SENTINEL) + len(content)
-        if batch_items and batch_size + item_size > MAX_SECRET_SCAN_BATCH_BYTES:
+        if batch_items and (
+            batch_size + item_size > MAX_SECRET_SCAN_BATCH_BYTES
+            or len(batch_items) >= MAX_SECRET_SCAN_ITEMS
+        ):
             _scan_working_path_batch(
                 gitleaks,
                 trusted_ignore,
@@ -2333,14 +2692,16 @@ def inspect_repository_contents(
             "SECRET_SCAN_INPUT_TOO_LARGE", "a Git object exceeds the 50 MiB scanner limit."
         )
 
-    tracked_paths = _git_paths(git, repository_root, ("ls-files", "--cached"), budget)
+    # Stage-zero index rows already carry every cached path. Share that exact
+    # capture instead of obtaining a second, independently timed path snapshot.
+    tracked_paths = [entry.relative_path for entry in index_entries]
     untracked_paths = _git_paths(
         git,
         repository_root,
         ("ls-files", "--others", "--exclude-standard"),
         budget,
     )
-    item_count = sum(
+    _require_snapshot_item_capacity(
         (
             len(history_roots.ref_names),
             len(historical_path_entries),
@@ -2349,13 +2710,9 @@ def inspect_repository_contents(
             len(historical_message_objects),
             len(tracked_paths),
             len(untracked_paths),
-        )
+        ),
+        path_count=len(historical_path_entries) + len(uncovered_index_entries),
     )
-    if item_count > MAX_SECRET_SCAN_ITEMS:
-        raise SecretScanError(
-            "SECRET_SCAN_INPUT_TOO_LARGE",
-            f"repository enumeration exceeds the {MAX_SECRET_SCAN_ITEMS:,}-item scanner limit.",
-        )
     tracked_state = _working_path_state(
         repository_root,
         tracked_paths,
@@ -2380,46 +2737,40 @@ def inspect_repository_contents(
     for entry in uncovered_index_entries:
         budget.checkpoint()
         inspector(os.fsencode(entry.relative_path.as_posix()))
-    for item_number, (object_id, object_size) in enumerate(historical_blobs, start=1):
-        inspector(
-            _read_git_blob(
-                git,
-                repository_root,
-                object_id,
-                object_size,
-                f"historical blob item {item_number}",
-                budget,
-            )
-        )
-    for item_number, (object_id, object_type, object_size) in enumerate(
+    historical_contents = _read_git_objects(
+        git,
+        repository_root,
+        [(oid, "blob", size) for oid, size in historical_blobs],
+        "historical blob",
+        budget,
+    )
+    for content in historical_contents:
+        inspector(content)
+    message_contents = _read_git_objects(
+        git,
+        repository_root,
         historical_message_objects,
+        "historical commit/tag object",
+        budget,
+    )
+    for item_number, ((_, object_type, _), object_content) in enumerate(
+        zip(historical_message_objects, message_contents, strict=True),
         start=1,
     ):
         source_label = f"historical commit/tag object {item_number}"
-        object_content = _read_git_object(
-            git,
-            repository_root,
-            object_id,
-            object_type,
-            object_size,
-            source_label,
-            budget,
-        )
         # Standard identity lines, including a folded merge-tag identity, are Git provenance.
         # Custom headers, continuations, and message bodies remain untrusted. Gitleaks separately
         # scans every complete raw object, including the provenance lines omitted by this callback.
         _inspect_git_message_content(object_content, object_type, source_label, inspector)
-    for item_number, (object_id, object_size) in enumerate(uncovered_index_blobs, start=1):
-        inspector(
-            _read_git_blob(
-                git,
-                repository_root,
-                object_id,
-                object_size,
-                f"index blob item {item_number}",
-                budget,
-            )
-        )
+    index_contents = _read_git_objects(
+        git,
+        repository_root,
+        [(oid, "blob", size) for oid, size in uncovered_index_blobs],
+        "index blob",
+        budget,
+    )
+    for content in index_contents:
+        inspector(content)
 
     def inspect_working_paths(
         paths: Sequence[Path],
@@ -2474,12 +2825,7 @@ def inspect_repository_contents(
     )
 
     final_index_entries = _index_entries(git, repository_root, budget)
-    final_tracked_paths = _git_paths(
-        git,
-        repository_root,
-        ("ls-files", "--cached"),
-        budget,
-    )
+    final_tracked_paths = [entry.relative_path for entry in final_index_entries]
     final_untracked_paths = _git_paths(
         git,
         repository_root,
@@ -2586,13 +2932,11 @@ def _scan_repository_checked(
         anticipated_source_byte_work
         + _path_blob_read_work(historical_path_entries)
         + _path_blob_read_work(uncovered_index_entries)
-        + sum(
-            # Every mapped path keeps its own framed mirror and required alias.
-            # Shared object reads are planned per existing bounded batch above.
-            (entry.object_size + len(RAW_SCAN_SENTINEL))
-            * (2 if _path_rule_alias(entry.relative_path) is not None else 1)
-            for entry in (*historical_path_entries, *uncovered_index_entries)
-        )
+        # Every mapped path and alias remains. Alias links share only the
+        # privately created payload; charge their path metadata, not an unwritten
+        # second payload. Read groups and physical byte chunks are unchanged.
+        + _path_blob_mirror_work(historical_path_entries)
+        + _path_blob_mirror_work(uncovered_index_entries)
         + 2
         * sum(
             (
@@ -2622,9 +2966,32 @@ def _scan_repository_checked(
         for object_id, object_size in (*historical_blobs, *uncovered_index_blobs)
         if (object_id, object_size) in path_blob_inputs
     )
+    # Admission includes precisely the framed transport used below, sharing
+    # chunk/group boundaries and the unchanged single-large-object fallback.
+    anticipated_git_work += (
+        _path_blob_transport_work(historical_path_entries)
+        + _path_blob_transport_work(uncovered_index_entries)
+        + _git_object_transport_work(historical_message_objects)
+        + _git_object_transport_work(
+            [
+                (oid, "blob", size)
+                for oid, size in historical_blobs
+                if (oid, size) not in path_blob_inputs
+            ]
+        )
+        + _git_object_transport_work(
+            [
+                (oid, "blob", size)
+                for oid, size in uncovered_index_blobs
+                if (oid, size) not in path_blob_inputs
+            ]
+        )
+    )
     enumeration_budget.ensure_work_capacity(anticipated_git_work)
 
-    tracked_paths = _git_paths(git, root, ("ls-files", "--cached"), enumeration_budget)
+    # Preserve one coherent index/path snapshot and all final index and live
+    # file guards; no duplicate cached-path metadata transport is needed.
+    tracked_paths = [entry.relative_path for entry in index_entries]
     untracked_paths = _git_paths(
         git,
         root,
@@ -2636,7 +3003,7 @@ def _scan_repository_checked(
         for relative_path in (*tracked_paths, *untracked_paths)
     )
     enumeration_budget.ensure_work_capacity(anticipated_git_work + anticipated_current_path_work)
-    scan_item_count = sum(
+    _require_snapshot_item_capacity(
         (
             len(history_roots.ref_names),
             len(historical_path_entries),
@@ -2645,13 +3012,9 @@ def _scan_repository_checked(
             len(historical_message_objects),
             len(tracked_paths),
             len(untracked_paths),
-        )
+        ),
+        path_count=len(historical_path_entries) + len(uncovered_index_entries),
     )
-    if scan_item_count > MAX_SECRET_SCAN_ITEMS:
-        raise SecretScanError(
-            "SECRET_SCAN_INPUT_TOO_LARGE",
-            f"repository enumeration exceeds the {MAX_SECRET_SCAN_ITEMS:,}-item scanner limit.",
-        )
     tracked_state = _working_path_state(
         root,
         tracked_paths,
@@ -2763,15 +3126,11 @@ def _scan_repository_checked(
         batcher=batcher,
         expected_state=untracked_state,
         budget=enumeration_budget,
+        covered_path_inputs=covered_path_inputs,
     )
     batcher.flush()
     final_index_entries = _index_entries(git, root, enumeration_budget)
-    final_tracked_paths = _git_paths(
-        git,
-        root,
-        ("ls-files", "--cached"),
-        enumeration_budget,
-    )
+    final_tracked_paths = [entry.relative_path for entry in final_index_entries]
     final_untracked_paths = _git_paths(
         git,
         root,

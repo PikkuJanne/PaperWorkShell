@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLayoutItem,
     QScrollArea,
     QSizePolicy,
+    QWidget,
 )
 
 
@@ -37,11 +38,12 @@ def _wrapped(source: str, metrics: QFontMetrics, width: int) -> str:
 class _LocalizedContentPolicy(QObject):
     """One bounded widget-tree adapter per existing review scroll area."""
 
-    def __init__(self, area: QScrollArea) -> None:
+    def __init__(self, area: QWidget) -> None:
         super().__init__(area)
         self._area = area
         self._updating = False
-        area.viewport().installEventFilter(self)
+        if isinstance(area, QScrollArea):
+            area.viewport().installEventFilter(self)
         area.installEventFilter(self)
         self._adapt()
 
@@ -55,12 +57,13 @@ class _LocalizedContentPolicy(QObject):
         return False
 
     def _adapt(self) -> None:
-        content = self._area.widget()
+        content = self._area.widget() if isinstance(self._area, QScrollArea) else self._area
         if self._updating or content is None:
             return
         self._updating = True
         try:
-            available = max(160, self._area.viewport().width() - 48)
+            surface = self._area.viewport() if isinstance(self._area, QScrollArea) else self._area
+            available = max(160, surface.width() - 48)
             for group in content.findChildren(QGroupBox):
                 title = group.title()
                 layout = group.layout()
@@ -146,7 +149,7 @@ class _LocalizedContentPolicy(QObject):
             self._updating = False
 
 
-def adapt_localized_content(area: QScrollArea) -> None:
-    """Install after setWidget; resizing keeps all translated controls visible."""
+def adapt_localized_content(area: QWidget) -> None:
+    """Reflow a scroll area or pinned surface as its available width changes."""
     if area.findChild(_LocalizedContentPolicy) is None:
         _LocalizedContentPolicy(area)

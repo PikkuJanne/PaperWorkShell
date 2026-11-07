@@ -157,7 +157,9 @@ def test_pending_assisted_close_keeps_immediate_keyboard_hiding_and_unrelated_fa
         assert window._case_close_pending and not window._controls_enabled
         assert not window._import_button.isEnabled()
         assert window._assisted_lock_button.isEnabled() and window._assisted_lock_button.hasFocus()
-        assert "Waiting for the active operation" in window._status_label.text()
+        assert (
+            window._status_label.text() == "Closing the case. Saving changes and finishing cleanup."
+        )
         worker.failed.emit(UiFailure("UNRELATED", "The previous action failed.", True))
         assert window._case_close_pending and not window._controls_enabled
         QTest.keyClick(window._assisted_lock_button, Qt.Key.Key_Space)

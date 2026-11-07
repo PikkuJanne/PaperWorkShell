@@ -213,6 +213,23 @@ def test_failed_enrollment_leaves_no_active_import_capability(
     assert ingest.calls == 0
 
 
+def test_named_assisted_case_keeps_its_name_and_identity_after_reopen() -> None:
+    backend, service, _store, repository, _lifecycle, _ingest = _harness(page_count=0)
+    state = backend.create_assisted_case(
+        7, _PASSPHRASE, consent=True, case_name="Äänekoski assistance"
+    )
+    assert state.case_name == "Äänekoski assistance"
+    assert repository.current.document["case_name"] == state.case_name
+    case_id = state.case_id
+    assert case_id is not None
+    backend.close_case()
+    service.unlock(case_id, _PASSPHRASE)
+    reopened = backend.open_case(case_id)
+    assert reopened.case_id == case_id
+    assert reopened.case_name == state.case_name
+    backend.close_case()
+
+
 def test_locked_case_cannot_save_a_retained_package_summary() -> None:
     class _SavedSummary:
         calls = 0

@@ -147,6 +147,8 @@ def test_status_recovery_follows_workflow_actions_in_the_actual_tab_order() -> N
             window._cancel_button,
             window._ocr_language_button,
             window._import_button,
+            window._pages_pdf_export_button,
+            window._rename_case_button,
             window._close_case_button,
             window._page_view,
         ):

@@ -136,7 +136,7 @@ class WindowsStartupRecoveryStore:
         loaded: ManifestSnapshot | None = None
         for attempt in range(_MAXIMUM_CASE_SETTLEMENT_ATTEMPTS):
             try:
-                load_result = self._manifests.load(case_id)
+                load_result = self._manifests.load(case_id, migrate=False)
             except ManifestRepositoryError as error:
                 return _unavailable_case(case_id, _manifest_issue(error.code))
             except Exception:

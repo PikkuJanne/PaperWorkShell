@@ -35,7 +35,10 @@ from paperworkshell.overlays.signature_rasters import (
     SignatureImageOverlayRasterSource,
     SignatureImagePreview,
 )
-from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    retire_runtime_on_failure,
+)
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -230,6 +233,7 @@ class BrokeredSignatureImageRasterizer:
         self._id_factory = id_factory
         self._output_buffer_factory = output_buffer_factory
 
+    @retire_runtime_on_failure
     def preview_prepared(
         self,
         request: SignatureImageRasterRequest,
@@ -261,6 +265,7 @@ class BrokeredSignatureImageRasterizer:
         )
         return SignatureImagePreview.from_artifact(preview_request, artifact)
 
+    @retire_runtime_on_failure
     def rasterize_committed(
         self,
         request: SignatureImageRasterRequest,

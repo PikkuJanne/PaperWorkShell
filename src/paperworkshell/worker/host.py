@@ -177,6 +177,11 @@ def _build_operation_registry(
         handlers.append(build_pdf_thumbnail_operation_handler())
     except Exception:
         pass
+    if operation_scope is WorkerOperationScope.DESKTOP:
+        # The shared desktop client negotiates these six fixed capabilities.
+        # Keep their real adapter construction/admission above, and avoid loading
+        # unrelated OCR/export engines merely to inspect or preview an image.
+        return RuntimeOperationRegistry(tuple(handlers))
     try:
         from paperworkshell.worker.pdf_export_operation import (
             build_pdf_export_operation_handler,

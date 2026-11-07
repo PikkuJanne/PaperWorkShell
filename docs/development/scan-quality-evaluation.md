@@ -398,6 +398,38 @@ Commands: `python tools/pws0207_quality_evaluation.py evaluate`, `record --revis
 
 ## Security and resource verification
 
+### Candidate receipts without replacing accepted evidence
+
+PWS-0811 preserves the accepted `benchmarks/pws0207-quality-findings-v1.json`
+unchanged. Its broad 27-file implementation binding includes desktop composition,
+organizer and UI files. A later repair can therefore retain the same quality
+profile, corpus and confusion matrices while requiring a new source-bound receipt.
+An earlier accepted receipt is not evidence that the repaired UI was evaluated.
+
+Validate a historical receipt against its exact recorded source/index in an isolated
+detached worktree. For a repaired candidate, first freeze the complete source commit,
+check it out separately, and authenticate all declared working-file bytes and index
+objects. Run the existing evaluator's `record --revision FULL_SHA --output NEW_RECEIPT`
+and `validate NEW_RECEIPT --revision FULL_SHA` commands there.
+The create-only output must be a new evidence path; do not overwrite an accepted
+benchmark or change its metrics merely to satisfy a test.
+
+Pytest accepts `--pws0207-baseline NEW_RECEIPT` to supply that explicit evidence
+input. The existing unit assertion still checks canonical bytes, the full current
+corpus/profile/metrics and the unchanged strict implementation-revision validator.
+The default remains the checked-in historical baseline. No dirty-source allowance,
+index bypass or skipped assertion is introduced. `GIT_INDEX_FILE` is intentionally
+not inherited by the validator and cannot substitute for an exact candidate index.
+
+The registered `tools/dev.py test-unit` command can receive this option through
+pytest's standard `PYTEST_ADDOPTS` in its subprocess environment. When using a shared
+locked development environment from a detached worktree, set `UV_PROJECT_ENVIRONMENT`
+to that existing environment and put the candidate's `src` and root first on the
+subprocess `PYTHONPATH`; verify module origins before claiming the run. Record the
+complete invocation, source commit, receipt digest and output log. These settings
+configure a development test process; they are not installed-application isolation
+or a runtime environment override.
+
 Focused evidence must prove model/repr/log privacy canaries; exact threshold-minus-one and threshold
 boundary behavior; canonical corpus reconstruction; correct confusion-matrix arithmetic; the
 4,096-page request cap and stricter live case policy; cancellation before each page and on the 32nd

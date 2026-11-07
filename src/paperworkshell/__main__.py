@@ -10,6 +10,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 from uuid import UUID
 
 from paperworkshell.app.assisted_use import AssistedUseService
@@ -38,6 +39,10 @@ from paperworkshell.app.ocr_languages import (
     OcrLanguageManager,
     OcrLanguageRuntimeStatus,
     unavailable_ocr_language_manager,
+)
+from paperworkshell.app.ordinary_pdf_export import (
+    OrdinaryPdfPipeline,
+    select_ordinary_pdf_pipeline,
 )
 from paperworkshell.app.organizer import OrganizerBackend
 from paperworkshell.app.package_pdf_export import (
@@ -112,6 +117,7 @@ from paperworkshell.domain.redaction_export import RedactionExportReport
 from paperworkshell.domain.resource_policy import ResourcePolicy, select_resource_policy
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportErrorCode,
+    SearchablePdfExportOutcome,
     SearchablePdfExportPlan,
     reject_searchable_pdf_export,
 )
@@ -125,6 +131,7 @@ from paperworkshell.export.package_summary import build_package_summary
 from paperworkshell.export.pdf_destination import WindowsVerifiedPdfDestination
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportErrorCode,
+    FlattenedPdfExportOutcome,
     FlattenedPdfExportPlan,
     reject_flattened_pdf_export,
 )
@@ -176,6 +183,7 @@ from paperworkshell.worker.desktop_composition import (
     PdfExportWorkerCompositionConfig,
     QualityOcrReviewWorkerComposition,
     QualityOcrReviewWorkerCompositionConfig,
+    RuntimeAccessAuthority,
     SearchablePdfExportWorkerComposition,
     SearchablePdfExportWorkerCompositionConfig,
     create_compression_preview_renderer,
@@ -330,7 +338,7 @@ def build_windows_startup_recovery_service(
 
     if not isinstance(manager, CaseWorkspaceManager):
         reject_recovery(RecoveryErrorCode.MODEL_INVALID, "recovery.composition")
-    manifests = WindowsManifestRepository(manager)
+    manifests = WindowsManifestRepository(manager, migrate_on_load=False)
     history = PdfExportHistoryService(
         WindowsPdfExportHistoryRepository(manager),
         manifests,
@@ -969,8 +977,16 @@ class _LazyRemovalPdfExportService:
         )
 
 
+class _RuntimeAccessOptions(TypedDict, total=False):
+    runtime_access: RuntimeAccessAuthority
+
+
+def _runtime_access_options(value: RuntimeAccessAuthority | None) -> _RuntimeAccessOptions:
+    return {} if value is None else {"runtime_access": value}
+
+
 class _LazyPagesPdfExportService:
-    """Admit the ordinary PDF export worker on the backend thread when first used."""
+    """Lazily select the existing verified pipeline for the user's export choice."""
 
     def __init__(
         self,
@@ -978,12 +994,21 @@ class _LazyPagesPdfExportService:
         sources: CommittedPdfSourceBatchStore,
         resources: DesktopApplicationResourceContext,
         worker_resources: _BackendWorkerResources,
+        rasterizer: FlattenedPdfRasterizer | None = None,
+        *,
+        runtime_access: RuntimeAccessAuthority | None = None,
     ) -> None:
         self._manager = manager
         self._sources = sources
         self._resources = resources
         self._worker_resources = worker_resources
         self._service: PdfExportService | None = None
+        self._flattened_service: FlattenedPdfExportService | None = None
+        self._searchable_service: SearchablePdfExportService | None = None
+        self._rasterizer = rasterizer
+        self._runtime_access = runtime_access
+        self._pipeline_closers: list[Callable[[], None]] = []
+        self._registered_resources = False
 
     def export_pdf(
         self,
@@ -993,16 +1018,75 @@ class _LazyPagesPdfExportService:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink,
-    ) -> PdfExportOutcome:
+        make_searchable: bool = False,
+    ) -> PdfExportOutcome | FlattenedPdfExportOutcome | SearchablePdfExportOutcome:
         if self._worker_resources.closed:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.runtime_closed")
         if cancellation():
             reject_pdf_export(PdfExportErrorCode.CANCELLED, "export.runtime_cancelled")
         if deadline():
             reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "export.runtime_deadline")
+        loaded = WindowsManifestRepository(self._manager).load(case_id)
+        pipeline = select_ordinary_pdf_pipeline(loaded.snapshot, make_searchable=make_searchable)
+        if pipeline is OrdinaryPdfPipeline.SEARCHABLE:
+            if not isinstance(self._sources, CommittedSearchablePdfSourceBatchStore):
+                reject_pdf_export(
+                    PdfExportErrorCode.MODEL_INVALID, "export.mixed_sources_unavailable"
+                )
+            if self._searchable_service is None:
+                composition_searchable = build_windows_searchable_pdf_export_worker_composition(
+                    self._resources, **_runtime_access_options(self._runtime_access)
+                )
+                try:
+                    self._searchable_service = build_windows_searchable_pdf_export_service(
+                        self._manager,
+                        self._sources,
+                        composition_searchable,
+                        resources=self._resources,
+                    )
+                    self._retain(composition_searchable.close)
+                except BaseException:
+                    composition_searchable.close()
+                    raise
+            return self._searchable_service.export_pdf(
+                case_id,
+                destination,
+                deadline=deadline,
+                cancellation=cancellation,
+                progress=progress,
+                require_ocr_success=True,
+            )
+        if pipeline is OrdinaryPdfPipeline.FLATTENED:
+            if self._rasterizer is None:
+                reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.rasterizer_unavailable")
+            if self._flattened_service is None:
+                composition_flattened = build_windows_flattened_pdf_export_worker_composition(
+                    self._resources, **_runtime_access_options(self._runtime_access)
+                )
+                try:
+                    self._flattened_service = build_windows_flattened_pdf_export_service(
+                        self._manager,
+                        self._sources,
+                        self._rasterizer,
+                        composition_flattened,
+                        resources=self._resources,
+                    )
+                    self._retain(composition_flattened.close)
+                except BaseException:
+                    composition_flattened.close()
+                    raise
+            return self._flattened_service.export_pdf(
+                case_id,
+                destination,
+                deadline=deadline,
+                cancellation=cancellation,
+                progress=progress,
+            )
         if self._service is None:
             composition = build_windows_pdf_export_worker_composition(
-                self._resources, profile=IMAGE_PDF_EXPORT_PROFILE
+                self._resources,
+                profile=IMAGE_PDF_EXPORT_PROFILE,
+                **_runtime_access_options(self._runtime_access),
             )
             try:
                 service = build_windows_pdf_export_service(
@@ -1012,7 +1096,7 @@ class _LazyPagesPdfExportService:
                     resources=self._resources,
                     profile=IMAGE_PDF_EXPORT_PROFILE,
                 )
-                self._worker_resources.add_pdf_export(composition.close)
+                self._retain(composition.close)
             except BaseException:
                 composition.close()
                 raise
@@ -1024,6 +1108,30 @@ class _LazyPagesPdfExportService:
             cancellation=cancellation,
             progress=progress,
         )
+
+    def _retain(self, closer: Callable[[], None]) -> None:
+        if not self._registered_resources:
+            self._worker_resources.add_pdf_export(self._close_pipelines)
+            self._registered_resources = True
+        if len(self._pipeline_closers) >= 3:
+            raise ValueError("ordinary PDF pipeline resource bound exceeded")
+        self._pipeline_closers.append(closer)
+
+    def _close_pipelines(self) -> None:
+        """Retain failed cleanup callbacks so backend shutdown can safely retry."""
+
+        failed: list[Callable[[], None]] = []
+        pending: BaseException | None = None
+        for closer in reversed(self._pipeline_closers):
+            try:
+                closer()
+            except BaseException as error:
+                failed.append(closer)
+                if pending is None:
+                    pending = error
+        self._pipeline_closers = list(reversed(failed))
+        if pending is not None:
+            raise pending
 
 
 class _LazyQualityOcrReviewProcessor:
@@ -1251,11 +1359,17 @@ def _build_backend(
                 ocr_review=quality_ocr,
             ),
             close_resources=owned_resources.close,
+            release_case_resources=composition.release_case_resources,
             startup_recovery=startup_recovery,
             assisted_use=assisted_use,
             post_export_deletion=deletion,
             pages_pdf_export=_LazyPagesPdfExportService(
-                manager, source_store, selected_resources, owned_resources
+                manager,
+                source_store,
+                selected_resources,
+                owned_resources,
+                composition.signature_image_rasterizer,
+                runtime_access=composition.runtime_access_authority,
             ),
             removal_pdf_export=_LazyRemovalPdfExportService(
                 manager, source_store, selected_resources, owned_resources
@@ -1490,6 +1604,7 @@ def build_windows_pdf_export_worker_composition(
     qpdf_executable: Path | None = None,
     *,
     profile: PdfExportProfile = DEFAULT_PDF_EXPORT_PROFILE,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> PdfExportWorkerComposition:
     """Compose export with the exact app-scoped policy and heavy-work gate."""
 
@@ -1501,6 +1616,7 @@ def build_windows_pdf_export_worker_composition(
             profile=profile,
         ),
         heavy_operations=selected_resources.heavy_operations,
+        **_runtime_access_options(runtime_access),
     )
 
 
@@ -1572,6 +1688,8 @@ def build_windows_flattened_pdf_export_worker_config(
 def build_windows_flattened_pdf_export_worker_composition(
     resources: DesktopApplicationResourceContext,
     qpdf_executable: Path | None = None,
+    *,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> FlattenedPdfExportWorkerComposition:
     """Compose flattened export with the sole app-scoped heavy-work gate."""
 
@@ -1582,6 +1700,7 @@ def build_windows_flattened_pdf_export_worker_composition(
             resource_policy=selected_resources.resource_policy,
         ),
         heavy_operations=selected_resources.heavy_operations,
+        **_runtime_access_options(runtime_access),
     )
 
 
@@ -1787,6 +1906,8 @@ def build_windows_searchable_pdf_export_worker_composition(
     qpdf_executable: Path | None = None,
     tesseract_executable: Path | None = None,
     tessdata_root: Path | None = None,
+    *,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> SearchablePdfExportWorkerComposition:
     """Compose mixed export with the sole app-scoped heavy-work gate."""
 
@@ -1804,6 +1925,7 @@ def build_windows_searchable_pdf_export_worker_composition(
             resource_policy=selected_resources.resource_policy,
         ),
         heavy_operations=selected_resources.heavy_operations,
+        **_runtime_access_options(runtime_access),
     )
 
 
@@ -1820,6 +1942,7 @@ def _desktop_worker_config(
         working_directory,
     ) = _worker_runtime_resources()
     return create_desktop_worker_composition_config(
+        retain_runtime_access=_installed_runtime() is not None,
         # A venv's python.exe is a launcher that creates the base interpreter as
         # a child. The worker job deliberately permits one process, so launch the
         # approved base interpreter directly. CPython consumes the fixed venv

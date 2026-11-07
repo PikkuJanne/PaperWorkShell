@@ -1,0 +1,30 @@
+{
+  "schema_version": 4,
+  "case_id": "10000000-0000-4000-8000-000000000001",
+  "revision": 0,
+  "created_at": "2026-08-01T10:00:00Z",
+  "updated_at": "2026-08-01T10:00:00Z",
+  "template_ref": null,
+  "sources": [],
+  "pages": [],
+  "page_sequence_base": [],
+  "page_sequence": [],
+  "page_operations": [],
+  "assets": [],
+  "overlays": [],
+  "assignments": [],
+  "constraints": {
+    "constraints_version": 1,
+    "allowed_output_modes": [
+      "combined_pdf"
+    ],
+    "encryption_policy": "must_be_unencrypted"
+  },
+  "confirmations": [],
+  "export_history": {
+    "storage_name": "export-history.json",
+    "entries": []
+  },
+  "redaction_marks": [],
+  "case_name": "Synthetic\u202e"
+}

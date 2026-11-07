@@ -8,6 +8,14 @@
 
 ## Context
 
+PWS-0811 extends only the validated installed desktop's static runtime access lifetime
+as documented in [ADR 0020](0020-exact-directory-acl-updates.md). Parser Jobs and all
+document/output authorities remain one-shot. Per-generation profile storage is
+deleted and newly created even when exact read-only runtime pins/ACEs remain until
+case close. Ordinary exporters may borrow that same exact static owner while keeping
+their engine admission and per-launch limits; defaults/development, package and
+qualified redaction lifetime remains as specified here.
+
 PaperWorkShell must parse hostile documents outside the desktop process. A second process by itself
 does not provide the required boundary: an ordinary child inherits the user's filesystem and
 network authority, environment, search paths, and descendant-process behavior. A compromised

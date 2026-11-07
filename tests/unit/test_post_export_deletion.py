@@ -19,7 +19,10 @@ from paperworkshell.domain.case_lifecycle import (
     CaseDeletionStatus,
     CaseLifecycleErrorCode,
 )
-from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
+    ManifestSnapshot,
+)
 from paperworkshell.domain.post_export_deletion import (
     PostExportCaseInventory,
     PostExportDeletionConfirmation,
@@ -36,7 +39,7 @@ def _snapshot(case_id: UUID | None = None, *, revision: int = 0) -> ManifestSnap
     document["revision"] = revision
     return ManifestSnapshot(
         selected,
-        3,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
         revision,
         document,
         hashlib.sha256(payload + str(revision).encode()).hexdigest(),
@@ -213,7 +216,7 @@ def test_changed_case_or_inventory_invalidates_review(change: str) -> None:
     elif change == "digest":
         h.snapshot = ManifestSnapshot(
             h.snapshot.case_id,
-            3,
+            h.snapshot.schema_version,
             0,
             h.snapshot.document,
             "0" * 64,

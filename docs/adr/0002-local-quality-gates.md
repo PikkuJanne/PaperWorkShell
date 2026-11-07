@@ -4,7 +4,9 @@
 - Date: 2026-08-01
 - Amended: 2026-08-12 by PWS-0115 low-resource contract migration; 2026-08-14 by PWS-0203
   quality-gate closure after bounded repository-history growth; 2026-08-27 by PWS-0308 for one
-  exact historical source-recipe digest exception
+  exact historical source-recipe digest exception; 2026-11-06 by PWS-0811 through
+  [ADR 0021](0021-bounded-repository-scan-groups.md) for bounded serial logical groups
+  and verified private alias payload reuse
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -36,8 +38,12 @@ machine-independent limits without inventing physical-hardware equivalence.
    annotated tags; commit messages; and every object recorded in multi-record
    `FETCH_HEAD`/`MERGE_HEAD` metadata. Captured ordinary and pseudo-ref object IDs, rather than a
    later live `--all` query, drive both history traversals. Ref, registered-worktree, index,
-   path-set, and selected working-file content snapshots are rechecked after scanning; changes
-   observed between those capture/check points fail closed. The scan is a bounded snapshot check,
+   path-set, and selected working-file content snapshots are rechecked after scanning. Each
+   validated initial/final stage-zero index capture also supplies its ordered tracked paths,
+   removing a duplicate cached-path metadata transport; full index/derived-path equality,
+   independent untracked membership and live-file guards remain. The former separately timed
+   cached-path observations are not claimed as preserved. Changes observed at the retained
+   capture/check points fail closed. The scan is a bounded snapshot check,
    not an atomic lock against a writer that changes the repository after its terminal observation.
    Within one invocation, an exact index path/blob input reuses completed historical physical work
    only when its path, object ID, and size are identical; raw index bytes may likewise reuse an
@@ -67,20 +73,24 @@ machine-independent limits without inventing physical-hardware equivalence.
    source-controlled `.gitleaksignore` files. A shared streaming budget terminates Git enumeration
    at 16 MiB of metadata or 50,000 raw records across initial capture and final verification;
    duplicate history records and repeated integrity snapshots consume that budget before parsing
-   or deduplication. An independent aggregate 10,000-item check bounds selected refs, historical
-   path/blob pairs, Git objects, index entries, and current paths. Separating the raw transport
-   ceiling from the logical-source ceiling permits the scanner's consistency rechecks without
-   weakening either bound. A 512 MiB logical-work budget covers source/configuration and Git-object
+   or deduplication. ADR 0021 explicitly replaces the former aggregate 10,000-item rule with two
+   serial logical admission groups of 10,000 selected refs, historical path/blob pairs, Git objects,
+   index entries and current paths, at most 20,000 total. Individual categories, combined path
+   coverage and resident raw/dedup inputs remain bounded at 10,000. Logical groups can require
+   multiple physical byte chunks; descriptor metadata can grow inside the unchanged finite
+   transport caps. A 512 MiB logical-work budget covers source/configuration and Git-object
    reads, scanner inputs, mirror writes, and repeated path associations; anticipated
    historical/index work, known ref/path inputs, and framing overhead are combined with completed
    preflight work and rejected before Gitleaks starts. Historical/index path forecasts charge one
-   Git-object read and one mirror write, plus one additional mirror write when a filename-rule
-   alias is required; they do not double-count those same operations. Runtime byte charges and
-   every scan input remain unchanged. One ten-minute scan-wide deadline covers enumeration,
+   Git-object read and one mirror payload write. A required filename-rule alias links only that
+   verified scanner-created private payload and charges its path metadata instead of an unwritten
+   duplicate payload. Every original/alias still has its complete separate scan. All current-file
+   reads, checks, actual work charges and shared budgets remain. One ten-minute scan-wide deadline covers enumeration,
    filesystem work, tool probes, and scanning, and each subprocess receives only the
    remaining time before a terminal deadline check. This keeps the complete scan finite after the
-   reviewed history grew beyond the original five-minute capacity; byte, item, metadata, logical
-   work, child-process, and cleanup limits remain unchanged. Historical mirror entries use
+   reviewed history grew beyond the original five-minute capacity. The later ADR 0021 item-policy
+   amendment changes only logical admission as stated; byte, metadata, logical-work, child-process
+   and cleanup limits remain unchanged and are never reset across groups. Historical mirror entries use
    deterministic per-item namespaces so batch construction is linear.
    The only repository-specific false-positive exception targets the inherited `generic-api-key`
    rule and the exact extracted secret `PRIVATE-PARENT-PWS0104-CANARY`. That fixed public value is

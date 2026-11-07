@@ -6,6 +6,13 @@ Domain validates records/snapshots/errors; the application coordinates guarded a
 
 Unchecked consent before import explains immutable copies, independent exports, expiry and locking. Retention is one/seven/thirty days, initially seven. Matching masked fields accept 12–128 characters; wrapping labels/buddies and keyboard order support enlarged text. Private `journal/assisted-use-v1.json` stores closed versioned policy, timestamps, salt and bounded scrypt verifier, without plaintext secret/free-text consent. Quota applies. The document manifest owns sources, page intent and export history. Invalid/future records reject document work.
 
+New assisted cases also require a display name in the same consent dialog. Its visible
+guidance explains that this name appears in the case chooser before unlocking;
+the existing curtain still hides all active case content while locked. The name
+uses the ordinary protected manifest v4 field, separately from the immutable case
+ID and assisted-use policy. Cancel creates no case. Consent and passphrase checks
+remain mandatory, and the backend publishes no organizer until enrollment is durable.
+
 Explicit inspection selects an isolated locked context, not an access grant. Checkpoint failures stay locked; unrelated cases cannot replace the context. Successful release clears selection. Checks validate IDs and inspect only current context; stale requests after release cannot reselect or revoke another case.
 
 Foreground loss, restart/reopen and five minutes of monotonic inactivity hide workflow, menus and owned content dialogs. Curtain/recovery remain available; Escape/shortcuts cannot reveal content. All seven assisted choosers use Qt ownership with overwrite/directory options. No picker is exempt from inactivity locking.

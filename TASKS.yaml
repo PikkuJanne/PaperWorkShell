@@ -6379,6 +6379,7 @@ tasks:
   - PWS-0807
   - PWS-0809
   - PWS-0810
+  - PWS-0811
   decision_refs:
   - PWS-D003
   - PWS-D022
@@ -6652,3 +6653,162 @@ tasks:
       VM request, release-interface or standalone-boundary change. See
       docs/development/pws0810-r9-second-pc-handoff-20261104.md. PWS-0810 stays done;
       no next dependency-ready unfinished task is introduced.
+
+- id: PWS-0811
+  milestone: M8
+  title: Repair and verify the next internal Windows application after R9 feedback
+  kind: implementation
+  priority: P0
+  effort: XL
+  status: in_progress
+  critical_path: true
+  depends_on:
+  - PWS-0810
+  decision_refs:
+  - PWS-D005
+  - PWS-D009
+  - PWS-D010
+  - PWS-D012
+  - PWS-D013
+  - PWS-D018
+  - PWS-D026
+  - PWS-D027
+  - PWS-D028
+  - PWS-D029
+  - PWS-D030
+  - PWS-D036
+  - PWS-D037
+  - PWS-D041
+  - PWS-D042
+  - PWS-D043
+  objective: Implement the maintainer's 2026-11-06 repair assignment, preserving R9 and
+    existing cases, and deliver a uniquely identified internal installer with actual
+    installed-interface, independent-output and performance evidence.
+  deliverables:
+  - Shared preview lifecycle/layout, selection, filename, case naming, menu and status repairs
+  - Direct ordinary PDF/OCR and text/checkmark journeys independent of checklist assignments
+  - Purposeful checklist presentation, safe property scrolling and measured performance repair
+  - Next Windows 11 x64 internal installer, fixture identities, installed evidence and short guide
+  - Honest HT-01 through HT-17 and T01 through T14 issue/test evidence record
+  acceptance_criteria:
+  - Preview geometry remains contained through loading, rotation, undo/redo, reopen and scaling;
+    late results cannot replace current page state and selection identifies its real source.
+  - Named cases and source filenames persist without changing immutable storage identities;
+    existing unnamed R9 cases remain openable and renameable.
+  - Ordinary export exposes explicit local OCR without arbitrary checklist assignments and
+    honors saved marks and supported transformations or explains unsupported combinations.
+  - Text and checkmarks are visibly created through the UI, survive reopening and appear in
+    independently rendered exports; scrolling cannot change unactivated property fields.
+  - Checklist purpose, filenames, missing requirements and substantive confirmations remain
+    understandable and saved/incomplete/ready/exported states remain distinct.
+  - Comparable cold/warm timings and profiling demonstrate removal of redundant work while
+    retaining bounded processing, cancellation, source preservation and output verification.
+  - The actual final installed candidate supplies current evidence for the bundle's T01-T14;
+    missing capabilities remain partial or not_run and never become unsupported readiness claims.
+  - Final delivery identities, outputs, screenshots, guide and records bind to the exact new
+    installer; R9, earlier evidence and unrelated maintainer work remain preserved.
+  verification:
+  - Run focused regressions, repository formatting/lint/typing, unit/integration/security/accessibility
+    and applicable constrained-resource and schema/task/document/portfolio checks.
+  - Exercise original recovered synthetic fixtures, installed asynchronous transitions and bounded
+    display settings, failure/cancellation/collision recovery and case continuity.
+  - Independently render/reopen exported PDFs and extract both scan pages' actual OCR text,
+    testing PAGE 206 and SCAN PAGE 206 separately plus an independent representative phrase.
+  - Run the bundle evidence audit and review actual screenshots, outputs, assertions and timings;
+    follow the replacement guide literally in the final installed candidate.
+  risk_tags:
+  - internal-delivery
+  - usability
+  - accessibility
+  - performance
+  - privacy
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes:
+    - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
+      internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
+    - Pre-existing dirty checkout preserved in ignored output/pws0811/baseline;
+      repair branch codex/pws-0811-internal-repairs. No external publication or force-push.
+    - Work log docs/development/pws0811-repairs-20261106.md records progress and evidence scope.
+    - R10 and R11 immutable engineering installers/source snapshots are preserved; neither
+      has installed acceptance. Uncontended R9 import/rotation/export measurements and
+      independently rendered baseline output justify further runtime-lifecycle/cache work.
+      Fresh-profile native contracts are passing within their recorded source epoch;
+      final installed T01-T14 and serialized full quality checks remain required.
+    - Closed desktop scope preserves the same six negotiated RPC descriptors and real
+      adapter admission while excluding unrelated OCR/export imports; 24 focused host
+      registration/import tests pass. Exact embedded-runtime import diagnostics remain
+      separate from installed timing. Typed case-cache source checks pass 87 unit and
+      41 Windows storage/security cases; combined native-worker proof remains pending.
+    - Prepared existing-Sandbox workflow has 65 passing fake/model cases after the
+      retired-R7 config/nonce guard alignment, independent source recheck and explicit
+      seal 20a8b3a12fd65a179ae694fe1c02f5dc3caf252b62fc0fdf75450c87308636f4.
+      Preparation alone supplied no guest or candidate result; later actual OS-only
+      capability evidence is recorded separately below.
+    - R12 installer/source11176a33daa507591020fd20faf54edfba1a917e and its evidence remain
+      preserved as an unaccepted engineering iteration. Actual installed identity checks
+      passed all 2443 runtime files, but native new-case observation exposed stretched
+      footer buttons before any case creation/import. Stable screenshot and the focused
+      before/after regressions remain retained. Repaired footer source passes 359 accessibility
+      and 56 unit/editor/journey checks; final 9/12/24pt cases fail on frozen R12 and pass
+      on repaired source. Installed successor verification remains required.
+    - Final stable processing-source inventory ec25af1ef9ecb5ab638c108171356bac1162df3cdc593a45d9194e255cd9f863
+      passes a clean combined native source pipeline in 42.22 seconds with empty recovery
+      journal; this uses reconstructed pristine R11 engine resources and current owned
+      code, not an installed successor. Its final 85 native and 9 constrained checks pass;
+      final installed T01-T14 and registered quality checks remain required.
+    - R13 candidate pws0811-internal-20261106-r13 allocated after a fresh bounded local
+      collision audit. R12 installer/source/evidence remain unchanged and unaccepted.
+      Later installed R12 engineering smoke imported the three original organization
+      fixtures, moved/rotated pages and exported an ordinary three-page PDF with independent
+      renders. This supplies no final-candidate acceptance or timing result.
+    - ADR0021 explicitly amends development scan admission to two 10000-item logical
+      groups, 20000 total. Verified private mirror-alias links remove duplicate payload
+      writes; exact completed history proof also applies to untracked current files, and
+      tracked paths derive from the same validated index capture. Existing 512MiB work,
+      16MiB metadata, 50000-record, ten-minute and per-payload/cache limits stay shared.
+      Both original R12 failures remain retained. Complete original-root fixture and
+      secret gates subsequently passed in 570.725 and 568.474 seconds with actual
+      counters and unchanged anchors; those are not detached-worktree pass labels.
+    - R13 froze at 8751bc9b8f84edd14d47ae80ca038ee216f02d6b and built 512823514 bytes,
+      installer SHA256 a327ce8150aa96af43f02a895b79da1de7e83b3ed43f7ada32827cceebed54b9.
+      Normal installed identity verifies 2443 runtime files; compact naming/menu checks
+      and real UI-created text/check exports have engineering diagnostic evidence.
+      Actual canvas painting still uses type labels instead of payload text/checks;
+      its narrow source correction now passes 147 focused and 17 constrained painting
+      checks. Installed successor verification remains required; R13 is unaccepted.
+    - R13 actual four-page searchable export independently proves PAGE 206 separately
+      on original PNG/output page 3 and image-only PDF/output page 4. Both raw texts are
+      SCAM PAGE 206; full SCAN PAGE 206 remains unmatched and is not claimed corrected.
+      Digital text and no-text control outcomes are preserved and honestly reported.
+      Independent phrase, final installed T01-T14 and final quality remain required.
+    - Detached R13 static checks pass through portfolio validation, then actual fixture
+      inspection times out at 600.046 seconds under the unchanged 600 second limit; secret
+      scan and remaining tail are not_run. Failed receipts remain retained; no budget
+      is raised. Final source checks require a quiet serial execution window.
+    - Fresh owned OS-only Sandbox 2ed4a289-c085-4390-b6e4-852629387907 now proves an actual
+      standard interactive account after observed logoff/reconnect, session 2, same user,
+      new logon, no administrator SID including deny-only, no linked token or elevation,
+      and successful mutex cleanup.
+      Result f6ed85438d271273fe5fe96264b8815052b25626196fe70ba72d0941ef220769 binds the
+      sealed 20a8 bootstrap and actual packet. Networking disabled; no product or host case
+      mapped or executed. This is environment capability only; candidate qualification NOT_RUN.
+    - Actual next candidate pws0811-internal-20261106-r14 is allocated after a fresh
+      collision audit. Eight plan-only helpers pass with unknown source/installer
+      identities unset. Canvas correction and 2890-message catalogs are source-complete;
+      final build, installed acceptance and serialized quality checks remain required.
+      Preview text size is explicitly approximate where physical page metadata is absent;
+      export point sizes and normalized placement remain authoritative.
+    - >-
+      R14 froze at d0b1ea673c166b424e072dc67af83b53468f19b1 and built 512829618 bytes, SHA256 497d62318d7cb126fd0c4b6a268778d7a2449aa37b73c192feabcfbdb53e8c09. Normal host installation preserved all 20 prior cases/104 files; actual before-first-launch verification passed 2443 runtime files with no public/Desktop process at start/end. These are R14 observations, not R15 results.
+    - >-
+      R14 real UI marks, named cases, filenames, move/Undo/Redo/rotation, whole-app reopen and draft Cancel have retained source/manifest/screenshot proof. Typed Internal trial, 24-point black plus geometric check persisted and appeared in independently checked ordinary and checklist exports. The incomplete checklist saved/reopened with one Ready/three Missing; explicit confirmation made all four Ready, removing an assigned page produced Needs review, and Undo restored it. Actual package completion saved/reopened one four-page, 4137-byte PDF plus its summary. Output correctness and source preservation remain distinct from timing or final-candidate acceptance.
+    - >-
+      Actual R14 package output succeeded while the main terminal status could retain old progress/Open context. The narrow window/test correction is source-verified in output/pws0811/development/package-terminal-status-v1/receipt.json: 12 terminal regressions and one invalid-review regression fail before; 72 focused checks plus formatting/lint/typing/localization pass after. Only window.py and its package-export test differ from R14 application/test source; worker, renderer, writer, schema and installer behavior are unchanged. R15 installed verification is still required.
+    - >-
+      The actual genuine-standard offline Sandbox blocked the exact unsigned R14 installer with Smart App Control before Setup; no guest product or T12 pass followed and no security bypass occurred. Host-visible evidence/archive 6ce420aa and explicit retirement 9c35f408 remain retained. Host functional observations are not relabeled as genuine-standard/offline acceptance. Final T12, representative DPI, performance comparison and final registered suites remain pending.
+    - >-
+      Actual successor pws0811-internal-20261106-r15 was freshly audited/reserved and is now authorized in product metadata. Eight guarded helper defaults pass, with final source/installer identities unset until observed. PWS-0811 remains in_progress; no ready/done or similar human-session claim. R9 legacy case 95c9a3d8 remains exact v3/revision 5 across six files, 236987 bytes before future UI open/rename/reopen. The four-original upright/unmarked OCR case 063fca31 is prepared with zero exports for later R15 measurement plus page-specific recognition proof. R14/source-pipeline evidence is not converted into R15 results.

@@ -741,7 +741,7 @@ def _manifest_namespaces(document: Mapping[str, object]) -> tuple[set[UUID], set
     case_id = _parse_uuid_text(document.get("case_id"), context="overlay.manifest_namespace")
     _register_namespace(non_overlay, case_id)
 
-    if document.get("schema_version") == 3:
+    if document.get("schema_version") in {3, 4}:
         for record in _record_collection(
             document.get("redaction_marks"), "overlay.manifest_namespace"
         ):

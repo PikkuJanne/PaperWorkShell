@@ -75,7 +75,12 @@ def _assert_revealed(control: QWidget) -> None:
             )
             scroll_count += 1
         ancestor = ancestor.parentWidget()
-    assert scroll_count > 0
+    if scroll_count == 0:
+        # Progress/recovery is pinned outside the scrolling workflow.
+        # Require the entire fixed control to fit its actual window.
+        owner = control.window()
+        bounds = QRect(control.mapTo(owner, control.rect().topLeft()), control.size())
+        assert owner.rect().contains(bounds), (control.objectName(), bounds, owner.rect())
 
 
 @pytest.mark.parametrize("scale", (1.0, 1.5, 2.0))

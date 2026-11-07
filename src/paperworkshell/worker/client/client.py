@@ -33,6 +33,7 @@ from paperworkshell.worker.client.process import (
     BrokeredHandlePurpose,
     IsolationEvidence,
     ProcessLauncher,
+    RetainedRuntimeLauncher,
     TransportReceive,
     TransportReceiveKind,
     WorkerLaunchRequest,
@@ -40,6 +41,7 @@ from paperworkshell.worker.client.process import (
     WorkerProcess,
     WorkerResourcePolicy,
     WorkerResourceReporter,
+    WorkerRuntimeReuseReporter,
     WorkerTransport,
 )
 from paperworkshell.worker.protocol.codec import (
@@ -58,6 +60,7 @@ from paperworkshell.worker.protocol.models import (
     OperationAcceptedPayload,
     OperationCancelAckPayload,
     OperationCancelPayload,
+    OperationOutcome,
     OperationProgressPayload,
     OperationResultPayload,
     OperationStartPayload,
@@ -197,6 +200,7 @@ class WorkerClient:
         self._pending_cancel_request_ids: set[UUID] = set()
         self._pending_cancel_started: dict[UUID, float] = {}
         self._last_cancellation_acknowledgement_ms: int | None = None
+        self._runtime_reuse_forbidden = False
         self._last_result: WorkerOperationResultSnapshot | None = None
         self._last_failure: WorkerFailure | None = None
         self._last_resource_snapshot: WorkerResourceSnapshot | None = None
@@ -285,6 +289,7 @@ class WorkerClient:
         self._pending_cancel_request_ids.clear()
         self._pending_cancel_started.clear()
         self._last_cancellation_acknowledgement_ms = None
+        self._runtime_reuse_forbidden = False
         self._last_result = None
         self._last_failure = None
         self._last_resource_snapshot = None
@@ -597,7 +602,18 @@ class WorkerClient:
         self._require_owner()
         if self._phase is WorkerLifecyclePhase.STOPPED:
             return
-        disposed = self._dispose_process(terminate=True)
+        disposed = self._dispose_process(
+            terminate=True,
+            allow_runtime_reuse=(
+                self._phase is WorkerLifecyclePhase.READY
+                and self._active_operation is None
+                and not self._pending_cancel_request_ids
+                and not self._runtime_reuse_forbidden
+                and self._last_result is not None
+                and self._last_result.outcome is OperationOutcome.SUCCEEDED
+                and self._last_failure is None
+            ),
+        )
         self._peer = None
         self._pid = None
         self._capabilities = ()
@@ -845,6 +861,9 @@ class WorkerClient:
             WorkerLifecyclePhase.CANCELLING,
         }:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.CANCELLATION)
+        # Success may legitimately win a cancellation race, but that must not
+        # erase the generation's disposal policy after acknowledgement settles.
+        self._runtime_reuse_forbidden = True
         request_id = self._new_id()
         cancellation_started = self._now()
         cancellation_deadline = self._cancellation_deadline
@@ -981,7 +1000,16 @@ class WorkerClient:
         self._phase = WorkerLifecyclePhase.FAULTED
         return failure
 
-    def _dispose_process(self, *, terminate: bool) -> bool:
+    def retire_runtime_access(self) -> None:
+        """Discard a static lease after a broker rejects post-termination output."""
+
+        self._require_owner()
+        if self._process is not None or self._cleanup_unconfirmed:
+            reject_client(WorkerClientErrorCode.TERMINATION_FAILED, WorkerClientContext.PROCESS)
+        if isinstance(self._launcher, RetainedRuntimeLauncher):
+            self._launcher.retire_runtime_access()
+
+    def _dispose_process(self, *, terminate: bool, allow_runtime_reuse: bool = False) -> bool:
         if self._cleanup_unconfirmed:
             return False
         process = self._process
@@ -990,6 +1018,8 @@ class WorkerClient:
         transport_closed = True
         tree_confirmed_before_sampling = False
         if process is not None:
+            if allow_runtime_reuse and isinstance(process, WorkerRuntimeReuseReporter):
+                process.allow_runtime_reuse()
             # The Windows closer has its own mandatory Job-stop fallback, but a
             # resource measurement may be called complete only when the tree was
             # already confirmed stopped before the terminal observation.  A

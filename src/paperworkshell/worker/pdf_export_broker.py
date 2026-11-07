@@ -32,7 +32,7 @@ from paperworkshell.domain.pdf_export import (
     reject_pdf_export,
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
-from paperworkshell.worker._windows_broker import WindowsResultPipe
+from paperworkshell.worker._windows_broker import WindowsResultPipe, retire_runtime_on_failure
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -427,6 +427,7 @@ class BrokeredPdfExporter:
 
         self._revoked = True
 
+    @retire_runtime_on_failure
     def export(
         self,
         plan: PdfExportPlan,

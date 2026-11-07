@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import replace
 from enum import StrEnum
 from typing import Final
 from uuid import UUID
@@ -18,7 +19,11 @@ from PySide6.QtGui import QPixmap
 
 from paperworkshell.app.organizer import OrganizerPageView, OrganizerViewState
 from paperworkshell.app.quality_analysis import QualityReviewSnapshot
-from paperworkshell.domain.image_transforms import IDENTITY_CONTRAST_FACTOR_MILLIONTHS
+from paperworkshell.domain.image_pages import ImageQuarterTurn
+from paperworkshell.domain.image_transforms import (
+    IDENTITY_CONTRAST_FACTOR_MILLIONTHS,
+    ImageTransformIntent,
+)
 from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.quality_analysis import QualityFinding
 from paperworkshell.domain.resource_policy import NORMAL_RESOURCE_POLICY_V1
@@ -62,6 +67,7 @@ _OVERLAY_KIND_TEXT: Final = {
     OverlayKind.HIGHLIGHT: mark("highlight"),
     OverlayKind.SHAPE: mark("shape"),
 }
+type _PreviewKey = tuple[UUID, int, ImageTransformIntent | None, NormalizedPageBox | None]
 
 
 class OrganizerPageListModel(QAbstractListModel):
@@ -86,6 +92,8 @@ class OrganizerPageListModel(QAbstractListModel):
         self._pages: tuple[OrganizerPageView, ...] = ()
         self._previews: OrderedDict[UUID, QPixmap] = OrderedDict()
         self._preview_costs: dict[UUID, int] = {}
+        self._preview_history: OrderedDict[_PreviewKey, QPixmap] = OrderedDict()
+        self._preview_history_bytes = 0
         self._retained_preview_bytes = 0
         self._preview_states: dict[UUID, PreviewState] = {}
         self._quality_review: QualityReviewSnapshot | None = None
@@ -122,7 +130,13 @@ class OrganizerPageListModel(QAbstractListModel):
         rotation_text = tr("rotated {value1} degrees", value1=page.rotation_degrees)
         quality_text = _page_quality_text(quality_state, len(findings))
         source_text = (
-            ""
+            tr(
+                "{value1} — source page {value2}",
+                value1=page.source_display_name,
+                value2=page.source_page_number or 1,
+            )
+            if page.source_display_name
+            else ""
             if page.document_number is None
             else tr(
                 "Document {value1}, source page {value2}",
@@ -149,6 +163,33 @@ class OrganizerPageListModel(QAbstractListModel):
             if page.removal_mark_count
             else ""
         )
+        saved_mark_preview = (
+            "\n"
+            + tr(
+                "{count} saved mark — open editor to preview"
+                if overlay_count == 1
+                else "{count} saved marks — open editor to preview",
+                count=overlay_count,
+            )
+            if overlay_count
+            else ""
+        )
+        if role == int(Qt.ItemDataRole.DisplayRole) and page.source_display_name:
+            return (
+                tr(
+                    "{value1}\n{value2} — {value3}° rotation\nPreview {value4}",
+                    value1=page.source_display_name,
+                    value2=tr(
+                        "Page {value1} of {value2}; source page {value3}",
+                        value1=page.position,
+                        value2=len(self._pages),
+                        value3=page.source_page_number or 1,
+                    ),
+                    value3=page.rotation_degrees,
+                    value4=tr(preview.value),
+                )
+                + saved_mark_preview
+            )
         if role == int(Qt.ItemDataRole.DisplayRole):
             return (
                 f"{page_text}\n"
@@ -159,11 +200,16 @@ class OrganizerPageListModel(QAbstractListModel):
                     value2=tr(preview.value),
                     value3=quality_text,
                 )
+                + saved_mark_preview
             )
         if role == int(Qt.ItemDataRole.AccessibleTextRole):
             return (
                 f"{page_text}"
-                + (f"; {source_text.lower()}" if source_text else "")
+                + (
+                    f"; {source_text if page.source_display_name else source_text.lower()}"
+                    if source_text
+                    else ""
+                )
                 + tr(
                     "; {value1}; preview {value2}; {value3}",
                     value1=rotation_text,
@@ -189,12 +235,13 @@ class OrganizerPageListModel(QAbstractListModel):
                 )
             )
         if role == int(Qt.ItemDataRole.DecorationRole):
-            return self._previews.get(page.page_id)
+            preview_pixmap = self._previews.get(page.page_id)
+            return None if preview_pixmap is None else QPixmap(preview_pixmap)
         if role == int(Qt.ItemDataRole.ToolTipRole):
             return tr(
                 "{value1}; {value2}; preview {value3}; {value4}.",
                 value1=page_text,
-                value2=rotation_text,
+                value2=f"{source_text}; {rotation_text}" if source_text else rotation_text,
                 value3=tr(preview.value),
                 value4=quality_text,
             )
@@ -247,6 +294,11 @@ class OrganizerPageListModel(QAbstractListModel):
             self._preview_costs.clear()
             self._preview_states.clear()
             self._retained_preview_bytes = 0
+            self._preview_history.clear()
+            self._preview_history_bytes = 0
+        for key in tuple(self._preview_history):
+            if key[0] not in retained:
+                self._preview_history_bytes -= _preview_byte_cost(self._preview_history.pop(key))
         self._pages = state.pages
         self._case_id = state.case_id
         self._revision = state.revision
@@ -271,13 +323,40 @@ class OrganizerPageListModel(QAbstractListModel):
         for page in state.pages:
             prior = prior_pages.get(page.page_id)
             preview_changed = prior is not None and (
-                prior.rotation_degrees != page.rotation_degrees
+                _preview_key(prior) != _preview_key(page)
                 or prior.preview_supported != page.preview_supported
-                or prior.scan_review_intent != page.scan_review_intent
             )
             if preview_changed or not page.preview_supported:
+                if (
+                    prior is not None
+                    and _rotation_independent_preview_content(prior)
+                    == _rotation_independent_preview_content(page)
+                    and page.preview_supported
+                ):
+                    previous = self._previews.get(page.page_id)
+                    if previous is not None:
+                        key = _preview_key(prior)
+                        old = self._preview_history.pop(key, None)
+                        if old is not None:
+                            self._preview_history_bytes -= _preview_byte_cost(old)
+                        self._preview_history[key] = previous
+                        self._preview_history_bytes += _preview_byte_cost(previous)
+                else:
+                    for key in tuple(self._preview_history):
+                        if key[0] == page.page_id:
+                            self._preview_history_bytes -= _preview_byte_cost(
+                                self._preview_history.pop(key)
+                            )
                 self._discard_preview(page.page_id)
                 self._preview_states.pop(page.page_id, None)
+                cached = self._preview_history.pop(_preview_key(page), None)
+                if cached is not None:
+                    cost = _preview_byte_cost(cached)
+                    self._preview_history_bytes -= cost
+                    self._previews[page.page_id] = cached
+                    self._preview_costs[page.page_id] = cost
+                    self._retained_preview_bytes += cost
+                    self._preview_states[page.page_id] = PreviewState.READY
             self._preview_states.setdefault(
                 page.page_id,
                 PreviewState.NOT_LOADED if page.preview_supported else PreviewState.UNAVAILABLE,
@@ -288,6 +367,7 @@ class OrganizerPageListModel(QAbstractListModel):
             ):
                 self._preview_states[page.page_id] = PreviewState.NOT_LOADED
         self.endResetModel()
+        self.evict_previews()
 
     def set_quality_review(self, snapshot: QualityReviewSnapshot) -> bool:
         """Attach one exact ephemeral review without changing page or preview state."""
@@ -383,7 +463,12 @@ class OrganizerPageListModel(QAbstractListModel):
         *,
         protected_page_ids: tuple[UUID, ...] = (),
     ) -> tuple[UUID, ...]:
-        """Evict LRU pixmaps until their measured decoded byte cost is bounded."""
+        """Evict old orientations first, then LRU current previews under one byte cap.
+
+        Current visible pixels are more useful than historical undo orientations.
+        Protected current pages are evicted only when no other current page can
+        satisfy the cap. A zero budget always releases every retained pixmap.
+        """
 
         if maximum_bytes is None:
             byte_budget = self._maximum_preview_cache_bytes
@@ -393,6 +478,12 @@ class OrganizerPageListModel(QAbstractListModel):
             raise ValueError("maximum_bytes must be a non-negative integer")
         protected = frozenset(protected_page_ids)
         evicted: list[UUID] = []
+        while (
+            self._preview_history
+            and self._retained_preview_bytes + self._preview_history_bytes > byte_budget
+        ):
+            _key, preview = self._preview_history.popitem(last=False)
+            self._preview_history_bytes -= _preview_byte_cost(preview)
         while self._retained_preview_bytes > byte_budget:
             candidate = next(
                 (page_id for page_id in self._previews if page_id not in protected),
@@ -410,23 +501,24 @@ class OrganizerPageListModel(QAbstractListModel):
         return self._preview_states.get(page_id)
 
     def preview(self, page_id: UUID) -> QPixmap | None:
-        """Return the shared bounded GUI preview for one current page, if ready."""
+        """Return a copy-on-write wrapper for the bounded current page pixels."""
 
         if type(page_id) is not UUID or self._preview_states.get(page_id) is not PreviewState.READY:
             return None
-        return self._previews.get(page_id)
+        preview_pixmap = self._previews.get(page_id)
+        return None if preview_pixmap is None else QPixmap(preview_pixmap)
 
     @property
     def retained_preview_count(self) -> int:
         """Return the number of GUI-memory pixmaps currently retained."""
 
-        return len(self._previews)
+        return len(self._previews) + len(self._preview_history)
 
     @property
     def retained_preview_bytes(self) -> int:
         """Return the deterministic decoded-pixel cost charged to the LRU."""
 
-        return self._retained_preview_bytes
+        return self._retained_preview_bytes + self._preview_history_bytes
 
     @property
     def maximum_preview_cache_bytes(self) -> int:
@@ -464,16 +556,25 @@ class OrganizerPageListModel(QAbstractListModel):
         row = self.row_for_page(page_id)
         if row is None:
             return
-        self._preview_states[page_id] = preview_state
+        self._discard_preview(page_id)
         if preview is None:
-            self._discard_preview(page_id)
+            self._preview_states[page_id] = preview_state
         else:
-            self._discard_preview(page_id)
-            self._previews[page_id] = preview
             byte_cost = _preview_byte_cost(preview)
-            self._preview_costs[page_id] = byte_cost
-            self._retained_preview_bytes += byte_cost
-            self._previews.move_to_end(page_id)
+            self._preview_states[page_id] = PreviewState.NOT_LOADED
+            if preview.isNull() or byte_cost > self._maximum_preview_cache_bytes:
+                self._preview_states[page_id] = PreviewState.FAILED
+            else:
+                # Make room before observers receive READY/dataChanged. A copy
+                # of the wrapper shares Qt's buffer until either owner mutates
+                # it; retaining the caller's mutable wrapper would corrupt our
+                # pixels and accounting if the caller resized or filled it.
+                self.evict_previews(self._maximum_preview_cache_bytes - byte_cost)
+                self._previews[page_id] = QPixmap(preview)
+                self._preview_costs[page_id] = byte_cost
+                self._retained_preview_bytes += byte_cost
+                self._previews.move_to_end(page_id)
+                self._preview_states[page_id] = preview_state
         index = self.index(row, 0)
         self.dataChanged.emit(
             index,
@@ -700,5 +801,28 @@ def _finding_page_text(finding: QualityFinding) -> str:
 def _preview_byte_cost(preview: QPixmap) -> int:
     """Charge decoded pixels without creating a duplicate image buffer."""
 
-    bytes_per_pixel = max(1, (preview.depth() + 7) // 8)
+    # Worker previews use RGBA; charge at least that much for a caller's
+    # lower-depth pixmap as well, including native scan-line padding.
+    bytes_per_pixel = max(4, (preview.depth() + 7) // 8)
     return preview.width() * preview.height() * bytes_per_pixel
+
+
+def _preview_key(page: OrganizerPageView) -> _PreviewKey:
+    """Identify pixels in this model's single case and fixed renderer/size session.
+
+    A page ID is an immutable source-page reference. Reordering, renaming and
+    quality/checklist state do not alter its source pixels. Organizer thumbnails
+    render source/scan transformations; editor canvases paint saved marks above
+    those source pixels. The model is cleared when the case changes.
+    """
+
+    return page.page_id, page.rotation_degrees, page.scan_review_intent, page.crop
+
+
+def _rotation_independent_preview_content(
+    page: OrganizerPageView,
+) -> tuple[ImageTransformIntent | None, NormalizedPageBox | None]:
+    intent = page.scan_review_intent
+    if intent is not None:
+        intent = replace(intent, additional_rotation=ImageQuarterTurn.DEGREES_0)
+    return intent, page.crop

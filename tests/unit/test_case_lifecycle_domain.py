@@ -20,11 +20,32 @@ from paperworkshell.domain.case_lifecycle import (
     CaseLifecycleErrorCode,
     CaseSummary,
     require_case_id,
+    require_case_name,
 )
 
 FIRST_ID = UUID("10000000-0000-4000-8000-000000000001")
 SECOND_ID = UUID("20000000-0000-4000-8000-000000000002")
 NOW = datetime(2026, 8, 2, 10, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("value", ["Helsinki – vuokra 2026", "Åäö é", "a", "a" * 200])
+def test_case_name_accepts_normal_unicode_display_text(value: str) -> None:
+    assert require_case_name(f"  {value}  ") == value
+
+
+@pytest.mark.parametrize("value", ["", "   ", "x" * 201, "a\nb", "a\x00b", 123])
+def test_case_name_invalid_input_is_sanitized(value: object) -> None:
+    with pytest.raises(CaseLifecycleError) as raised:
+        require_case_name(value)
+    assert raised.value.code is CaseLifecycleErrorCode.CASE_NAME_INVALID
+    if len(str(value).strip()) > 3:
+        assert str(value) not in repr(raised.value)
+
+
+def test_case_summary_never_formats_private_name() -> None:
+    summary = CaseSummary(FIRST_ID, 4, 0, NOW, NOW, case_name="PRIVATE_CASE_NAME_TOKEN")
+    assert summary.case_name == "PRIVATE_CASE_NAME_TOKEN"
+    assert "PRIVATE_CASE_NAME_TOKEN" not in repr(summary)
 
 
 def _summary(case_id: UUID = FIRST_ID, *, revision: int = 0) -> CaseSummary:

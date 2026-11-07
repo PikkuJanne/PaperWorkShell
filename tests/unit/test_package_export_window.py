@@ -20,7 +20,12 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QFileDialog, QLabel, QPus
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
 from paperworkshell.app.package_workflow import PackageReviewState
-from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
+from paperworkshell.domain.package_summary import (
+    PackageSummary,
+    PackageSummaryOutput,
+    PackageSummaryOutputState,
+    PackageSummaryStatus,
+)
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.backend import (
     OperationCancellation,
@@ -321,7 +326,7 @@ def test_release_failure_provides_keyboard_retry_and_keeps_mutations_disabled() 
         assert len(requests) == 2
         worker.package_review_cancelled.emit(requests[1])
         assert window._import_button.isEnabled()
-        assert retry.text() == "Review and export package"
+        assert retry.text() == "Export checklist package…"
 
 
 def test_summary_save_close_requests_cancellation_without_losing_package_result(
@@ -363,3 +368,220 @@ def test_summary_save_close_requests_cancellation_without_losing_package_result(
         assert status is not None
         assert "cancellation request" in status.text()
         assert "summary was saved" not in status.text()
+
+
+def _open_after_ordinary_export(
+    window: PaperWorkShellWindow,
+    commands: OrganizerBackendCommands,
+    worker: OrganizerBackendWorker,
+) -> PackageExportDialog:
+    """Retain a real ordinary-export presentation, then show inspection progress."""
+
+    previous = window._begin_long_operation(_LongOperationKind.PDF_EXPORT)
+    window._pdf_export_destination = Path("C:/synthetic-output/earlier.pdf")
+    worker.pages_pdf_export_saved.emit(previous.operation_id, 1)
+    worker.operation_finished.emit(previous.operation_id)
+    assert window._open_pdf_button.isVisible()
+    commands.package_review_begin_requested.connect(
+        lambda operation, _mode, _cancel: worker.package_progress.emit(operation, 4, 4)
+    )
+    return _open(window, commands, worker)
+
+
+def _close_and_release(
+    dialog: PackageExportDialog,
+    commands: OrganizerBackendCommands,
+    worker: OrganizerBackendWorker,
+) -> None:
+    releases: list[int] = []
+    commands.package_review_cancel_requested.connect(releases.append)
+    dialog.reject()
+    assert len(releases) == 1
+    worker.package_review_cancelled.emit(releases[0])
+    _application().processEvents()
+
+
+@pytest.mark.parametrize(
+    ("status", "output_state", "saved"),
+    [
+        (PackageSummaryStatus.COMMITTED, PackageSummaryOutputState.COMMITTED, 1),
+        (PackageSummaryStatus.CONSTRAINTS_BLOCKED, PackageSummaryOutputState.NOT_COMMITTED, 0),
+        (PackageSummaryStatus.NOT_COMMITTED, PackageSummaryOutputState.NOT_COMMITTED, 0),
+        (PackageSummaryStatus.PARTIAL, PackageSummaryOutputState.COMMITTED, 1),
+        (PackageSummaryStatus.UNCERTAIN, PackageSummaryOutputState.UNKNOWN, 0),
+    ],
+)
+def test_package_terminal_inventory_replaces_stale_progress_and_ordinary_open_actions(
+    status: PackageSummaryStatus,
+    output_state: PackageSummaryOutputState,
+    saved: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        requests: list[int] = []
+        commands.package_export_requested.connect(
+            lambda operation, *_args: requests.append(operation)
+        )
+        monkeypatch.setattr(
+            QFileDialog, "getExistingDirectory", lambda *_args, **_kwargs: "C:/synthetic-package"
+        )
+        _press(_acknowledge(dialog))
+        summary = PackageSummary(
+            status,
+            # A summary filename is display-only, never authority for an Open action.
+            (PackageSummaryOutput("../display-only.pdf", output_state, 4, 4137),),
+            active_page_count=4,
+        )
+        worker.package_export_ready.emit(requests[0], summary)
+        expected = summary.status_message + f" Files planned: 1. Files saved and reopened: {saved}."
+        assert window._status_label.text() == expected
+        assert expected in window._status_label.accessibleName()
+        assert window._last_result_label.text() == expected
+        assert window._last_result_label.toolTip() == ""
+        assert window._last_export_path is None
+        assert window._open_pdf_button.isHidden()
+        assert window._open_export_folder_button.isHidden()
+        assert not window._progress.isVisible()
+        _close_and_release(dialog, commands, worker)
+        assert window._status_label.text() == expected
+        preview = window._begin_long_operation(_LongOperationKind.PREVIEW)
+        worker.operation_status_changed.emit(preview.operation_id, "Page previews ready.")
+        worker.operation_finished.emit(preview.operation_id)
+        assert window._last_result_label.text() == expected
+        assert window._open_pdf_button.isHidden()
+
+
+@pytest.mark.parametrize(
+    ("phase", "code", "expected"),
+    [
+        ("review", "PACKAGE_REVIEW_CANCELLED", "Package inspection was cancelled."),
+        ("review", "PACKAGE_REVIEW_TIMED_OUT", "Package inspection exceeded its time limit."),
+        ("review", "PRIVATE", "Package review could not be prepared."),
+        (
+            "export",
+            "PACKAGE_WORKFLOW_CANCELLED",
+            "Package export was cancelled before writing files.",
+        ),
+        ("export", "PACKAGE_EXPORT_CANCELLED", "Package export was cancelled before completion."),
+        ("export", "PRIVATE", "Package export did not finish safely."),
+    ],
+)
+def test_package_failure_and_cancellation_remain_honest_after_closing_review(
+    phase: str, code: str, expected: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        requests: list[int] = []
+        if phase == "review":
+            commands.package_review_refresh_requested.connect(
+                lambda operation, *_args: requests.append(operation)
+            )
+            refresh = dialog.findChild(QPushButton, "packageExportRefreshButton")
+            assert refresh is not None
+            _press(refresh)
+        else:
+            commands.package_export_requested.connect(
+                lambda operation, *_args: requests.append(operation)
+            )
+            monkeypatch.setattr(
+                QFileDialog,
+                "getExistingDirectory",
+                lambda *_args, **_kwargs: "C:/synthetic-package",
+            )
+            _press(_acknowledge(dialog))
+        worker.package_failed.emit(requests[0], phase, UiFailure(code, "PRIVATE", True))
+        assert expected in window._status_label.text()
+        assert "PRIVATE" not in window._status_label.text()
+        terminal = window._last_result_label.text()
+        assert expected in terminal
+        assert window._last_export_path is None
+        assert window._open_pdf_button.isHidden()
+        _close_and_release(dialog, commands, worker)
+        assert window._status_label.text() == terminal
+        assert window._last_result_label.text() == terminal
+
+
+def test_closing_review_without_export_ends_inspection_without_claiming_saved_files() -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        _close_and_release(dialog, commands, worker)
+        assert "No files have been saved by this attempt." in window._status_label.text()
+        assert "processed" not in window._status_label.text()
+        assert window._last_result_label.text() == window._status_label.text()
+        assert window._last_export_path is None
+        assert window._open_pdf_button.isHidden()
+        assert window._open_export_folder_button.isHidden()
+        assert not window._progress.isVisible()
+
+
+def test_completed_inspection_stops_reporting_running_progress_while_review_is_open() -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        assert dialog.isVisible()
+        assert window._active_operation is None
+        assert window._status_label.text() == _review().summary.status_message
+        assert not window._progress.isVisible()
+
+
+@pytest.mark.parametrize("summary", [None, PackageSummary(PackageSummaryStatus.PLANNED)])
+def test_invalid_package_terminal_signal_cannot_publish_success_or_an_open_target(
+    summary: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        requests: list[int] = []
+        commands.package_export_requested.connect(
+            lambda operation, *_args: requests.append(operation)
+        )
+        monkeypatch.setattr(
+            QFileDialog, "getExistingDirectory", lambda *_args, **_kwargs: "C:/synthetic-package"
+        )
+        _press(_acknowledge(dialog))
+        previous_result = window._last_result_label.text()
+        worker.package_export_ready.emit(requests[0] + 1, summary)
+        stale_result_busy = dialog.busy
+        assert stale_result_busy and window._last_result_label.text() == previous_result
+        worker.package_export_ready.emit(requests[0], summary)
+        terminal_busy = dialog.busy
+        assert not terminal_busy
+        assert "Package export did not finish safely." in window._last_result_label.text()
+        assert window._last_export_path is None
+        assert window._open_pdf_button.isHidden()
+        _close_and_release(dialog, commands, worker)
+        assert "Package export did not finish safely." in window._status_label.text()
+
+
+def test_a_new_ordinary_export_restores_only_its_own_verified_open_target() -> None:
+    with _window() as (window, commands, worker):
+        dialog = _open_after_ordinary_export(window, commands, worker)
+        _close_and_release(dialog, commands, worker)
+        assert window._open_pdf_button.isHidden()
+        operation = window._begin_long_operation(_LongOperationKind.PDF_EXPORT)
+        destination = Path("C:/synthetic-output/current.pdf")
+        window._pdf_export_destination = destination
+        worker.pages_pdf_export_saved.emit(operation.operation_id, 4)
+        worker.operation_finished.emit(operation.operation_id)
+        assert window._last_export_path == destination
+        assert window._last_result_label.text() == "Saved current.pdf — 4 pages."
+        assert window._open_pdf_button.isVisible()
+        assert window._open_export_folder_button.isVisible()
+
+
+def test_invalid_inspection_response_releases_review_and_reports_a_main_window_failure() -> None:
+    with _window() as (window, commands, worker):
+        inspections: list[int] = []
+        releases: list[int] = []
+        commands.package_review_begin_requested.connect(
+            lambda operation, *_args: inspections.append(operation)
+        )
+        commands.package_review_cancel_requested.connect(releases.append)
+        _press(window._package_export_button)
+        worker.package_progress.emit(inspections[0], 4, 4)
+        worker.package_review_ready.emit(inspections[0], None)
+        assert window._active_operation is None
+        assert window._package_export_dialog is None
+        assert len(releases) == 1
+        assert "Package review could not be prepared." in window._status_label.text()
+        worker.package_review_cancelled.emit(releases[0])
+        assert window._status_label.text() == window._last_result_label.text()

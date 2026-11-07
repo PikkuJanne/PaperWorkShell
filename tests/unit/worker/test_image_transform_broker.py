@@ -429,12 +429,10 @@ def test_malformed_worker_digest_fails_after_one_shot_cleanup() -> None:
 def test_late_cancellation_suppresses_worker_output_and_closes_authorities() -> None:
     transformer, worker, events = _system()
     worker.withhold_result = True
-    calls = 0
 
     def cancellation() -> bool:
-        nonlocal calls
-        calls += 1
-        return calls >= 4
+        # Cancel an accepted operation, independent of added preflight checks.
+        return worker.payload is not None
 
     with pytest.raises(ImagePageError) as caught:
         transformer.transform(

@@ -1,19 +1,37 @@
 """Disposable full-page projection for the accessible overlay editor.
 
 The widget is pointer convenience, never the authoritative editing surface.
-It paints an already validated, bounded organizer preview and content-free
-overlay geometry.  The native list, exact fields, and buttons remain the
+It paints an already validated, bounded organizer preview and typed visual
+overlay intent. The native list, exact fields, and buttons remain the
 complete keyboard and assistive-technology path.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from importlib import metadata
+from pathlib import Path
 from typing import Final
 from uuid import UUID
+from weakref import ReferenceType, ref
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QHideEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PySide6.QtCore import QByteArray, QEvent, QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QGuiApplication,
+    QHideEvent,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+    QTransform,
+)
 from PySide6.QtWidgets import QLabel, QWidget
 
 from paperworkshell.domain.page_coordinates import (
@@ -29,7 +47,14 @@ from paperworkshell.domain.page_coordinates import (
     ScreenViewport,
 )
 from paperworkshell.localization.catalog import mark, tr
-from paperworkshell.overlays.models import OverlayRecord, OverlayVisibility
+from paperworkshell.overlays.models import (
+    MAX_OVERLAYS,
+    MarkOverlayPayload,
+    OverlayKind,
+    OverlayRecord,
+    OverlayVisibility,
+    TextualOverlayPayload,
+)
 from paperworkshell.ui.localized_messages import localized_overlay_record_name
 
 MIN_EDITOR_ZOOM_PERCENT: Final = 25
@@ -40,6 +65,47 @@ _BASE_LONG_EDGE: Final = 680
 _HANDLE_SIZE: Final = 12.0
 _MIN_POINTER_BOX_SPAN: Final = 8.0
 _POINTER_MOVE_THRESHOLD: Final = 2.0
+# Existing OFL-1.1 export-font identity; do not import a PDF/OCR adapter into
+# the GUI or accept a font path/token from a document. Qt sees only these bytes.
+_FONT_BYTES: Final = 556_216
+_FONT_SHA256: Final = "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9"
+_font_attempted = False
+_font_family: str | None = None
+_font_application: ReferenceType[QGuiApplication] | None = None
+
+
+def _preview_font_family() -> str | None:
+    """Register at most one bounded, hash-approved bundled font per application."""
+
+    global _font_attempted, _font_family, _font_application
+    application = QGuiApplication.instance()
+    if not isinstance(application, QGuiApplication):
+        return None
+    if _font_application is None or _font_application() is not application:
+        _font_application = ref(application)
+        _font_attempted, _font_family = False, None
+    if _font_attempted:
+        return _font_family
+    _font_attempted = True
+    try:
+        font_path = Path(
+            str(metadata.distribution("ocrmypdf").locate_file("ocrmypdf/data/NotoSans-Regular.ttf"))
+        )
+        if font_path.stat().st_size != _FONT_BYTES:
+            return None
+        with font_path.open("rb") as stream:
+            data = stream.read(_FONT_BYTES + 1)
+        if len(data) != _FONT_BYTES or hashlib.sha256(data).hexdigest() != _FONT_SHA256:
+            return None
+        font_id = QFontDatabase.addApplicationFontFromData(QByteArray(data))
+        families = QFontDatabase.applicationFontFamilies(font_id) if font_id >= 0 else []
+        if families:
+            _font_family = families[0]
+    except OSError, metadata.PackageNotFoundError:
+        # A missing/tampered trusted font is never parsed. Keep editing available
+        # with native fallback and disclose its approximate preview appearance.
+        return None
+    return _font_family
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,8 +114,8 @@ class _DragState:
     original_box: NormalizedPageBox
     start_normalized_x: int
     start_normalized_y: int
-    start_screen_x: float
-    start_screen_y: float
+    start_local: QPointF
+    start_global: QPointF
     resize: bool
     original_screen_box: ScreenBox | None
 
@@ -110,7 +176,8 @@ class OverlayEditorCanvas(QLabel):
             description += tr(
                 " The page is deskewed, so this is a schematic and pointer editing is disabled."
             )
-        self.setAccessibleDescription(tr(description))
+        self._base_description = tr(description)
+        self.setAccessibleDescription(self._base_description)
         role_pixmap = QPixmap(1, 1)
         role_pixmap.fill(Qt.GlobalColor.transparent)
         self.setPixmap(role_pixmap)
@@ -148,8 +215,10 @@ class OverlayEditorCanvas(QLabel):
         records: tuple[OverlayRecord, ...],
         selected_overlay_id: UUID | None,
     ) -> None:
-        if type(records) is not tuple or any(
-            type(record) is not OverlayRecord for record in records
+        if (
+            type(records) is not tuple
+            or len(records) > MAX_OVERLAYS
+            or any(type(record) is not OverlayRecord for record in records)
         ):
             raise ValueError("records must contain exact OverlayRecord values")
         if selected_overlay_id is not None and type(selected_overlay_id) is not UUID:
@@ -157,6 +226,8 @@ class OverlayEditorCanvas(QLabel):
         self._records = records
         self._selected_overlay_id = selected_overlay_id
         self._cancel_drag()
+        notice = self._text_preview_notice()
+        self.setAccessibleDescription(self._base_description + (" " + notice if notice else ""))
         self.update()
 
     def set_zoom_percent(self, percent: int) -> None:
@@ -187,7 +258,6 @@ class OverlayEditorCanvas(QLabel):
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        del event
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.fillRect(self.rect(), self.palette().window())
@@ -215,7 +285,28 @@ class OverlayEditorCanvas(QLabel):
         if self._show_guides:
             self._paint_guides(painter, page)
         for record in self._records:
-            self._paint_record(painter, record)
+            screen = self._screen_box_for(record)
+            if screen is not None and QRectF(event.rect()).intersects(
+                QRectF(
+                    screen.left, screen.top, screen.right - screen.left, screen.bottom - screen.top
+                )
+            ):
+                self._paint_record(painter, record)
+        notice = self._text_preview_notice()
+        if notice:
+            painter.save()
+            painter.setFont(self._notice_font())
+            painter.setPen(self.palette().windowText().color())
+            metrics = painter.fontMetrics()
+            line = metrics.elidedText(
+                notice, Qt.TextElideMode.ElideRight, max(1, round(page.width()))
+            )
+            painter.drawText(
+                QRectF(page.left(), 0, page.width(), self._canvas_margin()),
+                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                line,
+            )
+            painter.restore()
         if not self._pointer_mapping_enabled:
             text = tr(
                 "Deskewed preview: use the exact fields or keyboard controls; pointer editing is off."
@@ -261,6 +352,7 @@ class OverlayEditorCanvas(QLabel):
             event.accept()
             return
         point = event.position()
+        global_point = event.globalPosition()
         selected = self._record_for_id(self._selected_overlay_id)
         selected_screen = None if selected is None else self._screen_box_for(selected)
         resize_requested = (
@@ -319,8 +411,8 @@ class OverlayEditorCanvas(QLabel):
             record.box,
             normalized.x,
             normalized.y,
-            point.x(),
-            point.y(),
+            point,
+            global_point,
             resize,
             original_screen,
         )
@@ -333,7 +425,7 @@ class OverlayEditorCanvas(QLabel):
         if self._drag is None:
             super().mouseMoveEvent(event)
             return
-        proposal = self._proposed_drag_box(event.position())
+        proposal = self._proposed_drag_box(event.globalPosition())
         if proposal is not None:
             self._transient_box = proposal.box
             self._transient_snapped = proposal.snapped
@@ -345,7 +437,7 @@ class OverlayEditorCanvas(QLabel):
             super().mouseReleaseEvent(event)
             return
         drag = self._drag
-        proposal = self._proposed_drag_box(event.position())
+        proposal = self._proposed_drag_box(event.globalPosition())
         proposed = proposal.box if proposal is not None else self._transient_box
         snapped = proposal.snapped if proposal is not None else self._transient_snapped
         self._cancel_drag()
@@ -361,6 +453,8 @@ class OverlayEditorCanvas(QLabel):
     def changeEvent(self, event: QEvent) -> None:  # noqa: N802
         if event.type() is QEvent.Type.EnabledChange and not self.isEnabled():
             self._cancel_drag()
+        if event.type() is QEvent.Type.FontChange and hasattr(self, "_transform"):
+            self._apply_canvas_size()
         super().changeEvent(event)
 
     def event(self, event: QEvent) -> bool:
@@ -431,6 +525,16 @@ class OverlayEditorCanvas(QLabel):
             )
         )
         painter.drawRect(rect)
+        # Selection is an editing affordance beneath the actual content. Its
+        # handle must not white out a glyph or a check near the box corner.
+        if selected and self._transform.manifest_crop.contains_box(record.box):
+            handle = self._resize_handle_rect(screen)
+            painter.fillRect(handle, QColor("white"))
+            painter.setPen(QPen(QColor("black"), 2, Qt.PenStyle.SolidLine))
+            painter.drawRect(handle)
+        if type(record.payload) in {TextualOverlayPayload, MarkOverlayPayload}:
+            self._paint_content(painter, record)
+            return
         name = localized_overlay_record_name(record).replace(" visual mark", "")
         metrics = painter.fontMetrics()
         inner = rect.adjusted(3, 3, -3, -3)
@@ -453,20 +557,153 @@ class OverlayEditorCanvas(QLabel):
                 int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
                 visible_name,
             )
-        if selected and self._transform.manifest_crop.contains_box(record.box):
-            handle = self._resize_handle_rect(screen)
-            painter.fillRect(handle, QColor("white"))
-            painter.setPen(QPen(QColor("black"), 2, Qt.PenStyle.SolidLine))
-            painter.drawRect(handle)
 
-    def _screen_box_for(self, record: OverlayRecord) -> ScreenBox | None:
-        box = (
+    def _text_preview_notice(self) -> str:
+        if not any(type(record.payload) is TextualOverlayPayload for record in self._records):
+            return ""
+        if _preview_font_family() is None:
+            return tr("The preview font is unavailable; text appearance is approximate.")
+        if self._transform.pdf_geometry is None:
+            return tr("Text size is approximate in this preview.")
+        return ""
+
+    def _content_frame(self) -> tuple[QTransform, float, float]:
+        """Map full-page coordinates through crop/rotation, without paper guesses."""
+
+        crop = self._transform.manifest_crop
+        geometry = self._transform.pdf_geometry
+        if geometry is not None:
+            width = geometry.logical_width_user_units * geometry.user_unit
+            height = geometry.logical_height_user_units * geometry.user_unit
+        else:
+            page = self._page_rect()
+            width, height = page.width(), page.height()
+            if int(self._transform.manifest_rotation) in {90, 270}:
+                width, height = height, width
+            # Unknown physical size: one logical unit is a current screen pixel.
+            # This gives exact normalized placement, not an invented point scale.
+            width *= NORMALIZED_PAGE_MILLIONTHS / crop.width
+            height *= NORMALIZED_PAGE_MILLIONTHS / crop.height
+        size, viewport = self._rendered_size(), self._viewport()
+        origin, right, bottom = (
+            self._transform.normalized_to_screen(point, size, viewport)
+            for point in (
+                NormalizedPagePoint(crop.x, crop.y),
+                NormalizedPagePoint(crop.right, crop.y),
+                NormalizedPagePoint(crop.x, crop.bottom),
+            )
+        )
+        sx = (right.x - origin.x) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
+        sy = (right.y - origin.y) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
+        tx = (bottom.x - origin.x) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
+        ty = (bottom.y - origin.y) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
+        x, y = (
+            width * crop.x / NORMALIZED_PAGE_MILLIONTHS,
+            height * crop.y / NORMALIZED_PAGE_MILLIONTHS,
+        )
+        return (
+            QTransform(sx, sy, tx, ty, origin.x - sx * x - tx * y, origin.y - sy * x - ty * y),
+            width,
+            height,
+        )
+
+    def _paint_content(self, painter: QPainter, record: OverlayRecord) -> None:
+        payload = record.payload
+        if not isinstance(payload, (TextualOverlayPayload, MarkOverlayPayload)):
+            return
+        raw = payload.color.value
+        color = QColor(*(int(raw[index : index + 2], 16) for index in (1, 3, 5, 7)))
+        if not color.alpha():
+            return
+        transform, width, height = self._content_frame()
+        box = self._box_for(record)
+        rect = QRectF(
+            width * box.x / NORMALIZED_PAGE_MILLIONTHS,
+            height * box.y / NORMALIZED_PAGE_MILLIONTHS,
+            width * box.width / NORMALIZED_PAGE_MILLIONTHS,
+            height * box.height / NORMALIZED_PAGE_MILLIONTHS,
+        )
+        painter.save()
+        try:
+            painter.setClipRect(self._page_rect(), Qt.ClipOperation.IntersectClip)
+            painter.setWorldTransform(transform, True)
+            painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+            path = QPainterPath()
+            if type(payload) is TextualOverlayPayload:
+                if not payload.value:
+                    return
+                font = QFont(self.font())
+                family = _preview_font_family()
+                if family is not None:
+                    font.setFamily(family)
+                pixels = float(payload.font_size_points)
+                if self._transform.pdf_geometry is None:
+                    pixels *= self.logicalDpiY() / 72 * self._zoom_percent / 100
+                font.setPixelSize(max(1, round(pixels)))
+                # Outlines remain bounded by the existing 4,096-code-point
+                # model limit, even when a tiny crop makes the transform large.
+                # No full-page bitmap or transformed giant glyph raster is made.
+                path.addText(QPointF(0, 0), font, payload.value)
+                ink = path.boundingRect()
+                x = rect.left() - min(0.0, ink.left())
+                if ink.width() <= rect.width():
+                    x = min(x, rect.right() - ink.right())
+                path.translate(x, rect.center().y() - ink.center().y())
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+            else:
+                scale = (
+                    1.0 if self._transform.pdf_geometry is not None else self._zoom_percent / 100
+                )
+                stroke = min(6.0 * scale, max(1.0 * scale, min(rect.width(), rect.height()) / 8))
+                pen = QPen(
+                    color,
+                    stroke,
+                    Qt.PenStyle.SolidLine,
+                    Qt.PenCapStyle.FlatCap,
+                    Qt.PenJoinStyle.MiterJoin,
+                )
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                if stroke >= min(rect.width(), rect.height()):
+                    # Match the export adapter's minimum-cell behavior instead
+                    # of constructing an inverted inset for a subpixel mark.
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(color)
+                    path.addRect(rect)
+                    painter.drawPath(path)
+                    return
+                inner = rect.adjusted(stroke / 2, stroke / 2, -stroke / 2, -stroke / 2)
+                if payload.kind is OverlayKind.CHECKMARK:
+                    path.moveTo(
+                        inner.left() + inner.width() * 0.12, inner.top() + inner.height() * 0.55
+                    )
+                    path.lineTo(
+                        inner.left() + inner.width() * 0.40, inner.top() + inner.height() * 0.82
+                    )
+                    path.lineTo(
+                        inner.left() + inner.width() * 0.88, inner.top() + inner.height() * 0.18
+                    )
+                else:
+                    path.moveTo(inner.topLeft())
+                    path.lineTo(inner.bottomRight())
+                    path.moveTo(inner.topRight())
+                    path.lineTo(inner.bottomLeft())
+            painter.drawPath(path)
+        finally:
+            painter.restore()
+
+    def _box_for(self, record: OverlayRecord) -> NormalizedPageBox:
+        return (
             self._transient_box
             if self._drag is not None
             and self._drag.overlay_id == record.overlay_id
             and self._transient_box is not None
             else record.box
         )
+
+    def _screen_box_for(self, record: OverlayRecord) -> ScreenBox | None:
+        box = self._box_for(record)
         visible = self._transform.visible_part(box)
         if visible is None:
             return None
@@ -491,12 +728,14 @@ class OverlayEditorCanvas(QLabel):
                 return record
         return None
 
-    def _proposed_drag_box(self, point: QPointF) -> _PointerProposal | None:
+    def _proposed_drag_box(self, global_point: QPointF) -> _PointerProposal | None:
         drag = self._drag
         if drag is None:
             return None
-        delta_x = point.x() - drag.start_screen_x
-        delta_y = point.y() - drag.start_screen_y
+        # Selecting text can move the canvas when the editor reveals its value row.
+        # Measure pointer travel in a coordinate system that does not move with it.
+        delta = global_point - drag.start_global
+        delta_x, delta_y = delta.x(), delta.y()
         if max(abs(delta_x), abs(delta_y)) < _POINTER_MOVE_THRESHOLD:
             return _PointerProposal(drag.original_box, False)
         try:
@@ -520,6 +759,7 @@ class OverlayEditorCanvas(QLabel):
                 )
                 snapped = False
             else:
+                point = drag.start_local + delta
                 normalized = self._normalized_point(self._clamp_to_page(point))
                 dx = normalized.x - drag.start_normalized_x
                 dy = normalized.y - drag.start_normalized_y
@@ -593,12 +833,25 @@ class OverlayEditorCanvas(QLabel):
         )
 
     def _page_rect(self) -> QRectF:
+        margin = self._canvas_margin()
         return QRectF(
-            _CANVAS_MARGIN,
-            _CANVAS_MARGIN,
-            max(1, self.width() - 2 * _CANVAS_MARGIN),
-            max(1, self.height() - 2 * _CANVAS_MARGIN),
+            margin,
+            margin,
+            max(1, self.width() - 2 * margin),
+            max(1, self.height() - 2 * margin),
         )
+
+    def _canvas_margin(self) -> int:
+        return max(_CANVAS_MARGIN, QFontMetrics(self._notice_font()).height() + 8)
+
+    def _notice_font(self) -> QFont:
+        # A source preview cannot move when a locale admits a different native
+        # fallback family. One fixed, admitted face owns the notice margin.
+        font = QFont(self.font())
+        family = _preview_font_family()
+        if family is not None:
+            font.setFamily(family)
+        return font
 
     def _rendered_size(self) -> RenderedImageSize:
         page = self._page_rect()
@@ -609,6 +862,8 @@ class OverlayEditorCanvas(QLabel):
         return ScreenViewport(page.left(), page.top(), page.width(), page.height())
 
     def _base_canvas_size(self) -> QSize:
+        width: float
+        height: float
         if self._preview is not None and not self._preview.isNull():
             width = self._preview.width()
             height = self._preview.height()
@@ -617,8 +872,13 @@ class OverlayEditorCanvas(QLabel):
             height = self._display_size.height_pixels
         else:
             crop = self._transform.manifest_crop
-            width = max(1, round(612 * crop.width / NORMALIZED_PAGE_MILLIONTHS))
-            height = max(1, round(792 * crop.height / NORMALIZED_PAGE_MILLIONTHS))
+            geometry = self._transform.pdf_geometry
+            width = (
+                geometry.logical_width_user_units if geometry is not None else 1.0
+            ) * crop.width
+            height = (
+                geometry.logical_height_user_units if geometry is not None else 1.0
+            ) * crop.height
             if int(self._transform.manifest_rotation) in {90, 270}:
                 width, height = height, width
         if width >= height:
@@ -627,14 +887,17 @@ class OverlayEditorCanvas(QLabel):
         else:
             base_height = _BASE_LONG_EDGE
             base_width = max(1, round(_BASE_LONG_EDGE * width / height))
-        return QSize(base_width + 2 * _CANVAS_MARGIN, base_height + 2 * _CANVAS_MARGIN)
+        return QSize(
+            base_width + 2 * self._canvas_margin(), base_height + 2 * self._canvas_margin()
+        )
 
     def _apply_canvas_size(self) -> None:
         base = self._base_canvas_size()
-        page_width = max(1, base.width() - 2 * _CANVAS_MARGIN)
-        page_height = max(1, base.height() - 2 * _CANVAS_MARGIN)
-        width = max(1, round(page_width * self._zoom_percent / 100)) + 2 * _CANVAS_MARGIN
-        height = max(1, round(page_height * self._zoom_percent / 100)) + 2 * _CANVAS_MARGIN
+        margin = self._canvas_margin()
+        page_width = max(1, base.width() - 2 * margin)
+        page_height = max(1, base.height() - 2 * margin)
+        width = max(1, round(page_width * self._zoom_percent / 100)) + 2 * margin
+        height = max(1, round(page_height * self._zoom_percent / 100)) + 2 * margin
         self.setFixedSize(width, height)
 
 

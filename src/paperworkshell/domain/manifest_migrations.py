@@ -11,6 +11,7 @@ from paperworkshell.domain.manifest_repository import (
     INTERMEDIATE_MANIFEST_SCHEMA_VERSION,
     LEGACY_MANIFEST_SCHEMA_VERSION,
     MAX_SAFE_MANIFEST_INTEGER,
+    REMOVAL_MANIFEST_SCHEMA_VERSION,
     ManifestRepositoryErrorCode,
     copy_manifest_document,
     reject_manifest_repository,
@@ -76,9 +77,36 @@ def migrate_manifest_v2_to_v3(document: Mapping[str, object]) -> dict[str, objec
         reject_manifest_repository(
             ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_marks"
         )
-    copied["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
+    copied["schema_version"] = REMOVAL_MANIFEST_SCHEMA_VERSION
     copied["revision"] = revision + 1
     copied["redaction_marks"] = []
+    return copied
+
+
+def migrate_manifest_v3_to_v4(document: Mapping[str, object]) -> dict[str, object]:
+    """Retain all v3 intent and introduce an empty private case display name."""
+
+    copied = copy_manifest_document(document, context="manifest.migration_document")
+    if type(copied.get("schema_version")) is not int:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_version"
+        )
+    if copied["schema_version"] != REMOVAL_MANIFEST_SCHEMA_VERSION:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.VERSION_UNSUPPORTED, "manifest.migration_version"
+        )
+    revision = copied.get("revision")
+    if type(revision) is not int or not 0 <= revision < MAX_SAFE_MANIFEST_INTEGER:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_revision"
+        )
+    if "case_name" in copied:
+        reject_manifest_repository(
+            ManifestRepositoryErrorCode.MANIFEST_INVALID, "manifest.migration_name"
+        )
+    copied["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
+    copied["revision"] = revision + 1
+    copied["case_name"] = ""
     return copied
 
 
@@ -92,7 +120,8 @@ class ManifestMigrationStep:
 
 MANIFEST_MIGRATION_REGISTRY: Final = (
     ManifestMigrationStep(LEGACY_MANIFEST_SCHEMA_VERSION, INTERMEDIATE_MANIFEST_SCHEMA_VERSION),
-    ManifestMigrationStep(INTERMEDIATE_MANIFEST_SCHEMA_VERSION, CURRENT_MANIFEST_SCHEMA_VERSION),
+    ManifestMigrationStep(INTERMEDIATE_MANIFEST_SCHEMA_VERSION, REMOVAL_MANIFEST_SCHEMA_VERSION),
+    ManifestMigrationStep(REMOVAL_MANIFEST_SCHEMA_VERSION, CURRENT_MANIFEST_SCHEMA_VERSION),
 )
 
 
@@ -139,6 +168,8 @@ def migrate_manifest_to_current(document: Mapping[str, object]) -> dict[str, obj
         candidate["revision"] = revision
         if step.source_version == LEGACY_MANIFEST_SCHEMA_VERSION:
             candidate = migrate_manifest_v1_to_v2(candidate)
-        else:
+        elif step.source_version == INTERMEDIATE_MANIFEST_SCHEMA_VERSION:
             candidate = migrate_manifest_v2_to_v3(candidate)
+        else:
+            candidate = migrate_manifest_v3_to_v4(candidate)
     return candidate

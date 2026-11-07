@@ -337,13 +337,17 @@ def test_baseline_loader_is_bounded_and_sanitizes_io_failure(tmp_path: Path) -> 
         load_quality_baseline(oversized)
 
 
-def test_checked_in_baseline_is_canonical_and_matches_current_corpus() -> None:
-    assert BASELINE_PATH.is_file(), "the revision-bound PWS-0207 baseline is required"
-    baseline = validate_current_baseline(BASELINE_PATH)
+def test_checked_in_baseline_is_canonical_and_matches_current_corpus(
+    pytestconfig: pytest.Config,
+) -> None:
+    selected = pytestconfig.getoption("--pws0207-baseline")
+    baseline_path = BASELINE_PATH if selected is None else Path(selected).resolve(strict=True)
+    assert baseline_path.is_file(), "the revision-bound PWS-0207 baseline is required"
+    baseline = validate_current_baseline(baseline_path)
     assert baseline.corpus_sha256 == EXPECTED_CORPUS_SHA256
     assert baseline.profile_sha256 == EXPECTED_PROFILE_SHA256
     assert tuple(metric.kind for metric in baseline.metrics) == FINDING_KINDS
-    document = json.loads(BASELINE_PATH.read_text(encoding="ascii"))
+    document = json.loads(baseline_path.read_text(encoding="ascii"))
     assert document == baseline.as_document()
 
 

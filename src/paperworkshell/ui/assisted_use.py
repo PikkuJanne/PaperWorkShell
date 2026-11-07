@@ -30,6 +30,7 @@ from paperworkshell.domain.assisted_use import (
     AssistedUseError,
     AssistedUseErrorCode,
 )
+from paperworkshell.domain.case_lifecycle import CaseLifecycleError, require_case_name
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.localization_layout import adapt_localized_content
@@ -85,6 +86,13 @@ class AssistedConsentDialog(QDialog):
         self.resize(620, 560)
         self._announcer = ScreenReaderAnnouncer(self)
         self._initial_focus_pending = True
+        self._case_name = QLineEdit()
+        self._case_name.setObjectName("assistedCaseName")
+        self._case_name.setAccessibleName(tr("Case name"))
+        name_guidance = tr("This name appears in the case chooser, including before unlocking.")
+        self._case_name.setAccessibleDescription(name_guidance)
+        self._case_name.setPlaceholderText(tr("Application support"))
+        self._case_name.setMaxLength(200)
 
         guidance = _plain_label(
             tr(
@@ -125,6 +133,7 @@ class AssistedConsentDialog(QDialog):
         )
         form = QVBoxLayout()
         for text, name, field in (
+            (mark("Case name"), "assistedCaseNameLabel", self._case_name),
             (mark("Case expires after"), "assistedRetentionLabel", self._retention),
             (mark("Local case passphrase"), "assistedPassphraseLabel", self._passphrase),
             (mark("Repeat passphrase"), "assistedPassphraseConfirmationLabel", self._confirmation),
@@ -135,6 +144,8 @@ class AssistedConsentDialog(QDialog):
             # label column when the scroll area's content policy allows shrinkage.
             form.addWidget(label)
             form.addWidget(field)
+            if field is self._case_name:
+                form.addWidget(_plain_label(name_guidance, "assistedCaseNameGuidance"))
         self._consent = QCheckBox(
             tr("The person receiving help agrees to this local storage, expiry, and locking.")
         )
@@ -198,6 +209,7 @@ class AssistedConsentDialog(QDialog):
         layout.addWidget(buttons)
         for before, after in pairwise(
             (
+                self._case_name,
                 self._retention,
                 self._passphrase,
                 self._confirmation,
@@ -209,6 +221,12 @@ class AssistedConsentDialog(QDialog):
             )
         ):
             QWidget.setTabOrder(before, after)
+
+    @property
+    def case_name(self) -> str:
+        """Return the chosen display name separately from the immutable case ID."""
+
+        return require_case_name(self._case_name.text())
 
     @property
     def retention_days(self) -> int:
@@ -246,6 +264,14 @@ class AssistedConsentDialog(QDialog):
         if value != self._confirmation.text():
             self._validation_failed(
                 tr("The passphrases must match. Enter them again."), self._confirmation
+            )
+            return
+        try:
+            require_case_name(self._case_name.text())
+        except CaseLifecycleError:
+            self._validation_failed(
+                tr("Enter a case name without line breaks or hidden control characters."),
+                self._case_name,
             )
             return
         super().accept()

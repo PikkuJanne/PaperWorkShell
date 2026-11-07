@@ -73,6 +73,23 @@ def _service(manager: CaseWorkspaceManager) -> CaseLifecycleService:
     return CaseLifecycleService(WindowsCaseLifecycleStore(manager, clock=lambda: NOW))
 
 
+def test_named_case_creation_commits_private_name_and_reopens_by_stable_id(tmp_path: Path) -> None:
+    manager = _manager(_profile(tmp_path), identifiers=(FIRST_ID,))
+    service = _service(manager)
+    created = service.create_case("Helsinki – hakemus äö")
+    assert created.case_name == "Helsinki – hakemus äö"
+    assert created.case_id == FIRST_ID
+    assert manager.layout(FIRST_ID).case_root.name == str(FIRST_ID)
+    service.close_case()
+    reopened_service = _service(manager)
+    reopened = reopened_service.open_case(FIRST_ID)
+    assert reopened.case_name == created.case_name
+    assert reopened.case_id == created.case_id
+    assert service.list_cases().cases[0].case_name == created.case_name
+    assert not list(manager.layout(FIRST_ID).temp.iterdir())
+    reopened_service.close_case()
+
+
 def _manifest_snapshot(path: Path) -> tuple[bytes, int, int, int]:
     stat = path.stat(follow_symlinks=False)
     return (path.read_bytes(), stat.st_ino, stat.st_size, stat.st_mtime_ns)
@@ -82,7 +99,7 @@ def _variant(kind: str, case_id: UUID) -> bytes:
     canonical = build_initial_manifest_bytes(case_id, NOW)
     if kind in {"future", "legacy"}:
         document = json.loads(canonical)
-        document["schema_version"] = 4 if kind == "future" else 0
+        document["schema_version"] = 5 if kind == "future" else 0
         return json.dumps(document, separators=(",", ":"), sort_keys=True).encode() + b"\n"
     if kind == "malformed":
         return b'{"schema_version":1'
@@ -377,7 +394,8 @@ def test_manifest_changed_after_inventory_is_revalidated_before_first_removal(
     service.close_case(FIRST_ID)
     layout = manager.layout(FIRST_ID)
     current = layout.manifest.read_bytes()
-    future = current.replace(b'"schema_version":3', b'"schema_version":4', 1)
+    future = current.replace(b'"schema_version":4', b'"schema_version":5', 1)
+    assert future != current
     assert len(future) == len(current)
     real_inventory = manager._inventory_directory
     injected = False

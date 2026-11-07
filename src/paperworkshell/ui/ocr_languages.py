@@ -90,8 +90,8 @@ class OcrLanguageDialog(QDialog):
         self._initial_focus_pending = True
         self._shutdown_discard = False
         self.setObjectName("ocrLanguageDialog")
-        self.setWindowTitle(tr("Manage OCR languages"))
-        self.setAccessibleName(tr("Manage OCR languages"))
+        self.setWindowTitle(tr("OCR languages"))
+        self.setAccessibleName(tr("OCR languages"))
         self.setAccessibleDescription(
             tr(
                 "Review verified local OCR language packs and choose one or more languages. PaperWorkShell does not download language data from this dialog."
@@ -111,7 +111,7 @@ class OcrLanguageDialog(QDialog):
 
         guidance = QLabel(
             tr(
-                "PaperWorkShell uses only installed and verified local OCR language packs. It never downloads language data while checking languages or processing documents."
+                "The list shows the last local availability check. Choose Refresh to check again. Every OCR export verifies its own runtime and language data. Processing stays on this computer."
             )
         )
         guidance.setObjectName("ocrLanguageGuidance")
@@ -157,7 +157,7 @@ class OcrLanguageDialog(QDialog):
         instructions_layout = QVBoxLayout(instructions_group)
         instructions = QLabel(
             tr(
-                "Optional OCR packs are not distributed by this source build. A packaged release or administrator must provide the exact approved offline procedure. After verified local prestaging, reopen PaperWorkShell and choose Refresh. Do not copy unverified trained-data files into the application."
+                "Installed languages are listed above. English is selected by default when available. Additional language packs must follow the approved offline installation procedure; choose Refresh after installation. Do not copy unverified language files into the application."
             )
         )
         instructions.setObjectName("ocrLanguageInstructions")

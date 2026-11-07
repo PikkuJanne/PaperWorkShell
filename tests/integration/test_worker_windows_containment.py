@@ -437,11 +437,13 @@ def test_actual_python_host_negotiates_and_closes_inside_app_container(
     _assert_profile_removed(profile_folder)
 
 
-def test_base_interpreter_uses_consumed_venv_hint_in_one_process(tmp_path: Path) -> None:
+def test_base_interpreter_uses_consumed_venv_hint_in_one_process(
+    tmp_path: Path, owned_production_worker_code: Path
+) -> None:
     base_runtime = Path(sys.base_prefix).resolve()
     venv_runtime = tmp_path / "worker-venv"
     venv.EnvBuilder(with_pip=False).create(venv_runtime)
-    source_root = _REPOSITORY_ROOT / "src"
+    source_root = owned_production_worker_code
     config = WindowsLaunchConfig(
         python_executable=(base_runtime / "python.exe").resolve(),
         bootstrap_script=(source_root / "paperworkshell" / "worker" / "host_bootstrap.py"),

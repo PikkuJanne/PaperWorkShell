@@ -20,9 +20,11 @@ from contextlib import AbstractContextManager
 from ctypes import wintypes
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from functools import lru_cache
 from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING, Any, Final, Never, Self
+from uuid import UUID
 
 from paperworkshell.worker.client._acl_recovery import (
     ACL_RECOVERY_JOURNAL_VERSION,
@@ -33,6 +35,7 @@ from paperworkshell.worker.client._acl_recovery import (
     AclRecoveryJournalError,
     AclRecoveryObject,
     AclRecoveryPhase,
+    encode_acl_recovery_entry,
 )
 from paperworkshell.worker.client.models import WorkerResourceSnapshot
 from paperworkshell.worker.client.tesseract_runtime import (
@@ -153,7 +156,10 @@ _INHERIT_ONLY_ACE: Final = 0x08
 _ACL_SIZE_INFORMATION_CLASS: Final = 2
 _MUTEX_ALL_ACCESS: Final = 0x001F_0001
 _SE_DACL_PRESENT: Final = 0x0004
+_SE_DACL_DEFAULTED: Final = 0x0008
+_SE_DACL_AUTO_INHERIT_REQ: Final = 0x0100
 _SE_DACL_AUTO_INHERITED: Final = 0x0400
+_SE_DACL_PROTECTED: Final = 0x1000
 _SE_SELF_RELATIVE: Final = 0x8000
 
 _ERROR_INSUFFICIENT_BUFFER: Final = 122
@@ -511,6 +517,7 @@ class _AccessMaskAce(ctypes.Structure):
     ]
 
 
+@lru_cache(maxsize=1)
 def _kernel32() -> Any:
     if os.name != "nt":
         _reject(
@@ -521,16 +528,19 @@ def _kernel32() -> Any:
     return ctypes.WinDLL("kernel32", use_last_error=True)
 
 
+@lru_cache(maxsize=1)
 def _advapi32() -> Any:
     _kernel32()
     return ctypes.WinDLL("advapi32", use_last_error=True)
 
 
+@lru_cache(maxsize=1)
 def _userenv() -> Any:
     _kernel32()
     return ctypes.WinDLL("userenv", use_last_error=True)
 
 
+@lru_cache(maxsize=1)
 def _shell32() -> Any:
     _kernel32()
     return ctypes.WinDLL("shell32", use_last_error=True)
@@ -1835,6 +1845,20 @@ class _AccessGrantLease:
     owner_pid: int = field(default=0, repr=False)
     owner_created_100ns: int = field(default=0, repr=False)
     prepared_publication_attempted: bool = field(default=False, repr=False)
+    owner_thread: int = field(default_factory=threading.get_ident, repr=False)
+    _last_published_entry: AclRecoveryEntry | None = field(default=None, repr=False)
+
+    def _active_recovery_witness(self) -> _ActiveLeaseRecoveryWitness | None:
+        entry = self._last_published_entry
+        inventory = self.inventory
+        if (
+            entry is None
+            or entry.phase is not AclRecoveryPhase.ACTIVE
+            or inventory is None
+            or self.cleanup_verified
+        ):
+            return None
+        return _ActiveLeaseRecoveryWitness(self, inventory, entry, self.owner_thread)
 
     def _discard_unmutated_inventory(self, inventory: _ApprovedResourceInventory) -> None:
         if any(
@@ -2298,21 +2322,37 @@ class _AccessGrantLease:
         journal: AclRecoveryJournal,
         phase: AclRecoveryPhase,
     ) -> None:
+        # Publication can commit before raising. No ACTIVE witness may survive
+        # an uncertain PREPARED/REVOKING write or its construction.
+        self._last_published_entry = None
         try:
-            journal.write(self._entry(phase))
+            entry = self._entry(phase)
+            journal.write(entry)
         except AclRecoveryJournalError:
             _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                 "access.recovery_journal",
                 "Worker access recovery records could not be persisted.",
             )
+        self._last_published_entry = entry
 
     def _clear(self) -> None:
+        self._last_published_entry = None
         self.paths.clear()
         self.observed_objects.clear()
         self.original_auto_inherited.clear()
         self.recovery_objects.clear()
         self.prepared_publication_attempted = False
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class _ActiveLeaseRecoveryWitness:
+    """An owned live lease, never a cached permission or recovery decision."""
+
+    lease: _AccessGrantLease
+    inventory: _ApprovedResourceInventory
+    entry: AclRecoveryEntry
+    owner_thread: int
 
 
 def _capture_security_descriptor_handle(handle: int) -> bytes:
@@ -2396,25 +2436,26 @@ def _dacl_auto_inherited_handle(handle: int) -> bool:
 
 
 def _restore_dacl_auto_inherited_handle(handle: int, expected: bool) -> None:
-    descriptor = bytearray(_capture_security_descriptor_handle(handle))
+    descriptor = _capture_security_descriptor_handle(handle)
     _require_non_null_dacl(descriptor)
     control = _descriptor_control(descriptor)
-    desired = control | _SE_DACL_AUTO_INHERITED if expected else control & ~_SE_DACL_AUTO_INHERITED
-    if desired == control:
+    if bool(control & _SE_DACL_AUTO_INHERITED) is expected:
         return
-    descriptor[2:4] = desired.to_bytes(2, "little")
-    set_security = _advapi32().SetKernelObjectSecurity
-    set_security.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p)
-    set_security.restype = wintypes.BOOL
-    storage = ctypes.create_string_buffer(bytes(descriptor))
-    if (
-        not set_security(
-            wintypes.HANDLE(handle),
-            _DACL_SECURITY_INFORMATION,
-            ctypes.cast(storage, ctypes.c_void_p),
+    offset = int.from_bytes(descriptor[16:20], "little")
+    if not 20 <= offset < len(descriptor):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.restore",
+            "Windows could not restore an approved worker resource policy.",
         )
-        or _dacl_auto_inherited_handle(handle) is not expected
-    ):
+    storage = ctypes.create_string_buffer(descriptor)
+    _set_pinned_directory_dacl(
+        handle,
+        _query_retained_resource_info(handle),
+        ctypes.c_void_p(ctypes.addressof(storage) + offset),
+        auto_inherited=expected,
+    )
+    if _dacl_auto_inherited_handle(handle) is not expected:
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
             "access.restore",
@@ -3019,7 +3060,7 @@ def _is_mutable_python_cache_entry(path: Path) -> bool:
 
 
 def _require_retained_resource_unchanged(
-    resource: _RetainedResource,
+    resource: _RetainedResource | _RetainedResourceGuard,
     *,
     require_single_link: bool = True,
 ) -> None:
@@ -3132,15 +3173,20 @@ def _change_sid_access_handle(
                 "access.build",
                 "Windows could not construct the approved worker resource policy.",
             )
-        status = set_security_info(
-            wintypes.HANDLE(handle),
-            _SE_FILE_OBJECT,
-            _DACL_SECURITY_INFORMATION,
-            None,
-            None,
-            new_dacl,
-            None,
-        )
+        info = _query_retained_resource_info(handle)
+        if info.is_directory and inheritance == _NO_INHERITANCE:
+            _set_pinned_directory_dacl(handle, info, new_dacl)
+            status = _ERROR_SUCCESS
+        else:
+            status = set_security_info(
+                wintypes.HANDLE(handle),
+                _SE_FILE_OBJECT,
+                _DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                new_dacl,
+                None,
+            )
         if status != _ERROR_SUCCESS:
             _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
@@ -3150,6 +3196,109 @@ def _change_sid_access_handle(
     finally:
         _local_free(new_dacl)
         _local_free(descriptor)
+
+
+def _set_pinned_directory_dacl(
+    handle: int,
+    expected: _RetainedResourceInfo,
+    dacl: ctypes.c_void_p,
+    *,
+    auto_inherited: bool | None = None,
+) -> None:
+    """Update one pinned filesystem DACL without revisiting directory children.
+
+    SetFileSecurityW is the documented legacy filesystem primitive that does
+    not propagate directory changes. Ancestor/resource share-read handles pin
+    the path, and an independently opened read handle authenticates its exact
+    object identity before and after the path-based call. No grant is inherited.
+    """
+
+    get_name = _kernel32().GetFinalPathNameByHandleW
+    get_name.argtypes = (wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD)
+    get_name.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(32_768)
+    length = int(get_name(wintypes.HANDLE(handle), buffer, len(buffer), 0))
+    rendered = buffer.value
+    if (
+        not 7 < length < len(buffer)
+        or not rendered.startswith("\\\\?\\")
+        or not rendered[4].isalpha()
+        or rendered[5:7] != ":\\"
+    ):
+        _reject(
+            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+            "access.directory_path",
+            "Windows could not authenticate an approved worker directory.",
+        )
+    path = Path(rendered[4:])
+    guard, observed = _open_retained_resource(path, acl_authority=False, require_single_link=False)
+    try:
+        if observed != expected or observed.is_reparse_point or observed.delete_pending:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.directory_identity",
+                "Windows could not authenticate an approved worker directory.",
+            )
+        current = _capture_security_descriptor_handle(handle)
+        control = _descriptor_control(current)
+        information = _acl_size_information(dacl)
+        size = int(information.acl_bytes_in_use)
+        if not 8 <= size <= 65_535:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.directory_dacl",
+                "Windows could not authenticate an approved worker directory policy.",
+            )
+        header = bytearray(20)
+        header[0] = 1
+        dacl_control = (
+            _SE_DACL_DEFAULTED
+            | _SE_DACL_AUTO_INHERIT_REQ
+            | _SE_DACL_AUTO_INHERITED
+            | _SE_DACL_PROTECTED
+        )
+        selected_control = control & dacl_control
+        selected_auto = (
+            bool(control & _SE_DACL_AUTO_INHERITED) if auto_inherited is None else auto_inherited
+        )
+        # The filesystem provider requires AI+AR together to retain automatic
+        # inheritance with this non-propagating API. AI alone is normalized away.
+        selected_control &= ~(_SE_DACL_AUTO_INHERITED | _SE_DACL_AUTO_INHERIT_REQ)
+        if selected_auto:
+            selected_control |= _SE_DACL_AUTO_INHERITED | _SE_DACL_AUTO_INHERIT_REQ
+        header[2:4] = (_SE_SELF_RELATIVE | _SE_DACL_PRESENT | selected_control).to_bytes(
+            2, "little"
+        )
+        header[16:20] = (20).to_bytes(4, "little")
+        descriptor = ctypes.create_string_buffer(bytes(header) + ctypes.string_at(dacl, size))
+        setter = _advapi32().SetFileSecurityW
+        setter.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p)
+        setter.restype = wintypes.BOOL
+        if not setter(
+            rendered, _DACL_SECURITY_INFORMATION, ctypes.cast(descriptor, ctypes.c_void_p)
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.directory_apply",
+                "Windows could not apply an approved worker directory policy.",
+            )
+        if (
+            _query_retained_resource_info(handle) != expected
+            or _query_retained_resource_info(guard.value) != expected
+        ):
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.directory_identity",
+                "Windows could not authenticate an approved worker directory.",
+            )
+    finally:
+        if not _close_owned_handle_bounded(guard):
+            _quarantine_owned_handle(guard)
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "access.directory_handle",
+                "Windows could not close an approved worker directory verification handle.",
+            )
 
 
 def _sid_access_mask_handle(handle: int, sid: ctypes.c_void_p) -> int:
@@ -3613,6 +3762,8 @@ def _normalized_unique_roots(paths: tuple[Path, ...]) -> tuple[Path, ...]:
 def _require_acl_recovery_entry_authority(
     entry: AclRecoveryEntry,
     allowed_roots: tuple[Path, ...],
+    *,
+    _active_lease_witness: _ActiveLeaseRecoveryWitness | None = None,
 ) -> ctypes.c_void_p:
     allowed = {_normalized_path(path) for path in allowed_roots}
     entry_roots = {_normalized_path(path) for path in entry.grant_roots}
@@ -3645,8 +3796,11 @@ def _require_acl_recovery_entry_authority(
             "access.recovery_identity",
             "Worker access recovery guard identity does not match the current user.",
         )
-    for item in entry.objects:
-        _require_acl_recovery_object_identity(item)
+    if _active_lease_witness is None:
+        for item in entry.objects:
+            _require_acl_recovery_object_identity(item)
+    else:
+        _require_active_lease_recovery_witness(_active_lease_witness, entry)
     sid = _derive_app_container_sid(entry.profile_name)
     try:
         if _sid_string(sid) != entry.sid:
@@ -3659,6 +3813,170 @@ def _require_acl_recovery_entry_authority(
         _free_derived_app_container_sid(sid)
         raise
     return sid
+
+
+def _reject_active_lease_recovery_witness() -> Never:
+    _reject(
+        WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+        "access.recovery_witness",
+        "Retained worker access no longer matches its live recovery inventory.",
+    )
+
+
+def _access_ace_sid_bytes(ace: bytes) -> bytes:
+    """Read the documented SID field of a bounded Windows access ACE."""
+
+    if len(ace) < 8:
+        _reject_active_lease_recovery_witness()
+    ace_type = ace[0]
+    if ace_type in {0, 1, 9, 10}:
+        offset = 8  # ACCESS_ALLOWED/DENIED(_CALLBACK)_ACE
+    elif ace_type in {5, 6, 11, 12}:
+        if len(ace) < 12:
+            _reject_active_lease_recovery_witness()
+        flags = int.from_bytes(ace[8:12], "little")
+        if flags & ~3:
+            _reject_active_lease_recovery_witness()
+        offset = 12 + 16 * bool(flags & 1) + 16 * bool(flags & 2)
+    else:
+        # Unsupported DACL encodings do not receive this optional fast path.
+        _reject_active_lease_recovery_witness()
+    if len(ace) < offset + 8 or ace[offset] != 1 or ace[offset + 1] > 15:
+        _reject_active_lease_recovery_witness()
+    end = offset + 8 + 4 * ace[offset + 1]
+    if end > len(ace):
+        _reject_active_lease_recovery_witness()
+    return ace[offset:end]
+
+
+def _require_active_resource_acl(
+    resource: _RetainedResource,
+    item: AclRecoveryObject,
+    sid_bytes: bytes,
+    peer_sid_bytes: bytes,
+) -> None:
+    # Read the actual descriptor on every borrow. No bytes or permission result
+    # from a previous launch can admit the current generation.
+    descriptor = _capture_security_descriptor_handle(resource.handle.value)
+    _require_non_null_dacl(descriptor)
+    if bool(_descriptor_control(descriptor) & _SE_DACL_AUTO_INHERITED) is not item.auto_inherited:
+        _reject_active_lease_recovery_witness()
+    offset = int.from_bytes(descriptor[16:20], "little")
+    if offset < 20 or offset + 8 > len(descriptor):
+        _reject_active_lease_recovery_witness()
+    size = int.from_bytes(descriptor[offset + 2 : offset + 4], "little")
+    count = int.from_bytes(descriptor[offset + 4 : offset + 6], "little")
+    end = offset + size
+    if size < 8 or end > len(descriptor) or count > (size - 8) // 12:
+        _reject_active_lease_recovery_witness()
+    cursor = offset + 8
+    own_grants = 0
+    peer_guards = 0
+    for _ in range(count):
+        if cursor + 4 > end:
+            _reject_active_lease_recovery_witness()
+        ace_size = int.from_bytes(descriptor[cursor + 2 : cursor + 4], "little")
+        if ace_size < 12 or cursor + ace_size > end:
+            _reject_active_lease_recovery_witness()
+        ace = descriptor[cursor : cursor + ace_size]
+        trustee = _access_ace_sid_bytes(ace)
+        mask = int.from_bytes(ace[4:8], "little")
+        if trustee == sid_bytes:
+            if (
+                ace[0] != _ACCESS_ALLOWED_ACE_TYPE
+                or ace[1] != 0
+                or mask != _FILE_GENERIC_READ_EXECUTE
+            ):
+                _reject_active_lease_recovery_witness()
+            own_grants += 1
+        if (
+            trustee == peer_sid_bytes
+            and ace[0] == _ACCESS_DENIED_ACE_TYPE
+            and ace[1] == 0
+            and mask == _FILE_WRITE_ATTRIBUTES
+        ):
+            peer_guards += 1
+        cursor += ace_size
+    if own_grants != 1 or (
+        not resource.info.is_directory
+        and (item.guard_baseline is None or peer_guards != item.guard_baseline + 1)
+    ):
+        _reject_active_lease_recovery_witness()
+
+
+def _sid_bytes(sid: ctypes.c_void_p) -> bytes:
+    get_length = _advapi32().GetLengthSid
+    get_length.argtypes = (ctypes.c_void_p,)
+    get_length.restype = wintypes.DWORD
+    size = int(get_length(sid))
+    if not 8 <= size <= 68:
+        _reject_active_lease_recovery_witness()
+    return ctypes.string_at(sid, size)
+
+
+def _require_active_lease_recovery_witness(
+    witness: _ActiveLeaseRecoveryWitness,
+    entry: AclRecoveryEntry,
+) -> None:
+    lease = witness.lease
+    inventory = witness.inventory
+    try:
+        exact_record = encode_acl_recovery_entry(entry) == encode_acl_recovery_entry(witness.entry)
+    except AclRecoveryJournalError:
+        _reject_active_lease_recovery_witness()
+    if (
+        witness.owner_thread != threading.get_ident()
+        or lease.owner_thread != witness.owner_thread
+        or lease.inventory is not inventory
+        or lease._last_published_entry is not witness.entry
+        or lease.cleanup_verified
+        or not exact_record
+        or entry.phase is not AclRecoveryPhase.ACTIVE
+        or entry.journal_version != ACL_RECOVERY_JOURNAL_VERSION
+        or (entry.owner_pid, entry.owner_created_100ns) != _current_process_identity()
+        or lease.owner_pid != entry.owner_pid
+        or lease.owner_created_100ns != entry.owner_created_100ns
+        or lease.profile_id != entry.profile_id
+        or (lease.profile_name or f"{_PROFILE_PREFIX}{lease.profile_id}") != entry.profile_name
+        or _sid_string(lease.sid) != entry.sid
+        or lease.peer_sid_string != entry.peer_sid
+        or tuple(lease.paths) != entry.grant_roots
+        or len(entry.objects) != len(inventory.resources)
+        or len(inventory.resources_by_path) != len(inventory.resources)
+        or len(inventory.guards_by_path) != len(inventory.guards)
+        or tuple(lease.recovery_objects.get(path) for path in lease.observed_objects)
+        != entry.objects
+    ):
+        _reject_active_lease_recovery_witness()
+    by_path = {_normalized_path(item.path): item for item in entry.objects}
+    if len(by_path) != len(entry.objects) or set(by_path) != set(inventory.resources_by_path):
+        _reject_active_lease_recovery_witness()
+    for guard in inventory.guards:
+        if inventory.guards_by_path.get(_normalized_path(guard.path)) is not guard:
+            _reject_active_lease_recovery_witness()
+        _require_retained_resource_unchanged(guard)
+    peer_sid = _convert_string_sid(entry.peer_sid or "")
+    try:
+        sid_bytes = _sid_bytes(lease.sid)
+        peer_sid_bytes = _sid_bytes(peer_sid)
+        for resource in inventory.resources:
+            item = by_path.get(_normalized_path(resource.path))
+            if (
+                item is None
+                or inventory.resources_by_path.get(_normalized_path(resource.path)) is not resource
+                or item.volume_serial != resource.info.identity[0]
+                or item.file_id != resource.info.identity[1].hex()
+                or item.is_directory is not resource.info.is_directory
+                or item.auto_inherited is not resource.original_auto_inherited
+                or item.guard_baseline != resource.hardlink_guard_baseline
+                or not resource.grant_started
+                or resource.hardlink_guard_uncertain
+            ):
+                _reject_active_lease_recovery_witness()
+            _require_retained_resource_unchanged(resource)
+            _require_active_resource_acl(resource, item, sid_bytes, peer_sid_bytes)
+    finally:
+        _local_free(peer_sid)
 
 
 def _validated_active_acl_entries_locked(
@@ -3947,6 +4265,7 @@ def _recover_acl_entries_locked(
     allowed_roots: tuple[Path, ...],
     *,
     mutex_was_abandoned: bool,
+    _active_lease_witness: _ActiveLeaseRecoveryWitness | None = None,
 ) -> WindowsWorkerAclRecoveryResult:
     journal_failed = False
     entries: tuple[AclRecoveryEntry, ...] = ()
@@ -3956,8 +4275,28 @@ def _recover_acl_entries_locked(
     try:
         journal = AclRecoveryJournal(_ensure_acl_recovery_directory())
         entries = journal.inventory()
+        if (
+            _active_lease_witness is not None
+            and sum(entry.profile_id == _active_lease_witness.entry.profile_id for entry in entries)
+            != 1
+        ):
+            _reject_active_lease_recovery_witness()
         for entry in entries:
-            sid = _require_acl_recovery_entry_authority(entry, allowed_roots)
+            witness = (
+                _active_lease_witness
+                if _active_lease_witness is not None
+                and entry.profile_id == _active_lease_witness.entry.profile_id
+                else None
+            )
+            sid = (
+                _require_acl_recovery_entry_authority(entry, allowed_roots)
+                if witness is None
+                else _require_acl_recovery_entry_authority(
+                    entry,
+                    allowed_roots,
+                    _active_lease_witness=witness,
+                )
+            )
             try:
                 owner_active = _ledger_owner_is_active(
                     entry.owner_pid,
@@ -3982,6 +4321,12 @@ def _recover_acl_entries_locked(
                 journal.write(repairing)
             _repair_acl_recovery_entry(journal, repairing, sid, active_entries)
             repaired += 1
+        if repaired and _active_lease_witness is not None:
+            # A foreign recovery can affect shared objects. Recheck current
+            # guards/control/rights after those mutations, inside this mutex.
+            _require_active_lease_recovery_witness(
+                _active_lease_witness, _active_lease_witness.entry
+            )
     except AclRecoveryJournalError:
         journal_failed = True
     finally:
@@ -4008,6 +4353,8 @@ def _recover_acl_entries_locked(
 
 def recover_worker_acl_access(
     allowed_roots: tuple[Path, ...],
+    *,
+    _active_lease_witness: _ActiveLeaseRecoveryWitness | None = None,
 ) -> WindowsWorkerAclRecoveryResult:
     """Repair orphaned worker-resource SID grants under the protected mutex."""
 
@@ -4017,9 +4364,14 @@ def recover_worker_acl_access(
     mutex = _AclMutationMutex(recover_abandoned=True)
     try:
         with mutex:
-            result = _recover_acl_entries_locked(
-                roots,
-                mutex_was_abandoned=mutex.was_abandoned,
+            result = (
+                _recover_acl_entries_locked(roots, mutex_was_abandoned=mutex.was_abandoned)
+                if _active_lease_witness is None
+                else _recover_acl_entries_locked(
+                    roots,
+                    mutex_was_abandoned=mutex.was_abandoned,
+                    _active_lease_witness=_active_lease_witness,
+                )
             )
     except WindowsLaunchError:
         if mutex.was_abandoned:
@@ -4425,6 +4777,255 @@ class _AppContainerProfile:
         self.sid = ctypes.c_void_p()
         self._closed = True
         return True
+
+
+def _reset_profile_storage(profile: _AppContainerProfile) -> None:
+    """Delete one stopped generation's datastore without releasing static access.
+
+    The caller must already have confirmed Job-zero and closed every process,
+    pipe and dynamic authority. No profile storage handle survives this call.
+    A successful API result alone does not prove physical folder removal.
+    """
+
+    guard = profile.pycache_guard
+    if guard is not None:
+        if not guard.close_no_raise(profile.sid):
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "profile.reset_guard",
+                "Windows could not close isolated worker storage safely.",
+            )
+        profile.pycache_guard = None
+    delete = _userenv().DeleteAppContainerProfile
+    delete.argtypes = (wintypes.LPCWSTR,)
+    delete.restype = ctypes.c_long
+    for attempt in range(_PROFILE_DELETE_ATTEMPTS):
+        if delete(profile.name) == 0 and not profile.local_app_data.exists():
+            profile._deleted = True
+            return
+        if attempt + 1 < _PROFILE_DELETE_ATTEMPTS:
+            time.sleep(_PROFILE_DELETE_RETRY_SECONDS)
+    _reject(
+        WindowsLaunchErrorCode.CLEANUP_FAILED,
+        "profile.reset_storage",
+        "Windows could not confirm removal of isolated worker storage.",
+    )
+
+
+def _recreate_profile_storage(profile: _AppContainerProfile) -> None:
+    """Create a fresh zero-capability datastore for the retained exact SID.
+
+    ERROR_ALREADY_EXISTS is deliberately not adopted. Registry freshness relies
+    on the documented S_OK new-datastore contract, covered by native canaries.
+    """
+
+    if not profile._deleted or profile.pycache_guard is not None:
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.reset_state",
+            "The isolated worker storage is not ready for a new generation.",
+        )
+    create = _userenv().CreateAppContainerProfile
+    create.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(_SidAndAttributes),
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    create.restype = ctypes.c_long
+    sid = ctypes.c_void_p()
+    result = create(
+        profile.name, _PROFILE_DISPLAY_NAME, _PROFILE_DESCRIPTION, None, 0, ctypes.byref(sid)
+    )
+    if result != 0 or not sid.value:
+        if sid.value:
+            _free_derived_app_container_sid(sid)
+        _reject(
+            WindowsLaunchErrorCode.PROFILE_FAILED,
+            "profile.reset_create",
+            "Windows could not create fresh isolated worker storage.",
+        )
+    # A newly created store now needs cleanup even if a subsequent check fails.
+    profile._deleted = False
+    try:
+        expected = _sid_string(profile.sid)
+        derived = _derive_app_container_sid(profile.name)
+        try:
+            if _sid_string(sid) != expected or _sid_string(derived) != expected:
+                _reject(
+                    WindowsLaunchErrorCode.PROFILE_FAILED,
+                    "profile.reset_identity",
+                    "Windows could not authenticate the new isolated worker identity.",
+                )
+        finally:
+            _free_derived_app_container_sid(derived)
+        if _app_container_folder_path(sid) != profile.local_app_data:
+            _reject(
+                WindowsLaunchErrorCode.PROFILE_FAILED,
+                "profile.reset_location",
+                "Windows could not authenticate the new isolated worker storage.",
+            )
+        _prepare_app_container_temp(profile.local_app_data, sid)
+        profile.pycache_guard = _PrivatePycacheGuard.open(profile.pycache_prefix, profile.sid)
+        profile.pycache_guard.activate(profile.sid)
+    finally:
+        _free_derived_app_container_sid(sid)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAccessSnapshot:
+    """Content-free ownership facts; not document or network evidence."""
+
+    case_id: UUID | None = None
+    active_generation: bool = False
+    retained: bool = False
+    poisoned: bool = False
+
+
+class _CaseRuntimeAccess:
+    """Own only immutable runtime pins/ACE, never an operation authority."""
+
+    def __init__(self, recovery_roots: tuple[Path, ...]) -> None:
+        self._owner = threading.get_ident()
+        self._recovery_roots = recovery_roots
+        self._case_id: UUID | None = None
+        self._profile: _AppContainerProfile | None = None
+        self._active = False
+        self._poisoned = False
+        self._fixed_identity: tuple[object, ...] | None = None
+
+    def bind(self, config: WindowsLaunchConfig) -> None:
+        """Borrow only the same closed interpreter/code and recovery authority."""
+
+        self._require_owner()
+        identity: tuple[object, ...] = (
+            _normalized_path(config.python_executable),
+            _normalized_path(config.bootstrap_script),
+            _normalized_path(config.working_directory),
+            tuple(_normalized_path(root) for root in config.runtime_roots),
+            tuple(_normalized_path(root) for root in config.code_roots),
+            None if config.venv_launcher is None else _normalized_path(config.venv_launcher),
+            tuple(sorted(_normalized_path(root) for root in config.approved_recovery_roots)),
+        )
+        if self._fixed_identity is None:
+            self._fixed_identity = identity
+        elif self._fixed_identity != identity:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "runtime_access.identity",
+                "Worker compositions do not share the same fixed runtime authority.",
+            )
+
+    @property
+    def snapshot(self) -> RuntimeAccessSnapshot:
+        return RuntimeAccessSnapshot(
+            self._case_id, self._active, self._profile is not None, self._poisoned
+        )
+
+    def _require_owner(self) -> None:
+        if self._owner != threading.get_ident() or self._poisoned:
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "runtime_access.state",
+                "Worker runtime access requires verified coordinator cleanup.",
+            )
+
+    def active_recovery_witness(self, case_id: UUID) -> _ActiveLeaseRecoveryWitness | None:
+        self._require_owner()
+        if self._active or self._case_id not in {None, case_id}:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "runtime_access.case",
+                "Worker runtime access belongs to another active operation or case.",
+            )
+        return None if self._profile is None else self._profile.access._active_recovery_witness()
+
+    def poison_recovery_witness(self) -> None:
+        self._poisoned = True
+        if self._profile is not None:
+            self._profile.access._last_published_entry = None
+
+    def acquire(self, case_id: UUID) -> _AppContainerProfile:
+        self._require_owner()
+        if self._active or self._case_id not in {None, case_id}:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "runtime_access.case",
+                "Worker runtime access belongs to another active operation or case.",
+            )
+        self._case_id = case_id
+        try:
+            if self._profile is None:
+                self._profile = _AppContainerProfile.create(self._recovery_roots)
+            elif self._profile._deleted:
+                _recreate_profile_storage(self._profile)
+            self._active = True
+            return self._profile
+        except BaseException:
+            self.retire()
+            raise
+
+    def finish(self, profile: _AppContainerProfile, *, reusable: bool) -> None:
+        self._require_owner()
+        if not self._active or self._profile is not profile:
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "runtime_access.generation",
+                "The worker runtime generation could not be authenticated.",
+            )
+        self._active = False
+        if not reusable:
+            self.retire()
+            return
+        try:
+            _reset_profile_storage(profile)
+        except BaseException:
+            self._poisoned = True
+            raise
+
+    def abandon(self) -> None:
+        """Retain authority after an unconfirmed tree; never reuse it."""
+
+        self._poisoned = True
+
+    def retire(self) -> None:
+        if self._owner != threading.get_ident():
+            self._require_owner()
+        if self._active:
+            _reject(
+                WindowsLaunchErrorCode.CLEANUP_FAILED,
+                "runtime_access.active",
+                "A worker generation must stop before releasing runtime access.",
+            )
+        profile = self._profile
+        if profile is not None:
+            # A reset failure must not be converted to success by the legacy
+            # idempotent Delete(nonexistent)->S_OK path. Prove storage absence
+            # before dropping the static journal/pins, including on failure.
+            if not profile._deleted or profile.local_app_data.exists():
+                try:
+                    _reset_profile_storage(profile)
+                except BaseException:
+                    self._poisoned = True
+                    raise
+            if not _close_profile_bounded(profile):
+                self._poisoned = True
+                _quarantine_profile(profile, cleanup_allowed=True)
+                _reject(
+                    WindowsLaunchErrorCode.CLEANUP_FAILED,
+                    "runtime_access.close",
+                    "Windows could not release retained worker runtime access.",
+                )
+            self._profile = None
+
+    def release_case(self) -> None:
+        self.retire()
+        self._case_id = None
+
+
+type RuntimeAccessAuthority = _CaseRuntimeAccess
 
 
 @dataclass(slots=True, repr=False)
@@ -5635,6 +6236,8 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
         "_profile_closed",
         "_profile_cleanup_allowed",
         "_returncode",
+        "_runtime_access",
+        "_runtime_reuse_allowed",
     )
 
     def __init__(
@@ -5646,6 +6249,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
         profile: _AppContainerProfile,
         transport: WorkerTransport,
         isolation: IsolationEvidence,
+        runtime_access: _CaseRuntimeAccess | None = None,
     ) -> None:
         self._pid = pid
         self._process = process
@@ -5661,6 +6265,13 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
         self._profile_closed = False
         self._profile_cleanup_allowed = True
         self._returncode: int | None = None
+        self._runtime_access = runtime_access
+        self._runtime_reuse_allowed = False
+
+    def allow_runtime_reuse(self) -> None:
+        """Mark only a protocol-successful generation; no parser survives close."""
+
+        self._runtime_reuse_allowed = True
 
     @property
     def pid(self) -> int:
@@ -5827,6 +6438,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
         if active == 0:
             if self._returncode is None:
                 self._returncode = self._exit_code()
+            self._tree_confirmed = True
             return
         if not _stop_job_tree_no_raise(self._job, _TERMINATION_WAIT_SECONDS):
             _reject(
@@ -5835,6 +6447,7 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 "The restricted worker process tree did not terminate in time.",
             )
         self._returncode = self._exit_code()
+        self._tree_confirmed = True
 
     def close(self) -> None:
         if self._closed:
@@ -5887,6 +6500,8 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
                 if not process_closed:
                     _quarantine_owned_handle(self._process)
                 self._profile_cleanup_allowed = False
+                if self._runtime_access is not None:
+                    self._runtime_access.abandon()
                 _quarantine_profile(self._profile, cleanup_allowed=False)
                 self._containment_closed = job_closed and process_closed
                 failed = True
@@ -5901,11 +6516,21 @@ class WindowsWorkerProcess(AbstractContextManager["WindowsWorkerProcess"]):
             else:
                 self._transport_closed = True
         if self._tree_confirmed and self._profile_cleanup_allowed and not self._profile_closed:
-            if _close_profile_bounded(self._profile):
-                self._profile_closed = True
+            if self._runtime_access is not None:
+                try:
+                    self._runtime_access.finish(
+                        self._profile, reusable=self._runtime_reuse_allowed and not failed
+                    )
+                except BaseException:
+                    failed = True
+                else:
+                    self._profile_closed = True
             else:
-                _quarantine_profile(self._profile, cleanup_allowed=True)
-                failed = True
+                if _close_profile_bounded(self._profile):
+                    self._profile_closed = True
+                else:
+                    _quarantine_profile(self._profile, cleanup_allowed=True)
+                    failed = True
         profile_resolved = self._profile_closed or not self._profile_cleanup_allowed
         self._closed = self._containment_closed and self._transport_closed and profile_resolved
         self._cleanup_failed = failed or self._cleanup_failed
@@ -5984,9 +6609,15 @@ def _process_information_produced_authority(information: _ProcessInformation) ->
 class WindowsProcessLauncher:
     """Launch the fixed Python worker in a zero-capability AppContainer."""
 
-    __slots__ = ("_config",)
+    __slots__ = ("_config", "_runtime_access")
 
-    def __init__(self, config: WindowsLaunchConfig) -> None:
+    def __init__(
+        self,
+        config: WindowsLaunchConfig,
+        *,
+        retain_runtime_access: bool = False,
+        runtime_access: RuntimeAccessAuthority | None = None,
+    ) -> None:
         if type(config) is not WindowsLaunchConfig:
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
@@ -5994,6 +6625,44 @@ class WindowsProcessLauncher:
                 "A validated fixed Windows worker configuration is required.",
             )
         self._config = config
+        if (
+            type(retain_runtime_access) is not bool
+            or (runtime_access is not None and type(runtime_access) is not _CaseRuntimeAccess)
+            or (runtime_access is not None and retain_runtime_access)
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "runtime_access.configuration",
+                "Retained runtime access requires one fixed coordinator authority.",
+            )
+        self._runtime_access = runtime_access
+        if retain_runtime_access:
+            self._runtime_access = _CaseRuntimeAccess(config.approved_recovery_roots)
+        if self._runtime_access is not None:
+            self._runtime_access.bind(config)
+
+    @property
+    def runtime_access_authority(self) -> RuntimeAccessAuthority | None:
+        """Typed static-only authority, shared solely by trusted composition."""
+
+        return self._runtime_access
+
+    @property
+    def runtime_access_snapshot(self) -> RuntimeAccessSnapshot:
+        access = self._runtime_access
+        return RuntimeAccessSnapshot() if access is None else access.snapshot
+
+    def retire_runtime_access(self) -> None:
+        """Retire a failed consuming broker's static lease after tree closure."""
+
+        if self._runtime_access is not None:
+            self._runtime_access.retire()
+
+    def release_case_resources(self) -> None:
+        """Release exact static authority before closing/switching the case."""
+
+        if self._runtime_access is not None:
+            self._runtime_access.release_case()
 
     def launch(self, request: WorkerLaunchRequest) -> WindowsWorkerProcess:
         global _PROCESS_CREATION_CLEANUP_PENDING, _PROCESS_CREATION_QUARANTINED
@@ -6023,11 +6692,32 @@ class WindowsProcessLauncher:
                 "launch.quarantine",
                 "A previous worker launch still requires deterministic cleanup.",
             )
-        recover_worker_acl_access(self._config.approved_recovery_roots)
+        runtime_access = self._runtime_access
+        witness = (
+            None
+            if runtime_access is None
+            else runtime_access.active_recovery_witness(request.case_id)
+        )
+        try:
+            if witness is None:
+                recover_worker_acl_access(self._config.approved_recovery_roots)
+            else:
+                recover_worker_acl_access(
+                    self._config.approved_recovery_roots,
+                    _active_lease_witness=witness,
+                )
+        except BaseException:
+            if runtime_access is not None and witness is not None:
+                runtime_access.poison_recovery_witness()
+            raise
         process = _OwnedHandle.empty()
         thread = _OwnedHandle.empty()
         information = _ProcessInformation()
-        profile = _AppContainerProfile.create(self._config.approved_recovery_roots)
+        profile = (
+            _AppContainerProfile.create(self._config.approved_recovery_roots)
+            if runtime_access is None
+            else runtime_access.acquire(request.case_id)
+        )
         job: _Job | None = None
         job_assigned = False
         process_created = False
@@ -6042,7 +6732,7 @@ class WindowsProcessLauncher:
             if self._config.qpdf_executable is not None:
                 qpdf_executable = self._config.qpdf_executable
                 qpdf_resources = self._config.qpdf_access_resources
-                if not all(
+                if runtime_access is None and not all(
                     _has_effective_app_container_read_execute(path, profile.sid)
                     for path in qpdf_resources
                 ):
@@ -6060,21 +6750,33 @@ class WindowsProcessLauncher:
                         "config.tesseract_runtime",
                         "The configured OCR runtime does not match the approved fixed closure.",
                     )
-                if not all(
+                if runtime_access is None and not all(
                     _has_effective_app_container_read_execute(path, profile.sid)
                     for path in tesseract_resources
                 ):
                     grant_roots = (*grant_roots, tesseract_runtime_root)
-            profile.grant_read_execute(grant_roots)
-            profile.require_read_execute(self._config.required_startup_resources)
-            if self._config.qpdf_executable is not None:
+            if runtime_access is None or profile.access.inventory is None:
+                profile.grant_read_execute(grant_roots)
+            # Shared compositions may only use actual objects from the original
+            # pinned inventory. An engine outside it cannot expand the grant.
+            profile.require_read_execute(
+                (
+                    *self._config.required_startup_resources,
+                    *qpdf_resources,
+                    *tesseract_resources,
+                )
+                if runtime_access is not None
+                else self._config.required_startup_resources
+            )
+            if runtime_access is None and self._config.qpdf_executable is not None:
                 qpdf_executable = self._config.qpdf_executable
                 profile.ensure_read_execute(
                     (qpdf_executable.parent,),
                     qpdf_resources,
                 )
             if (
-                self._config.tesseract_executable is not None
+                runtime_access is None
+                and self._config.tesseract_executable is not None
                 and self._config.tessdata_root is not None
             ):
                 tesseract_runtime_root = self._config._tesseract_runtime_root
@@ -6088,12 +6790,15 @@ class WindowsProcessLauncher:
                     (tesseract_runtime_root,),
                     tesseract_resources,
                 )
-                if self._config.tesseract_access_resources != tesseract_resources:
-                    _reject(
-                        WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                        "config.tesseract_runtime",
-                        "The configured OCR runtime does not match the approved fixed closure.",
-                    )
+            if (
+                self._config.tesseract_executable is not None
+                and self._config.tesseract_access_resources != tesseract_resources
+            ):
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "config.tesseract_runtime",
+                    "The configured OCR runtime does not match the approved fixed closure.",
+                )
             profile.require_private_pycache()
             job = _Job(request.resource_policy)
             bootstrap = encode_bootstrap_grant(
@@ -6189,6 +6894,7 @@ class WindowsProcessLauncher:
                 profile=profile,
                 transport=transport,
                 isolation=isolation,
+                runtime_access=runtime_access,
             )
             return result
         except BaseException:
@@ -6231,10 +6937,17 @@ class WindowsProcessLauncher:
                 if job is not None and not _close_owned_handle_bounded(job.handle):
                     _quarantine_owned_handle(job.handle)
                     cleanup_failed = True
-                if not _close_profile_bounded(profile):
+                if runtime_access is not None:
+                    try:
+                        runtime_access.finish(profile, reusable=False)
+                    except BaseException:
+                        cleanup_failed = True
+                elif not _close_profile_bounded(profile):
                     _quarantine_profile(profile, cleanup_allowed=True)
                     cleanup_failed = True
             else:
+                if runtime_access is not None:
+                    runtime_access.abandon()
                 _quarantine_failed_launch(
                     job,
                     process if process.is_open else None,

@@ -35,7 +35,10 @@ from paperworkshell.domain.pdf_thumbnails import (
     reject_pdf_thumbnail,
 )
 from paperworkshell.domain.source_ingest import SourceIngestError, SourceIngestErrorCode
-from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    retire_runtime_on_failure,
+)
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -321,6 +324,7 @@ class BrokeredPdfThumbnailGenerator:
         self._id_factory = id_factory
         self._output_buffer_factory = output_buffer_factory
 
+    @retire_runtime_on_failure
     def get_or_generate(
         self,
         request: PdfThumbnailRequest,

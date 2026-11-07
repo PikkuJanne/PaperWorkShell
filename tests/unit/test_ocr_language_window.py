@@ -90,8 +90,8 @@ def test_settings_entry_is_persistent_on_chooser_and_organizer() -> None:
         button = _settings_button(window)
         assert button.isVisible()
         assert button.isEnabled()
-        assert " ".join(button.text().split()) == "Manage OCR languages…"
-        assert button.accessibleName() == "Manage OCR languages"
+        assert " ".join(button.text().split()) == "OCR languages…"
+        assert button.accessibleName() == "OCR languages"
         assert "Ctrl+Shift+L" in button.accessibleDescription()
 
         worker.state_changed.emit(OrganizerViewState(CASE_ID, 0, (), False, False, False))
@@ -105,6 +105,7 @@ def test_dialog_forwards_correlated_refresh_and_rejects_stale_worker_result() ->
     with _window() as (window, commands, worker):
         refreshes: list[int] = []
         commands.ocr_languages_refresh_requested.connect(refreshes.append)
+        commands.ocr_languages_show_requested.connect(refreshes.append)
 
         window.activateWindow()
         _settings_button(window).setFocus(Qt.FocusReason.OtherFocusReason)
@@ -137,6 +138,7 @@ def test_closed_refresh_keeps_queue_gate_until_each_exact_terminal_signal() -> N
     with _window() as (window, commands, worker):
         refreshes: list[int] = []
         commands.ocr_languages_refresh_requested.connect(refreshes.append)
+        commands.ocr_languages_show_requested.connect(refreshes.append)
         button = _settings_button(window)
 
         QTest.mouseClick(button, Qt.MouseButton.LeftButton)

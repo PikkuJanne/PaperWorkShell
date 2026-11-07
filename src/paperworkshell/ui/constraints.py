@@ -16,7 +16,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -50,6 +49,9 @@ from paperworkshell.preflight.portal_constraints import (
 )
 from paperworkshell.ui.localization_layout import adapt_localized_content
 from paperworkshell.ui.presentation import WrappingActionLayout, adapt_dialog_button_box
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeComboBox as QComboBox,
+)
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = (
     "QLabel:focus { border: 2px solid palette(highlight); padding: 3px; }"

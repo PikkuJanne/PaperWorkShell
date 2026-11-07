@@ -50,7 +50,10 @@ from paperworkshell.domain.source_ingest import (
     SourceSignatureState,
     reject_source_ingest,
 )
-from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    retire_runtime_on_failure,
+)
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.models import (
     WorkerClientSnapshot,
@@ -306,6 +309,7 @@ class _ImageNormalizeBrokerCore:
         self._id_factory = id_factory
         self._output_buffer_factory = output_buffer_factory
 
+    @retire_runtime_on_failure
     def normalize(
         self,
         source: _ResolvedSource,
@@ -579,6 +583,7 @@ class BrokeredImagePageGenerator:
     def _heavy_operations(self) -> HeavyOperationCoordinator:
         return self._core._heavy_operations
 
+    @retire_runtime_on_failure
     def get_or_generate(
         self,
         request: ImagePagePreviewRequest,
@@ -637,6 +642,7 @@ class BrokeredImageSourceInspector:
     def _heavy_operations(self) -> HeavyOperationCoordinator:
         return self._core._heavy_operations
 
+    @retire_runtime_on_failure
     def inspect(
         self,
         source: PreparedSourceSummary,

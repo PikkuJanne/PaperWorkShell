@@ -1,7 +1,7 @@
 # Restricted worker lifecycle contract
 
 - Status: Implemented PWS-0107 contract with PWS-0105 inspection, PWS-0108 thumbnail, PWS-0111 desktop-composition, PWS-0112 export, PWS-0113 ACL-recovery, PWS-0201 image-intake, PWS-0202 scan-transform, PWS-0204 OCR, PWS-0206 searchable-export, PWS-0208 signed-source-admission, and PWS-0307 flattened-overlay-export extensions
-- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0208, PWS-0307
+- Tasks: PWS-0107, PWS-0105, PWS-0108, PWS-0111, PWS-0112, PWS-0113, PWS-0201, PWS-0202, PWS-0204, PWS-0206, PWS-0208, PWS-0307, PWS-0811
 - Decisions: PWS-D007, PWS-D009, PWS-D011, PWS-D012, PWS-D013, PWS-D016, PWS-D021, PWS-D027, PWS-D028, PWS-D029, PWS-D036, PWS-D037, PWS-D038
 - ADR: [ADR 0004](../adr/0004-windows-worker-isolation.md)
 - Protocol: [Worker RPC protocol v1](../schemas/worker-rpc-v1.md)
@@ -18,6 +18,18 @@ tests. After bootstrap isolation succeeds, host composition may load an admitted
 image, or OCR adapter from the exact staged runtime; third-party types still do not enter the core
 contracts. An unavailable optional adapter is omitted rather than discovered through ambient
 plugins or advertised as a capability.
+
+PWS-0811 gives the shared desktop composition the closed internal `desktop-v1`
+launch scope. It constructs and admits only `protocol.noop` and the six existing
+desktop capabilities: text companion extraction, image normalization, signature
+image rasterization, image transformation, PDF inspection and PDF thumbnails.
+Their real adapter construction and engine checks still precede advertisement;
+an unavailable adapter is omitted independently. Export and OCR handlers are not
+imported into this scope, so opening an image does not load their unrelated
+engines. Required PDF/PDFium adapters remain part of the desktop contract. The
+default `all-v1` registry and separate export/OCR/removal compositions retain
+their behavior. This changes no RPC descriptor/schema, trusted-resource
+verification, process policy, source authority or user-facing command line.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
 version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` versions 1 and 2,
@@ -221,6 +233,38 @@ retains the guard while another authenticated `ACTIVE` v2 lease covers the same 
 and otherwise removes exactly one guard to restore the recorded matching-deny count. It then
 restores and verifies each object's original auto-inheritance state without replaying a stale whole
 descriptor.
+
+PWS-0811 optionally retains only the validated installed desktop's immutable runtime/code
+lease for one active case. Its ordinary exporters explicitly borrow the same fixed
+owner, with unchanged per-launch tool admission, environment, handler scopes and Job
+limits. Borrowers must match fixed runtime/code identity and recovery authority; all
+actual engine resources must already belong to the original pinned inventory. There
+is no lazy grant expansion or concurrent borrowed generation. Default/development,
+package and qualified redaction launchers retain the
+per-operation lifetime above. Every operation still has a fresh parser, Job, pipes,
+bootstrap, capability and session, and the complete tree must stop before output is
+read or validated. No case, source, output, cache or destination authority survives.
+After tree/transport closure all profile-storage handles close; profile deletion must
+report success and its exact filesystem location must be absent. The next generation
+requires newly created storage (S_OK, never already-existing), actual returned/derived
+SID equality and fresh guarded empty PyCache. The documented new-datastore contract
+includes registry storage and is exercised with native registry/file canaries.
+Cancellation, timeout, fault and consuming-broker output rejection retire static
+access; uncertain cleanup is sticky, while safe exact cleanup remains possible.
+Case close settles autosave and releases static access before the case lock; shutdown
+uses the same owner. Existing recovery also covers the ACTIVE interval with profile
+storage absent. [ADR 0020](../adr/0020-exact-directory-acl-updates.md) records API
+qualifications and required native/installed evidence. This is not persistent parser
+reuse and does not relax the one-shot output-authority rules below.
+
+Warm admission may replace only its exact own live ACTIVE record's path reopening
+with an opaque lease witness. Under the same mutex, the protected journal is read
+again, the full record and current owner/thread/profile/inventory must match, and
+every retained resource/ancestor identity, current DACL control, exact own SID ACE
+and file guard count is revalidated. Missing/mismatched own records poison reuse.
+Foreign/default/dead/non-ACTIVE records keep full recovery; a foreign repair triggers
+another own validation. Publication attempts invalidate witness eligibility first.
+Final revocation always uses full existing recovery and current ACL state.
 
 PWS-0113 makes interruption recovery durable. Beneath the trusted Windows LocalAppData known
 folder, the launcher creates or authenticates one non-reparse recovery directory whose protected
@@ -510,8 +554,16 @@ PWS-0202 uses the same authority shape for a complete scan-transform request, no
 grant. Storage resolves the current manifest page to one exact JPEG/PNG source; the broker transfers
 only source-read and fixed output-section map-write authority. The worker performs strict bounded
 normalization, applies the canonical eight-checkpoint transform profile, and closes the source
-before terminal output. The result remains volatile and disposable. No transform operation receives
-a case path, manifest/journal handle, persistent cache writer, or permission to replace a source.
+before terminal output. The worker result remains volatile until whole-tree termination and strict
+typed artifact validation. PWS-0811 optionally lets the trusted broker publish that bounded opaque
+RGBA artifact into the same case-private disposable cache and central CACHE quota as PDF thumbnails.
+A separate versioned predecode lookup key binds the authenticated immutable source hash/size/type,
+case/source/page IDs, complete transform intent, requested dimensions, engine profile and artifact
+version. A hit must also validate the native artifact's full decoded-geometry key, current snapshot
+versions, exact opaque pixel layout and digest; source, transform, size or engine changes cannot reuse
+the old entry. Corrupt entries are removed and rebuilt. No image decoder runs in the GUI. No transform
+operation receives a case path, manifest/journal handle, persistent cache writer, or permission to
+replace a source; only the trusted broker can validate and atomically publish disposable cache state.
 See the [non-destructive scan-transform contract](image-transform-pipeline.md).
 
 PWS-0204 follows the same one-shot authority rule for one authenticated PDF/JPEG/PNG source. The

@@ -13,6 +13,7 @@ import pytest
 import paperworkshell.ui.backend as backend_module
 from paperworkshell.app.redaction_tools import RedactionToolsState
 from paperworkshell.domain.manifest_repository import (
+    CURRENT_MANIFEST_SCHEMA_VERSION,
     ManifestLoadResult,
     ManifestLoadStatus,
     ManifestSnapshot,
@@ -34,13 +35,13 @@ MARK_ID = UUID("8f060200-0000-4000-8000-000000000101")
 
 def _current_snapshot(snapshot: ManifestSnapshot) -> ManifestSnapshot:
     document = snapshot.document
-    document["schema_version"] = 3
+    document["schema_version"] = CURRENT_MANIFEST_SCHEMA_VERSION
     document["redaction_marks"] = []
     sources = cast(list[dict[str, object]], document["sources"])
     sources[0]["display_name"] = "PRIVATE_SOURCE_NAME_CANARY.pdf"
     return ManifestSnapshot(
         snapshot.case_id,
-        3,
+        CURRENT_MANIFEST_SCHEMA_VERSION,
         snapshot.revision,
         document,
         snapshot.sha256,
@@ -61,7 +62,7 @@ def test_pending_intent_blocks_export_before_broker_sources_capacity_or_logs(
     candidate = editor.to_candidate(snapshot)
     marked = ManifestSnapshot(
         snapshot.case_id,
-        3,
+        snapshot.schema_version,
         snapshot.revision,
         candidate,
         snapshot.sha256,

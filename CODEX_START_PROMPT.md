@@ -9,7 +9,16 @@ as history; do not create a mandatory ARM task or describe that history as a pas
 The approved rationale is [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
 This does not waive any in-scope signing, security, privacy, accessibility or resource gate.
 
-**Current maintainer sequence (2026-11-04):** Execute PWS-0810 through a usable
+**Current maintainer sequence (2026-11-06):** Execute PWS-0811 through repairs,
+measurement, a unique next installer and installed-interface/independent-output
+verification of the supplied R9 feedback. The issue/test bundle identifies coverage;
+it does not create pre-existing PWS tasks. Preserve R9, existing cases, unrelated
+checkout work and historical evidence. Do not ask the maintainer to repeat the
+reported mechanical failures. Record unavailable checks honestly and do not declare
+another comparable human session ready without current passing evidence. The
+[repair work log](docs/development/pws0811-repairs-20261106.md) tracks implementation.
+
+**Earlier internal sequence (2026-11-04):** Execute PWS-0810 through a usable
 unsigned internal-build handoff. Start with verified R9 and the ordinary installed
 GUI; reuse accepted evidence within its recorded scope and repair concrete
 functional defects. Preserve current local work and R9. Public signing,

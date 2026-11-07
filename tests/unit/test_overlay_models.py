@@ -859,7 +859,7 @@ def test_manifest_document_dispatch_and_required_overlay_surfaces_fail_closed() 
 
     for version, code in (
         (True, OverlayErrorCode.MANIFEST_INVALID),
-        (4, OverlayErrorCode.VERSION_UNSUPPORTED),
+        (5, OverlayErrorCode.VERSION_UNSUPPORTED),
         ("2", OverlayErrorCode.MANIFEST_INVALID),
     ):
         document = _document([], schema_version=version)

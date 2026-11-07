@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.58",
+  "bundle_version": "0.2.63",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -20,8 +20,8 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 42823,
-      "sha256": "358a6bfd2eda7a3e6eac424a8eaee935ee2adc81e44eeff7517c5738e078b409"
+      "bytes": 43422,
+      "sha256": "8255a991cde27358b0c76f01ea773e0bcea428ae776ef9cc92bf239c25103bde"
     },
     {
       "path": "DECISIONS.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 473241,
-      "sha256": "04c0d6daf0ea2e5afea4048a00bbce1fa9fe39460e912bd42d163a315514795d"
+      "bytes": 485959,
+      "sha256": "3451ce58e3d401662bcf3785ca3b3727db8d5ddbddbebcedf782ec54abf795b9"
     },
     {
       "path": "TASKS.schema.json",
@@ -45,13 +45,13 @@
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 16317,
-      "sha256": "130ee3d05352b932068c99b351061376b4976688586eb8199d1bf3fd70c21461"
+      "bytes": 16970,
+      "sha256": "f51b2c7f51336368ccb1ce32245f1d09451e4dff02fec56ab6c6e91a90243b1c"
     },
     {
       "path": "README.md",
-      "bytes": 39683,
-      "sha256": "2e330b95e1d7103d1fe64a92b5f048cc6011aa14babedfa00b788977cd5a9c82"
+      "bytes": 39719,
+      "sha256": "56bc3da183155b808aa1c5f4ade6eee3767f79376efaac6410589155443f9c73"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -220,8 +220,8 @@
     },
     {
       "path": "docs/schemas/case-manifest-v3.md",
-      "bytes": 3721,
-      "sha256": "70126e3c84a7b57c1fd1ae115b200ee6afe8a882c2007688a88f3ea4a3de8339"
+      "bytes": 3787,
+      "sha256": "cc975c8bd3a0753c95d76f873a2ca4bdacc8679acc6a77e1decc46a152110353"
     },
     {
       "path": "docs/architecture/redaction-intent-review.md",
@@ -350,8 +350,8 @@
     },
     {
       "path": "docs/architecture/assisted-use.md",
-      "bytes": 3488,
-      "sha256": "3b6a7b9c2e457024a77603f81d6e62da9fb9b861f7f94df543ad3e918c5e98be"
+      "bytes": 3985,
+      "sha256": "d3464fb1d3c02f9221611611fb3d2533c662a25d3a803a9650957bf54343732a"
     },
     {
       "path": "docs/accessibility/pws-0705-assisted-use-audit.md",
@@ -480,8 +480,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 750,
-      "sha256": "7485025222023681badb0849818e18ad239deb4b08169cf42a967fa8967fe032"
+      "bytes": 751,
+      "sha256": "197d090be42725bc99148857102f4412c580c3eff44930b9a47a71599eabed60"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -515,8 +515,8 @@
     },
     {
       "path": "docs/architecture/case-migration.md",
-      "bytes": 5741,
-      "sha256": "de893a61da7379e6173a021580a2e6bf5ce9144da93a8542f75a8f81bb9b05aa"
+      "bytes": 6418,
+      "sha256": "94de817440e69d438d115d719b0ef526df96d9a8e796c94c3bc387bce1303a53"
     },
     {
       "path": "docs/architecture/support-bundle.md",
@@ -602,19 +602,40 @@
       "path": "docs/development/pws0810-r9-second-pc-handoff-20261104.md",
       "bytes": 8514,
       "sha256": "472f45819f11c0c0b307a3aa6d697f30cee7033e6929ecaeaaef3943652cee5a"
+    },
+    {
+      "path": "docs/development/pws0811-repairs-20261106.md",
+      "bytes": 34972,
+      "sha256": "e0134ff5d24bda36dbd56b628357a6792ab960dae21d703db5f31afac796b6f3"
+    },
+    {
+      "path": "docs/adr/0020-exact-directory-acl-updates.md",
+      "bytes": 18349,
+      "sha256": "f9f04e1b97217be76076b6f77c61360eeaba6013312bd61a2f95f8c8f0994859"
+    },
+    {
+      "path": "docs/schemas/case-manifest-v4.md",
+      "bytes": 2464,
+      "sha256": "8f5ec0463ebeff76bfc6b62f99af897f3e99c4e34b976d1984767637006a565c"
+    },
+    {
+      "path": "docs/adr/0021-bounded-repository-scan-groups.md",
+      "bytes": 7844,
+      "sha256": "6e51575cce913b9dca10a0473b157fc0821b84662467ec5a5fa5a728b69ef9aa"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 83,
-    "dependency_edge_count": 248,
+    "task_count": 84,
+    "dependency_edge_count": 250,
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [],
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
+    "PWS-0811 current internal repair assignment, 2026-11-06: preserve R9 and existing cases; repair the reported interface, journeys and redundant work; build and verify a unique successor with installed-interface and independent-output evidence. The supplied HT/T identifiers are coverage only. No current readiness, public-release, signing or sibling compatibility claim is made.",
     "PWS-0810 second-PC handoff follow-up, 2026-11-04: output/PaperWorkShell-R9-Second-PC contains the original-named byte-identical unsigned R9 installer, seven synthetic samples, local export folders and START-HERE.txt. Actual R9 installer/UI labels and image-only OCR source checked locally; no second-PC pass, application change, new installer, public-release claim, external contact or sibling dependency. PWS-0810 remains done; release-only work remains deferred.",
     "Current PWS-0810 internal-delivery completion, 2026-11-04: Internal build ready for use. Exact preserved R9, 512,732,779 bytes, SHA-256: d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4, NotSigned. Current Windows 11 Pro 26300.9711 AMD64 filtered-administrator installed GUI finite workflows and 3,195-file inventory pass, with accepted genuine-standard-account R9 and unchanged-boundary R6 evidence reused only in scope. All 11 exported PDFs pass strict reopen, syntax and rendering checks; clean overlay placement and GUI-saved summaries verified. OCR recognition/output-route limitations remain explicit. R9 was sufficient; no application source repair or R10. Final exact-case preservation passed: revision 19, four immutable sources, empty case temp and no installed workers. Canonical graph, schema, documentation and portfolio validators passed; final completion metadata retains the same scope. PWS-0810 is done; no dependency-ready unfinished task remains, so stop for optional ordinary-use feedback. Public signing, SignPath, publication and release-only qualification are deferred; real system-volume disk-full test not performed and deferred, with no VM request. Contact permission is exhausted; no new external contact or upload. PWS-0802 retains its original public-signing blocker, PWS-0804 and PWS-0805 remain done, PWS-0803 is not current. Standalone ownership and historical records preserved; no public-release or sibling-compatibility claim.",
     "Current PWS-0802 Community continuation: acquired and authenticated the accepted individual-developer route, implemented final Microsoft-only offline recipient terms and complete app-local R4 runtime. Exact unsigned internal R4 installer SHA256 3df3dc557f27646fecf68cc7f4b789f1c521110873ac173ca3ce6a01570c3155; independent artifact audit, installed workflow/DLL origins, observed interruption/repair, direct GUI keyboard/actionable error and final preserve-uninstall pass at host-only scope. Canonical affected QA and frozen privacy/secret scans passed; metadata closure is separate. Public signing, clean Windows, actual standard-account/ARM64 and current reader-output qualification remain open; PWS-0802 blocked and PWS-0803 not ready. PWS-0804/PWS-0805 and original Git/index/accepted evidence preserved; no sibling dependency or public release.",

@@ -63,7 +63,9 @@ class _Export:
         deadline: Callable[[], bool],
         cancellation: Callable[[], bool],
         progress: PdfExportProgressSink,
+        make_searchable: bool = False,
     ) -> PdfExportOutcome:
+        assert not make_searchable
         self.calls += 1
         assert case_id == CASE_ID
         assert isinstance(destination, Path)
@@ -204,6 +206,7 @@ def test_pages_pdf_export_button_is_keyboard_reachable_cancelable_and_retryable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.pages_pdf_export_requested.disconnect(worker.export_pages_pdf)
         requests: list[tuple[int, Path, OperationCancellation]] = []
         commands.pages_pdf_export_requested.connect(
@@ -216,7 +219,7 @@ def test_pages_pdf_export_button_is_keyboard_reachable_cancelable_and_retryable(
         )
         button = window.findChild(QPushButton, "pagesPdfExportButton")
         assert button is not None and button.isEnabled()
-        assert button.accessibleName() == "Export pages as PDF"
+        assert button.accessibleName() == "Export PDF…"
         _press(button)
         assert len(requests) == 1
         assert not window._import_button.isEnabled()
@@ -244,6 +247,7 @@ def test_pages_pdf_export_destination_cancel_starts_no_operation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.pages_pdf_export_requested.disconnect(worker.export_pages_pdf)
         requests: list[int] = []
         commands.pages_pdf_export_requested.connect(
@@ -259,6 +263,7 @@ def test_export_refresh_does_not_replace_completion_with_an_unneeded_preview(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.pages_pdf_export_requested.disconnect(worker.export_pages_pdf)
         monkeypatch.setattr(
             QFileDialog, "getSaveFileName", lambda *_args, **_kwargs: ("synthetic.pdf", "")
@@ -279,6 +284,7 @@ def test_export_refresh_failure_guidance_offers_close_case_without_claiming_impo
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
         commands.pages_pdf_export_requested.disconnect(worker.export_pages_pdf)
         monkeypatch.setattr(
             QFileDialog, "getSaveFileName", lambda *_args, **_kwargs: ("synthetic.pdf", "")

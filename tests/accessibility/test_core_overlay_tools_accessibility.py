@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -147,11 +148,10 @@ def test_dialog_exposes_named_roles_descriptions_and_exact_coordinate_units() ->
             (QLineEdit, "coreOverlayValueEdit"),
             (QSpinBox, "coreOverlayFontSizeSpin"),
             (QComboBox, "coreOverlayColorCombo"),
-            (QSpinBox, "coreOverlayLeftSpin"),
-            (QSpinBox, "coreOverlayTopSpin"),
-            (QSpinBox, "coreOverlayWidthSpin"),
-            (QSpinBox, "coreOverlayHeightSpin"),
-            (QPushButton, "applyCoreOverlayPropertiesButton"),
+            (QDoubleSpinBox, "coreOverlayLeftSpin"),
+            (QDoubleSpinBox, "coreOverlayTopSpin"),
+            (QDoubleSpinBox, "coreOverlayWidthSpin"),
+            (QDoubleSpinBox, "coreOverlayHeightSpin"),
             (QCheckBox, "overlayEditorFineStepCheck"),
             (QPushButton, "overlayEditorMoveLeftButton"),
             (QPushButton, "overlayEditorGrowWidthButton"),
@@ -182,7 +182,7 @@ def test_dialog_exposes_named_roles_descriptions_and_exact_coordinate_units() ->
             QAccessible.Role.EditableText,
         )
         _assert_role(
-            _widget(dialog, QSpinBox, "coreOverlayLeftSpin"),
+            _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin"),
             QAccessible.Role.SpinBox,
         )
         _assert_role(
@@ -200,10 +200,10 @@ def test_dialog_exposes_named_roles_descriptions_and_exact_coordinate_units() ->
             ("coreOverlayWidthSpin", 1),
             ("coreOverlayHeightSpin", 1),
         ):
-            coordinate = _widget(dialog, QSpinBox, name)
-            assert coordinate.minimum() == minimum
-            assert coordinate.maximum() == 1_000_000
-            assert "millionths" in coordinate.accessibleName()
+            coordinate = _widget(dialog, QDoubleSpinBox, name)
+            assert coordinate.minimum() == minimum / 10_000
+            assert coordinate.maximum() == 100
+            assert "percent" in coordinate.accessibleName()
 
 
 def test_native_selection_and_value_interfaces_expose_state_and_exact_ranges() -> None:
@@ -218,14 +218,14 @@ def test_native_selection_and_value_interfaces_expose_state_and_exact_ranges() -
         assert selected_item is not None
         assert selected_item.state().selected
 
-        left = _widget(dialog, QSpinBox, "coreOverlayLeftSpin")
+        left = _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin")
         left_interface = QAccessible.queryAccessibleInterface(left)
         assert left_interface is not None
         value = left_interface.valueInterface()
         assert value is not None
         assert value.minimumValue() == 0
-        assert value.maximumValue() == 1_000_000
-        assert value.minimumStepSize() == 1_000
+        assert value.maximumValue() == 100
+        assert value.minimumStepSize() == 0.1
         assert value.currentValue() == left.value()
         assert "Current value:" in left.accessibleDescription()
         assert "percent" in left.accessibleDescription()
@@ -286,6 +286,9 @@ def test_tab_order_completes_two_forward_and_reverse_cycles_with_wrap() -> None:
         app.processEvents()
 
         ordered = (
+            _widget(dialog, QPushButton, "addTextButton"),
+            _widget(dialog, QPushButton, "addCheckmarkButton"),
+            _widget(dialog, QLineEdit, "coreOverlayValueEdit"),
             zoom,
             _widget(dialog, QPushButton, "overlayEditorZoomOutButton"),
             _widget(dialog, QPushButton, "overlayEditorZoomInButton"),
@@ -303,14 +306,12 @@ def test_tab_order_completes_two_forward_and_reverse_cycles_with_wrap() -> None:
             _widget(dialog, QComboBox, "newOverlayTypeCombo"),
             _widget(dialog, QPushButton, "addCoreOverlayButton"),
             _widget(dialog, QListWidget, "coreOverlayList"),
-            _widget(dialog, QLineEdit, "coreOverlayValueEdit"),
             _widget(dialog, QSpinBox, "coreOverlayFontSizeSpin"),
             _widget(dialog, QComboBox, "coreOverlayColorCombo"),
-            _widget(dialog, QSpinBox, "coreOverlayLeftSpin"),
-            _widget(dialog, QSpinBox, "coreOverlayTopSpin"),
-            _widget(dialog, QSpinBox, "coreOverlayWidthSpin"),
-            _widget(dialog, QSpinBox, "coreOverlayHeightSpin"),
-            _widget(dialog, QPushButton, "applyCoreOverlayPropertiesButton"),
+            _widget(dialog, QDoubleSpinBox, "coreOverlayLeftSpin"),
+            _widget(dialog, QDoubleSpinBox, "coreOverlayTopSpin"),
+            _widget(dialog, QDoubleSpinBox, "coreOverlayWidthSpin"),
+            _widget(dialog, QDoubleSpinBox, "coreOverlayHeightSpin"),
             _widget(dialog, QCheckBox, "overlayEditorFineStepCheck"),
             _widget(dialog, QPushButton, "overlayEditorMoveLeftButton"),
             _widget(dialog, QPushButton, "overlayEditorMoveRightButton"),
@@ -334,7 +335,7 @@ def test_tab_order_completes_two_forward_and_reverse_cycles_with_wrap() -> None:
             and widget.isEnabled()
             and widget.focusPolicy() is not Qt.FocusPolicy.NoFocus
         )
-        assert active[0].objectName() == "overlayEditorZoomCombo"
+        assert active[0].objectName() == "addTextButton"
         assert active[-1].objectName() == "coreOverlayToolsStatus"
         for required_name in (
             "overlayEditorFitPageButton",
@@ -349,7 +350,6 @@ def test_tab_order_completes_two_forward_and_reverse_cycles_with_wrap() -> None:
             "overlayEditorPanCenterButton",
             "newOverlayTypeCombo",
             "coreOverlayList",
-            "applyCoreOverlayPropertiesButton",
             "applyFormMarksButton",
             "cancelFormMarksButton",
         ):
@@ -522,10 +522,12 @@ def test_enlarged_text_keeps_fixed_actions_visible_and_editor_scrollable() -> No
             bottom_control = _widget(
                 dialog,
                 QPushButton,
-                "applyCoreOverlayPropertiesButton",
+                "overlayEditorGrowHeightButton",
             )
             combo.setFocus(Qt.FocusReason.TabFocusReason)
-            for _ in range(10):
+            for _ in range(50):
+                if bottom_control.hasFocus():
+                    break
                 current = app.focusWidget()
                 assert current is not None
                 QTest.keyClick(current, Qt.Key.Key_Tab)

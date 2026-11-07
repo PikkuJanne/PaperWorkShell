@@ -17,7 +17,10 @@ from paperworkshell.domain.text_companion import (
     require_companion_active,
     sanitize_companion_text,
 )
-from paperworkshell.worker._windows_broker import WindowsBoundedOutputBuffer
+from paperworkshell.worker._windows_broker import (
+    WindowsBoundedOutputBuffer,
+    retire_runtime_on_failure,
+)
 from paperworkshell.worker.client.client import WorkerClient
 from paperworkshell.worker.client.models import WorkerLifecyclePhase
 from paperworkshell.worker.client.process import BrokeredHandlePurpose
@@ -59,6 +62,7 @@ class BrokeredTextCompanionExtractor:
         self._worker, self._policy, self._heavy = worker, policy, heavy_operations
         self._buffer_factory = output_buffer_factory
 
+    @retire_runtime_on_failure
     def extract_handle(
         self,
         case_id: UUID,

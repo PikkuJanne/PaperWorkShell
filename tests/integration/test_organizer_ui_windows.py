@@ -80,6 +80,15 @@ IMAGE_FIXTURE = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_worker_access_journal(
+    owned_production_worker_code: Path,
+) -> None:
+    """Exercise real worker ACLs without borrowing the installed app's journal."""
+
+    assert owned_production_worker_code.is_dir()
+
+
 class _TwoPagePdfInspector:
     def inspect(
         self,

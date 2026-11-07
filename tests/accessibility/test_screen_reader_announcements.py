@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent
 from PySide6.QtWidgets import QLabel
@@ -9,7 +11,7 @@ from PySide6.QtWidgets import QLabel
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.backend import UiFailure, UiProgress
 from paperworkshell.ui.window import _LongOperationKind
-from tests.accessibility.test_accessibility_baseline import CASE_ID, _application, _state, _window
+from tests.accessibility.test_accessibility_baseline import _application, _state, _window
 
 
 def _speech(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
@@ -78,10 +80,10 @@ def test_main_window_exposes_current_case_status_and_error_in_native_names(
     messages = _speech(monkeypatch)
     with _window() as (window, _commands, worker):
         worker.initialized.emit()
-        worker.state_changed.emit(_state())
+        worker.state_changed.emit(replace(_state(), case_name="Synthetic accessibility case"))
         interface = QAccessible.queryAccessibleInterface(window)
         assert interface is not None
-        assert str(CASE_ID) in interface.text(QAccessible.Text.Name)
+        assert "Synthetic accessibility case" in interface.text(QAccessible.Text.Name)
         operation = window._begin_long_operation(_LongOperationKind.IMPORT)
         window._announcer = ScreenReaderAnnouncer(window._status_label, clock=lambda: 0)
         for completed in range(101):

@@ -19,6 +19,9 @@ from tools.validate_manifests import (
     V2_MANIFEST_EXAMPLE_PATTERN,
     V2_MANIFEST_INVALID_FIXTURE_DIRECTORY,
     V2_MANIFEST_SCHEMA_PATH,
+    V3_MANIFEST_EXAMPLE_PATTERN,
+    V3_MANIFEST_INVALID_FIXTURE_DIRECTORY,
+    V3_MANIFEST_SCHEMA_PATH,
     ManifestIssue,
     load_manifest_schema,
     validate_manifest_data,
@@ -101,7 +104,7 @@ class CaseManifestValidationTests(unittest.TestCase):
         self.assertEqual([], issues)
         self.assertIsNotNone(summary)
         assert summary is not None
-        self.assertEqual(6, summary.positive_count)
+        self.assertEqual(8, summary.positive_count)
         self.assertGreaterEqual(summary.negative_count, 10)
 
     def test_each_negative_fixture_is_rejected_for_its_intended_reason(self) -> None:
@@ -109,7 +112,7 @@ class CaseManifestValidationTests(unittest.TestCase):
             "duplicate-key.json": "MANIFEST_JSON_DUPLICATE_KEY",
             "duplicate-source-id.json": "MANIFEST_SOURCE_ID_DUPLICATE",
             "executable-operation-field.json": "MANIFEST_SCHEMA_VALIDATION",
-            "future-version.json": "MANIFEST_VERSION_UNSUPPORTED",
+            "future-version.json": "MANIFEST_SCHEMA_IDENTITY_MISMATCH",
             "invalid-hash.json": "MANIFEST_SCHEMA_VALIDATION",
             "legacy-version.json": "MANIFEST_VERSION_UNSUPPORTED",
             "malformed-normalized-box.json": "MANIFEST_NORMALIZED_BOX_INVALID",
@@ -134,7 +137,7 @@ class CaseManifestValidationTests(unittest.TestCase):
             (True, "MANIFEST_VERSION_INVALID"),
             ("1", "MANIFEST_VERSION_INVALID"),
             (0, "MANIFEST_VERSION_UNSUPPORTED"),
-            (4, "MANIFEST_VERSION_UNSUPPORTED"),
+            (5, "MANIFEST_VERSION_UNSUPPORTED"),
         )
         for value, expected_code in cases:
             with self.subTest(value=value):
@@ -796,8 +799,10 @@ class ManifestSchemaRegistryIntegrationTests(unittest.TestCase):
         (target / MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
         (target / CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
         (target / V2_MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
+        (target / V3_MANIFEST_INVALID_FIXTURE_DIRECTORY).mkdir(parents=True)
         shutil.copy2(ROOT / MANIFEST_SCHEMA_PATH, target / MANIFEST_SCHEMA_PATH)
         shutil.copy2(ROOT / V2_MANIFEST_SCHEMA_PATH, target / V2_MANIFEST_SCHEMA_PATH)
+        shutil.copy2(ROOT / V3_MANIFEST_SCHEMA_PATH, target / V3_MANIFEST_SCHEMA_PATH)
         shutil.copy2(
             ROOT / CURRENT_MANIFEST_SCHEMA_PATH,
             target / CURRENT_MANIFEST_SCHEMA_PATH,
@@ -808,8 +813,12 @@ class ManifestSchemaRegistryIntegrationTests(unittest.TestCase):
             shutil.copy2(source, target / "schemas" / "examples" / source.name)
         for source in EXAMPLE_DIRECTORY.glob(V2_MANIFEST_EXAMPLE_PATTERN):
             shutil.copy2(source, target / "schemas" / "examples" / source.name)
+        for source in EXAMPLE_DIRECTORY.glob(V3_MANIFEST_EXAMPLE_PATTERN):
+            shutil.copy2(source, target / "schemas" / "examples" / source.name)
         for source in (ROOT / V2_MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):
             shutil.copy2(source, target / V2_MANIFEST_INVALID_FIXTURE_DIRECTORY / source.name)
+        for source in (ROOT / V3_MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):
+            shutil.copy2(source, target / V3_MANIFEST_INVALID_FIXTURE_DIRECTORY / source.name)
         for source in (ROOT / MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):
             shutil.copy2(source, target / MANIFEST_INVALID_FIXTURE_DIRECTORY / source.name)
         for source in (ROOT / CURRENT_MANIFEST_INVALID_FIXTURE_DIRECTORY).glob("*.json"):

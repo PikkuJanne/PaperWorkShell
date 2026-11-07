@@ -20,10 +20,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QBoxLayout,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -54,6 +52,12 @@ from paperworkshell.ui.presentation import (
     WrappingActionLayout,
     adapt_dialog_button_box,
     set_static_busy,
+)
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeComboBox as QComboBox,
+)
+from paperworkshell.ui.wheel_safe import (
+    WheelSafeDoubleSpinBox as QDoubleSpinBox,
 )
 
 _FOCUS_VISIBLE_TEXT_STYLE: Final = (
