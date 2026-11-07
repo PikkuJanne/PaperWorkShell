@@ -6380,6 +6380,7 @@ tasks:
   - PWS-0809
   - PWS-0810
   - PWS-0811
+  - PWS-0812
   decision_refs:
   - PWS-D003
   - PWS-D022
@@ -6851,3 +6852,67 @@ tasks:
       Asset audit SHA256 ad91e1fc0cd1cacca6133eca8503607d275665a3d52b084b6a2938ed3dadc0ce; original bundle audit receipt SHA256 0638c7165a62e366a7ea94d08e43df626f2a47b4b58be847e5c9965786801804.
       Frozen accessibility/unit receipt SHA256 7ef577fa5fe0ca6eae343a35f1332a44d6e09382f07172b86aadb35285e2b0fc.
       No new human test is requested. PWS-0808 remains dependency-gated by PWS-0811.
+- id: PWS-0812
+  milestone: M8
+  title: Verify installed R16 ordinary PDF and English OCR offline
+  kind: implementation
+  priority: P0
+  effort: S
+  status: blocked
+  critical_path: false
+  depends_on:
+  - PWS-0810
+  decision_refs:
+  - PWS-D005
+  - PWS-D009
+  - PWS-D016
+  - PWS-D029
+  - PWS-D042
+  - PWS-D043
+  objective: Verify the two bounded processing workflows from the normal installed R16 launcher,
+    with network unavailable throughout the application process tree.
+  deliverables:
+  - Exact installed candidate, environment, fixture and independent output receipts.
+  - Observed executable, module and language-data paths scoped to the two runs.
+  - A continuation record preserving the distinction between offline processing, install policy,
+    standard-user installation and clean-environment dependency verification.
+  acceptance_criteria:
+  - Use the verified R16 artifact from PWS-0811, whose wider acceptance remains in review.
+  - With genuine isolation in effect, import form.pdf, 03-scan.png and ocr-scan.pdf in order,
+    export ordinary and English-searchable PDFs to fresh destinations, and reopen the saved case.
+  - Independent extraction and renders confirm order, visible content, digital text, no lost or
+    duplicated content, and PAGE 206 on both OCR scan pages. Retain the exact recognition and
+    full-phrase search results, source hashes, and saved page identities.
+  - Record actual runtime paths for these workflows and classify their origins.
+  verification:
+  - Rehash Setup, installed marker and executables, and the three original synthetic inputs.
+  - Record account/token, OS/build, offline boundary and application process tree.
+  - Run the prepared installed UI procedure and independent bounded Poppler checks.
+  risk_tags:
+  - offline-processing
+  - installed-runtime
+  - internal-delivery
+  blocker:
+    reason: No available permitted Windows facility can run the exact installed R16 process
+      tree with networking unavailable and host connectivity preserved.
+    evidence:
+    - PWS-D005 and PWS-D043 apply. The genuine-standard, network-disabled Sandbox blocked
+      exact R16 before Setup. Its named Smart App Control dialog and result are retained.
+    - The connected host has a filtered administrator token. The existing worker AppContainer
+      leaves the launcher and desktop outside its boundary. No alternate local VM was identified.
+    - output/pws0811/installed-r16/functional-step-1/environment.json records the capability check.
+    requested_action: Make a permitted Windows environment available where exact R16 can be
+      installed normally and the installed app and its descendants can run without networking.
+  evidence:
+    completed_at: null
+    revision: null
+    commands:
+    - Get-FileHash verified R16 Setup, marker, launcher and desktop and 16 installed inventory members.
+    - The bounded Poppler verifier passed for both original PDFs and both planned output mappings
+      were validated. Installed exports, reopen and same-run runtime tracing are not_run.
+    - Task graph, documentation and portfolio validator results are saved in the Step 1 evidence.
+    notes:
+    - The 2026-11-07 maintainer assignment authorizes this artifact-scoped follow-up while
+      PWS-0811 stays in review. Existing PWS-0808 prerequisites and criteria are retained.
+    - docs/development/pws0811-repairs-20261106.md records the partial step and next exact action.
+    - output/pws0811/installed-r16/functional-step-1 holds the receipts and runnable procedure.

@@ -77,6 +77,19 @@ Unless the maintainer names a task:
 
 Do not begin a later milestone because it appears easier. Gate tasks are evidence and integration tasks, not substitutes for incomplete implementation tasks.
 
+### 3.1 Bounded thread workflow
+
+Each Codex thread handles one bounded step, including its necessary checks. Work autonomously
+within that step and keep parallel work inside it. Record the result and the exact next step
+in the current continuation record, then stop. Janne opens a fresh thread for the next step.
+Functional correctness and reliable processing take priority. Keep deferred UI polish visible in
+the backlog. A completed step supplies evidence only for its own scope.
+
+If the step cannot be completed, save a compact partial checkpoint with the unfinished action,
+reproduction, changed files, verification commands and results, and the next exact action.
+The next thread resumes that step. Account for all edits and stop any owned background jobs
+before handing over.
+
 ## 4. Required work loop
 
 For each task:
