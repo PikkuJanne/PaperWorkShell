@@ -6660,7 +6660,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: review
   critical_path: true
   depends_on:
   - PWS-0810
@@ -6726,7 +6726,13 @@ tasks:
   evidence:
     completed_at: null
     revision: null
-    commands: []
+    commands:
+    - "Offline uv build --wheel --sdist; tools.build_windows_installer stage and compile all exited 0 (exact arguments in build-execution-r16/result.json)."
+    - "Frozen R16 registered check driver, phases static/security/integration: precheck and 16 static passed; security 1329 passed/6 skipped; core integration 699 passed/25 skipped/1 failed (test double)."
+    - "Focused corrected active test module (offscreen): 3 passed; scoped Ruff format/lint and registered tools/dev.py typecheck passed. All 325 active application files matched frozen R16; no full corrected integration rerun."
+    - "Frozen R16 independent registered phases accessibility/unit: 359 accessibility passed; unit exit 1, 2 failed, 8009 passed, 2 skipped, 2 errors in 1842.21s (0:30:42)."
+    - "Original bundle tools/check_completion.py: incomplete rows retained, not a readiness pass. Independent bounded asset audit rehashed exact Setup and evidence."
+    - "Targeted repeat of four unchanged frozen nodes in a neutral scratch folder exited 0. Receipt SHA256 ca0b180f4ecb04a71e35bf28bec777d7d53a8af24b4d7bb4514742c58df97127. It does not replace the failed full unit run."
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -6812,3 +6818,36 @@ tasks:
       The actual genuine-standard offline Sandbox blocked the exact unsigned R14 installer with Smart App Control before Setup; no guest product or T12 pass followed and no security bypass occurred. Host-visible evidence/archive 6ce420aa and explicit retirement 9c35f408 remain retained. Host functional observations are not relabeled as genuine-standard/offline acceptance. Final T12, representative DPI, performance comparison and final registered suites remain pending.
     - >-
       Actual successor pws0811-internal-20261106-r15 was freshly audited/reserved and is now authorized in product metadata. Eight guarded helper defaults pass, with final source/installer identities unset until observed. PWS-0811 remains in_progress; no ready/done or similar human-session claim. R9 legacy case 95c9a3d8 remains exact v3/revision 5 across six files, 236987 bytes before future UI open/rename/reopen. The four-original upright/unmarked OCR case 063fca31 is prepared with zero exports for later R15 measurement plus page-specific recognition proof. R14/source-pipeline evidence is not converted into R15 results.
+    - R16 actual source 14636ad5c223de92d7e51aa0178aacaeb9cc9008 built offline;
+      installer 512832732 bytes, SHA256 ca58f08b33c8ee193d1ec326cf9905fb5dbe8ecf97570add1b0cc99933159df2.
+      Normal Keep-cases host installation preserved 26 cases and 163 files exactly;
+      all 2443 installed runtime members matched before launch. Real stationary
+      overlay selection, first-selection drag and Undo confirm the new pointer
+      correction. Ordinary rotated marked PDF independently rendered and reviewed.
+      V4 full unit passed with two capability skips; four scanner fixture assertions
+      were corrected and focused/module checks passed. R16 full registered checks,
+      remaining installed/DPI/failure/offline/performance work and final evidence
+      closure remain pending. PWS-0811 stays in_progress, with no human retest request.
+    - >-
+      R16 checklist and fresh UI-created text/checkmark journeys now have reviewed
+      ordinary/package PDFs, wheel-safety, Cancel and whole-app reopen evidence.
+      Sealed session A records 15 timing observations, including improved import/
+      rotation bounds versus preserved R9, remaining target misses and four ordinary
+      PDFs awaiting independent review. Fresh session B language observation is
+      sealed. These are UI/tool observation bounds, not exact operation durations;
+      full registered gates, remaining timings, DPI/failure/offline/output checks
+      and final evidence/guide closure remain pending. PWS-0811 stays in_progress.
+
+    - >-
+      All 40 initial R16 timing recipes were observed. Actual frames show a four-page case preview ready by 863 ms while the accessible row still said pending until about 31 seconds. Preserve the raw streams; late text observations are not measured paint waits. The 16 timed PDFs and 36 renders were independently checked. Both original scan types contain PAGE 206; actual text is SCAM PAGE 206. A separate 16-page synthetic case exercised actual cancellation, one controlled OCR engine failure, and a destination collision without losing a saved edit or overwriting a destination. The normal new-name recovery PDF passed independent checks on all 16 pages. Missing-language UI, fixed-frame timing, DPI/identity/guide, standard offline scope and final registered source gates remain open. PWS-0811 stays in_progress.
+    - >-
+      The 15 separately validated installed paint runs show warm four-page reopen within 708 ms, a 4.911 s cold PNG upper bound, and confirmed warm PNG and persisted rotation target misses. Actual missing-English failure, restoration and post-restart Refresh are recorded from a disposable runtime copy; all 2443 files in both installations were reverified. The basic, fresh-marks and River OCR guide journeys and real independently reviewed files are sealed. The exclusive frozen-source registered checks started; remaining native scope, performance closure and final completion audit are open. PWS-0811 stays in_progress.
+    - >-
+      Final R16 delivery remains review. Actual Windows 11 host output, scaling, naming,
+      overlay and checklist evidence is bound to the exact installer. The fresh standard
+      offline guest blocked unsigned Setup with Smart App Control; no guest product ran.
+      Remaining recognition, performance, and installed coverage limits are explicit.
+      Delivery record SHA256 a7963bfa6d6faafe7a2a6bcdd0795f7d3003e3e445bc807acb5167633eb35afa.
+      Asset audit SHA256 ad91e1fc0cd1cacca6133eca8503607d275665a3d52b084b6a2938ed3dadc0ce; original bundle audit receipt SHA256 0638c7165a62e366a7ea94d08e43df626f2a47b4b58be847e5c9965786801804.
+      Frozen accessibility/unit receipt SHA256 7ef577fa5fe0ca6eae343a35f1332a44d6e09382f07172b86aadb35285e2b0fc.
+      No new human test is requested. PWS-0808 remains dependency-gated by PWS-0811.
