@@ -6858,7 +6858,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: S
-  status: blocked
+  status: done
   critical_path: false
   depends_on:
   - PWS-0810
@@ -6892,27 +6892,27 @@ tasks:
   - offline-processing
   - installed-runtime
   - internal-delivery
-  blocker:
-    reason: No available permitted Windows facility can run the exact installed R16 process
-      tree with networking unavailable and host connectivity preserved.
-    evidence:
-    - PWS-D005 and PWS-D043 apply. The genuine-standard, network-disabled Sandbox blocked
-      exact R16 before Setup. Its named Smart App Control dialog and result are retained.
-    - The connected host has a filtered administrator token. The existing worker AppContainer
-      leaves the launcher and desktop outside its boundary. No alternate local VM was identified.
-    - output/pws0811/installed-r16/functional-step-1/environment.json records the capability check.
-    requested_action: Make a permitted Windows environment available where exact R16 can be
-      installed normally and the installed app and its descendants can run without networking.
+  blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-11-08'
+    revision: candidate:pws0811-internal-20261106-r16
     commands:
-    - Get-FileHash verified R16 Setup, marker, launcher and desktop and 16 installed inventory members.
-    - The bounded Poppler verifier passed for both original PDFs and both planned output mappings
-      were validated. Installed exports, reopen and same-run runtime tracing are not_run.
-    - Task graph, documentation and portfolio validator results are saved in the Step 1 evidence.
+    - PowerShell Direct file round trip and Get-FileHash verified transport, exact R16 Setup,
+      installed marker, launcher, desktop and 16 selected installed inventory members.
+    - Interactive Limited PWSTest Setup exited 0 without elevation in the SAC-Off disconnected
+      PWS-Test VM. Installed UI saved both export modes and reopened the same case at revision 5.
+    - The bounded host Poppler verifier passed both actual PDFs and both original PDF checks.
+      Three pages each had the expected order, orientation and appearance. The digital text
+      survived both and PAGE 206 matched on each English OCR scan page. Fixture hashes matched.
+    - Live Process Monitor observation covered launcher, desktop, workers, qpdf, Tesseract and
+      successful reads of bundled English language data. No unexpected development paths were
+      observed in scope. Task graph, docs and portfolio validator logs are in the run evidence.
     notes:
-    - The 2026-11-07 maintainer assignment authorizes this artifact-scoped follow-up while
-      PWS-0811 stays in review. Existing PWS-0808 prerequisites and criteria are retained.
-    - docs/development/pws0811-repairs-20261106.md records the partial step and next exact action.
-    - output/pws0811/installed-r16/functional-step-1 holds the receipts and runnable procedure.
+    - The frozen R16 application source is 14636ad5c223de92d7e51aa0178aacaeb9cc9008.
+      The Hyper-V run resolves the facility blocker. The prior Sandbox Smart App Control
+      failure remains historical evidence and enforcement compatibility remains unverified.
+    - Both scans extract SCAM PAGE 206 and miss exact SCAN PAGE 206. Scoped live path evidence
+      leaves wider dependency isolation and the separate offline marks check open under PWS-0811.
+    - docs/development/pws0811-repairs-20261106.md holds the handover. Full run evidence is under
+      output/pws0811/installed-r16/functional-step-1/hyper-v-20261108. PWS-0811 stays in review
+      and PWS-0808 keeps its prerequisites and criteria.
