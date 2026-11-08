@@ -6892,6 +6892,17 @@ tasks:
         See step-result.md under
         output/pws0811/installed-r16/functional-step-5/hyper-v-20261108.
         Wider T01/HT-01 and PWS-0811 stay in review.
+    - >-
+      Functional Step 6 passed the T01/HT-01 installed organizer preview Cancel and
+      recovery check on exact R16 under the limited interactive PWSTest account in
+      the disconnected PWS-Test guest. A normal click dispatched with the saved
+      clockwise PNG card visibly loading and active lookup shown. The card settled
+      unloaded with Preview update cancelled. Selecting output 1 and returning to
+      output 2 recovered the same page, with painted pixels matching the clockwise
+      fixture. The revision 3 manifest was byte-identical before Cancel, after
+      settling, and after recovery. Both originals matched the delivery hashes.
+      See step-result.md under output/pws0811/installed-r16/functional-step-6/hyper-v-20261108.
+      Wider T01/HT-01 and PWS-0811 remain in review.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
