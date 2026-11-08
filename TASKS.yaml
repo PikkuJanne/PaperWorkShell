@@ -6903,6 +6903,17 @@ tasks:
       settling, and after recovery. Both originals matched the delivery hashes.
       See step-result.md under output/pws0811/installed-r16/functional-step-6/hyper-v-20261108.
       Wider T01/HT-01 and PWS-0811 remain in review.
+    - >-
+      Functional Step 7 passed the T01/HT-01 installed organizer Remove and Undo
+      check on exact R16 in the disconnected PWS-Test guest. Normal Remove page
+      input was captured between two identical selected loading and active lookup
+      frames. Revision 4 saved only the form in the active order. Normal Undo
+      restored both page IDs, their order and the PNG rotation in revision 5.
+      Selecting the restored PNG showed Preview ready with independently matched
+      clockwise pixels. Both immutable originals matched the delivery hashes
+      through removal and recovery. See step-result.md under
+      output/pws0811/installed-r16/functional-step-7/hyper-v-20261108.
+      Obsolete-generation delivery remains open. Wider T01/HT-01 and PWS-0811 stay in review.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
