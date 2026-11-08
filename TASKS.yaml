@@ -6864,6 +6864,15 @@ tasks:
       registrations. The original PWS-0812 and Sandbox evidence is preserved. Offline text editing/export and
       wider PWS-0811 acceptance remain open. Evidence is in
       output/pws0811/installed-r16/functional-step-2/hyper-v-20261108, indexed by step-result.md.
+    - >-
+      Functional Step 3 passed the T12/HT-17 offline text-mark edit and ordinary PDF export on the
+      same disconnected Windows 11 Pro x64 SAC-Off PWS-Test guest under the limited interactive
+      PWSTest token. The same page 1 mark changed from Offline R16 draft to Offline R16 mark,
+      survived a normal restart and case reopen, and appeared exactly once in the independently
+      rendered OCR-Off PDF within its planned rectangle. Source text and pixels outside the mark
+      survived and fixture hashes matched. The original Setup, PDF/OCR, runtime and Sandbox evidence
+      retains its scope. Wider PWS-0811 acceptance stays in review. See step-result.md under
+      output/pws0811/installed-r16/functional-step-3/hyper-v-20261108.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
