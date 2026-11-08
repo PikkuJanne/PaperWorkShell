@@ -6873,6 +6873,14 @@ tasks:
       survived and fixture hashes matched. The original Setup, PDF/OCR, runtime and Sandbox evidence
       retains its scope. Wider PWS-0811 acceptance stays in review. See step-result.md under
       output/pws0811/installed-r16/functional-step-3/hyper-v-20261108.
+    - >-
+      Functional Step 4 passed the T01/HT-01 installed pending-preview Close and same-case reopen
+      check on exact R16 in the offline PWS-Test guest under the limited interactive PWSTest token.
+      The active PNG preview was painted loading immediately before normal Close. Reopen preserved
+      both page IDs and order, the saved clockwise PNG rotation and current pixels for both pages.
+      Obsolete preview-generation delivery was unobserved in the installed run and remains unproved
+      by an exact focused source assertion. Wider T01/HT-01 and PWS-0811 remain in review.
+      See step-result.md under output/pws0811/installed-r16/functional-step-4/hyper-v-20261108.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
