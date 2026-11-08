@@ -85,6 +85,11 @@ in the current continuation record, then stop. Janne opens a fresh thread for th
 Functional correctness and reliable processing take priority. Keep deferred UI polish visible in
 the backlog. A completed step supplies evidence only for its own scope.
 
+Every completed or partial step must end with a plain-language final reply that prints the complete
+ready-to-paste next-thread prompt. Saving that prompt only in a file, or saying that the file
+contains it, is insufficient. Include actual task IDs, paths, candidate identity, and branch/commit
+state. Each prompt authorizes exactly one bounded step and ends with a STOP instruction.
+
 If the step cannot be completed, save a compact partial checkpoint with the unfinished action,
 reproduction, changed files, verification commands and results, and the next exact action.
 The next thread resumes that step. Account for all edits and stop any owned background jobs

@@ -6734,6 +6734,10 @@ tasks:
     - "Frozen R16 independent registered phases accessibility/unit: 359 accessibility passed; unit exit 1, 2 failed, 8009 passed, 2 skipped, 2 errors in 1842.21s (0:30:42)."
     - "Original bundle tools/check_completion.py: incomplete rows retained, not a readiness pass. Independent bounded asset audit rehashed exact Setup and evidence."
     - "Targeted repeat of four unchanged frozen nodes in a neutral scratch folder exited 0. Receipt SHA256 ca0b180f4ecb04a71e35bf28bec777d7d53a8af24b4d7bb4514742c58df97127. It does not replace the failed full unit run."
+    - >-
+      Functional Step 2 used PowerShell Direct, the installed PWSTest desktop and scoped Process Monitor
+      captures. The ordinary and English OCR PDFs passed independent host Poppler verification. Both scan
+      pages match PAGE 206 and extract SCAM PAGE 206. Rehashed Setup and 16 installed inventory members match R16.
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -6852,6 +6856,14 @@ tasks:
       Asset audit SHA256 ad91e1fc0cd1cacca6133eca8503607d275665a3d52b084b6a2938ed3dadc0ce; original bundle audit receipt SHA256 0638c7165a62e366a7ea94d08e43df626f2a47b4b58be847e5c9965786801804.
       Frozen accessibility/unit receipt SHA256 7ef577fa5fe0ca6eae343a35f1332a44d6e09382f07172b86aadb35285e2b0fc.
       No new human test is requested. PWS-0808 remains dependency-gated by PWS-0811.
+    - >-
+      Functional Step 2 completed the T12/HT-17 runtime-independence portion for ordinary PDF and English OCR
+      on the disconnected Windows 11 Pro x64 SAC-Off Hyper-V guest. Controlled inventory and live paths showed
+      bundled engines and English data, expected Windows support and no undeclared required runtime in scope.
+      Neither capture loaded or read OneDrive after its registered guest uninstaller removed the checked shell
+      registrations. The original PWS-0812 and Sandbox evidence is preserved. Offline text editing/export and
+      wider PWS-0811 acceptance remain open. Evidence is in
+      output/pws0811/installed-r16/functional-step-2/hyper-v-20261108, indexed by step-result.md.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
