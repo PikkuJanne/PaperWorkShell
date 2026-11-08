@@ -6733,6 +6733,11 @@ tasks:
     - "Focused corrected active test module (offscreen): 3 passed; scoped Ruff format/lint and registered tools/dev.py typecheck passed. All 325 active application files matched frozen R16; no full corrected integration rerun."
     - "Frozen R16 independent registered phases accessibility/unit: 359 accessibility passed; unit exit 1, 2 failed, 8009 passed, 2 skipped, 2 errors in 1842.21s (0:30:42)."
     - "Original bundle tools/check_completion.py: incomplete rows retained, not a readiness pass. Independent bounded asset audit rehashed exact Setup and evidence."
+    - >-
+      Functional Step 8 ran three focused organizer thumbnail-signal cases and 125 relevant
+      organizer regressions. The generation-only in-process negative control failed all three
+      at the stale-pixel assertion as expected. Task graph, docs, schema and portfolio
+      validators and the scoped Git whitespace check passed.
     - "Targeted repeat of four unchanged frozen nodes in a neutral scratch folder exited 0. Receipt SHA256 ca0b180f4ecb04a71e35bf28bec777d7d53a8af24b4d7bb4514742c58df97127. It does not replace the failed full unit run."
     - >-
       Functional Step 2 used PowerShell Direct, the installed PWSTest desktop and scoped Process Monitor
@@ -6914,6 +6919,16 @@ tasks:
       through removal and recovery. See step-result.md under
       output/pws0811/installed-r16/functional-step-7/hyper-v-20261108.
       Obsolete-generation delivery remains open. Wider T01/HT-01 and PWS-0811 stay in review.
+    - >-
+      Functional Step 8 passed the bounded source-only T01/HT-01 check for obsolete organizer
+      previews after Rotate, Remove/Undo and Close/reopen. All 325 production source files
+      matched frozen R16 bytes. The real thumbnail signal rejected valid old pixels for the
+      expected page while the old operation ID still matched and the generation had advanced.
+      A later replay preserved the distinctive current painted pixels, selection and status.
+      Replay while removed preserved the single surviving row, and Undo restored the original
+      page identity. The Step 4–7 installed receipts retain their observed scope. Exact obsolete
+      delivery in the installed candidate remains unobserved. Wider T01/HT-01 and PWS-0811 stay
+      in review. See output/pws0811/installed-r16/functional-step-8/source-obsolete-preview.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
