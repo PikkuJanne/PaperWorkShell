@@ -6881,6 +6881,17 @@ tasks:
       Obsolete preview-generation delivery was unobserved in the installed run and remains unproved
       by an exact focused source assertion. Wider T01/HT-01 and PWS-0811 remain in review.
       See step-result.md under output/pws0811/installed-r16/functional-step-4/hyper-v-20261108.
+      - >-
+        Functional Step 5 passed the T01/HT-01 installed shared-boundary check during
+        two-to-four-page growth on exact R16 in the disconnected PWS-Test guest.
+        At revisions 3 and 4 the same adjacent pairs showed a painted ready preview
+        beside an active loading card, then both ready. At 1600 by 1200 and 100% the
+        taller restored window exposed the loading caption and shared boundary.
+        Host checks bound page IDs, source and output positions, original hashes and
+        observed pixel containment. The first maximized attempt remains partial.
+        See step-result.md under
+        output/pws0811/installed-r16/functional-step-5/hyper-v-20261108.
+        Wider T01/HT-01 and PWS-0811 stay in review.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
