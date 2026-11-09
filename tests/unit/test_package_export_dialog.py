@@ -86,8 +86,8 @@ def _summary(status: PackageSummaryStatus = PackageSummaryStatus.PLANNED) -> Pac
 def test_input_filenames_are_visible_plain_text_separate_from_authoritative_summary() -> None:
     app = _application()
     labels = (
-        "Form Ää.PDF — source page 1, output page 1",
-        "scan.png — source page 1, output page 2",
+        "Form Ää.PDF — source page 1, case page 1",
+        "scan.png — source page 1, case page 2",
     )
     dialog = PackageExportDialog(tuple(PortalOutputMode), input_labels=labels)
     try:

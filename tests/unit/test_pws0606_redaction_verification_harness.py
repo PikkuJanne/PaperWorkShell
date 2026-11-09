@@ -274,7 +274,9 @@ def test_fast_status_uses_fresh_bound_receipts_and_verify_does_each_copy_once(
     harness.status()
     assert len(calls) == 2
     output = capsys.readouterr().out
-    assert "independent" not in output or "remain" in output
+    assert output.splitlines()[-1] == (
+        "PENDING — existing observations are preserved. Run verify for automated saved-copy checks."
+    )
     assert "release_ready=True" not in output
 
 

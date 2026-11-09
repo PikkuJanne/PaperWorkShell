@@ -151,6 +151,9 @@ class _UnusedWorkerPort:
     def rasterize_committed(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not read a committed signature image")
 
+    def extract_handle(self, *_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("the startup-recovery test must not extract a text companion")
+
     def render_comparison(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not render a compression preview")
 
@@ -162,11 +165,22 @@ class _Composition:
     image_page_generator = _UnusedWorkerPort()
     image_page_transformer = _UnusedWorkerPort()
     signature_image_rasterizer = _UnusedWorkerPort()
+    runtime_access_authority = None
 
     def __init__(self) -> None:
         self.closed = False
+        self.text_companion_policies: list[object] = []
+        self.lifecycle_calls: list[str] = []
+
+    def text_companion_extractor(self, policy: object) -> _UnusedWorkerPort:
+        self.text_companion_policies.append(policy)
+        return _UnusedWorkerPort()
+
+    def release_case_resources(self) -> None:
+        self.lifecycle_calls.append("release")
 
     def close(self) -> None:
+        self.lifecycle_calls.append("close")
         self.closed = True
 
 
@@ -265,10 +279,13 @@ def test_cold_desktop_restart_recovers_before_worker_composition(
         assert composition_observations == [False]
         assert preview_observations == [False]
         assert policy_observations == [resources.resource_policy]
+        assert composition.text_companion_policies == [resources.resource_policy]
+        assert composition.lifecycle_calls == []
     finally:
         backend.shutdown()
 
     assert composition.closed
+    assert composition.lifecycle_calls == ["release", "close"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows desktop process integration")

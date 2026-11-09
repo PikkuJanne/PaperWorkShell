@@ -17,6 +17,8 @@ checkout work and historical evidence. Do not ask the maintainer to repeat the
 reported mechanical failures. Record unavailable checks honestly and do not declare
 another comparable human session ready without current passing evidence. The
 [repair work log](docs/development/pws0811-repairs-20261106.md) tracks implementation.
+Continue from its latest checkpoint on the current repair branch. Group related authorized work
+using the continuous work-package rules in `AGENTS.md` and reuse accepted evidence within scope.
 
 **Earlier internal sequence (2026-11-04):** Execute PWS-0810 through a usable
 unsigned internal-build handoff. Start with verified R9 and the ordinary installed
@@ -82,12 +84,12 @@ On a genuine blocker:
 
 ---
 
-## 2. Start the next ready task
+## 2. Start the next work package
 
 ```text
 Continue PaperWorkShell development from the repository state.
 
-Read DECISIONS.md, ROADMAP.md, TASKS.yaml, and AGENTS.md. Parse the task graph and select the next task using the AGENTS.md task-selection algorithm. Work on exactly one task.
+Read DECISIONS.md, ROADMAP.md, TASKS.yaml, and AGENTS.md. Parse the task graph and select the next task using the AGENTS.md task-selection algorithm. Group related dependency-ready work under the continuous work-package rules in AGENTS.md.
 
 Before editing, report:
 - selected task ID and title
@@ -98,7 +100,7 @@ Before editing, report:
 
 Implement the smallest coherent change that satisfies the task. Preserve immutable-source, no-content-logging, worker-isolation, accessibility, and non-destructive-editing rules. Add success and failure-path tests. Run all applicable repository quality commands.
 
-Only after verification passes, update TASKS.yaml status/evidence and mark newly unblocked tasks ready. End with the AGENTS.md completion report and name the next ready task.
+Only after verification passes, update TASKS.yaml status/evidence and mark newly unblocked tasks ready. Continue into related authorized work while it fits the session. At handover, include the AGENTS.md completion report and next substantive outcome if work remains.
 ```
 
 ---

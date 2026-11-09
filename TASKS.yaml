@@ -7054,6 +7054,26 @@ tasks:
       See reconciliation.md, pdf-audit.json and repository-after.json under
       output/pws0811/installed-r16/functional-step-17/t06-ocr-reconciliation. PWS-0811 stays
       in review, PWS-0812 is done and PWS-0808 stays dependency-gated.
+    - >-
+      Continuous work package 1 completed the exact four-original offline T06 journey on unchanged
+      R16 in the prepared non-elevated Windows 11 x64 guest. Independent verification preserved
+      the digital heading and blue control, confirmed order and searchable layers on both scan
+      pages, and matched PAGE 206 on each. Both layers extract SCAM PAGE 206, so the full-phrase
+      miss remains a recognition limitation. The connected independent phrase remains separately
+      verified. See step-result.md and digests.json under
+      output/pws0811/installed-r16/functional-step-18/t06-four-originals-offline.
+    - >-
+      Source repairs distinguish case positions from the planned package order and remove the
+      redundant save and refresh waits for an affected selected rotation. The package planner,
+      export writer, save-before-preview rule and worker security remain in force. Focused
+      ordering and rotation checks passed (93 and 117 tests). Two reproducible quality-test
+      failures were fixed and 46 focused tests passed, including the previous intermittent nodes.
+      A constrained exact-R16 source/runtime trace observed about 7.84 s for import, 7.49 s inside
+      inspection, and 5.81 s within its first worker's fixed runtime grant. It supplies a source
+      diagnostic, with installed warm import and successor timing still open. See
+      output/pws0811/functional-work-package-1 and
+      output/pws0811/development/rotation-preview-scheduling-source-v1.md. PWS-0811 stays in
+      review. PWS-0812 remains done and PWS-0808 stays dependency-gated.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline

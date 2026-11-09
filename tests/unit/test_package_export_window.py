@@ -16,7 +16,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QCheckBox, QFileDialog, QLabel, QPushButton
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QFileDialog,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+)
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
 from paperworkshell.app.package_workflow import PackageReviewState
@@ -109,6 +116,8 @@ def _open(
     window: PaperWorkShellWindow,
     commands: OrganizerBackendCommands,
     worker: OrganizerBackendWorker,
+    *,
+    review: PackageReviewState | None = None,
 ) -> PackageExportDialog:
     requests: list[int] = []
     commands.package_review_begin_requested.connect(
@@ -118,7 +127,7 @@ def _open(
     assert button is not None and button.isEnabled()
     _press(button)
     assert len(requests) == 1
-    worker.package_review_ready.emit(requests[0], _review())
+    worker.package_review_ready.emit(requests[0], _review() if review is None else review)
     _application().processEvents()
     dialog = window._package_export_dialog
     assert dialog is not None and dialog.isVisible()
@@ -132,6 +141,60 @@ def _acknowledge(dialog: PackageExportDialog) -> QPushButton:
     button = dialog.findChild(QPushButton, "packageExportStartButton")
     assert button is not None and button.isEnabled()
     return button
+
+
+def test_package_review_distinguishes_case_positions_from_planned_package_order() -> None:
+    with _window() as (window, commands, worker):
+        pages = (
+            OrganizerPageView(
+                PAGE_ID,
+                1,
+                0,
+                False,
+                document_number=2,
+                source_page_number=3,
+                source_display_name="Identity Ää.pdf",
+            ),
+            OrganizerPageView(
+                UUID("a4000000-0000-4000-8000-000000000014"),
+                2,
+                0,
+                False,
+                document_number=1,
+                source_page_number=1,
+                source_display_name="Application.pdf",
+            ),
+        )
+        worker.state_changed.emit(OrganizerViewState(CASE_ID, 4, pages, False, False, False))
+        review = PackageReviewState(
+            REVIEW_ID,
+            PackageSummary(
+                PackageSummaryStatus.PLANNED,
+                outputs=(
+                    PackageSummaryOutput(
+                        "package.pdf",
+                        PackageSummaryOutputState.PLANNED,
+                        2,
+                        categories=("Application", "Identity"),
+                    ),
+                ),
+                active_page_count=2,
+            ),
+            tuple(PortalOutputMode),
+            PortalOutputMode.COMBINED_PDF,
+            True,
+            False,
+        )
+        dialog = _open(window, commands, worker, review=review)
+        names = dialog.findChild(QPlainTextEdit, "packageExportInputNames")
+        summary = dialog.findChild(QPlainTextEdit, "packageExportSummaryText")
+        assert names is not None and summary is not None
+        assert names.accessibleName() == "Files and pages in case order"
+        assert names.toPlainText().splitlines() == [
+            "Identity Ää.pdf — source page 3, case page 1",
+            "Application.pdf — source page 1, case page 2",
+        ]
+        assert "Assigned categories: Application; Identity." in summary.toPlainText()
 
 
 def test_cancelled_initial_inspection_discards_a_late_ready_signal_and_releases_review() -> None:

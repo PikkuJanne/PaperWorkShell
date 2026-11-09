@@ -10,7 +10,7 @@
 | Hardened public release target | v1.0 after Milestone 8 |
 | Last amended | 2026-11-04 |
 
-This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into an implementation sequence that a coding agent can follow one task at a time. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph.
+This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into a dependency-ordered implementation sequence. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph. `AGENTS.md` governs how related work is grouped in a session.
 
 Normative terms are used deliberately:
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import cast
 from uuid import UUID
 
@@ -32,9 +33,14 @@ from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailResult,
     PdfThumbnailSnapshot,
 )
-from paperworkshell.ui.backend import OrganizerBackendCommands, OrganizerBackendWorker
+from paperworkshell.ui.backend import OrganizerBackendCommands, OrganizerBackendWorker, UiFailure
 from paperworkshell.ui.models import PreviewState
-from paperworkshell.ui.window import PaperWorkShellWindow, _LongOperationKind
+from paperworkshell.ui.window import (
+    _AUTOSAVE_DEBOUNCE_MS,
+    _PREVIEW_REFRESH_DEBOUNCE_MS,
+    PaperWorkShellWindow,
+    _LongOperationKind,
+)
 
 CASE_ID = UUID("83000000-0000-4000-8000-000000000001")
 PDF_PAGE_ID = UUID("83000000-0000-4000-8000-000000000002")
@@ -190,3 +196,82 @@ def test_window_rejects_a_mixed_result_sequence_not_matching_requested_page_orde
             "PWS_UI_PREVIEW_RESULT_INVALID: PaperWorkShell could not display the preview safely. "
             "Retry the selected preview."
         )
+
+
+def test_selected_rotation_queues_save_then_preview_without_debounce_delays() -> None:
+    with _window() as window:
+        commands = window._commands
+        commands.flush_requested.disconnect()
+        commands.retry_save_requested.disconnect()
+        commands.thumbnails_requested.disconnect()
+        saves: list[str] = []
+        previews: list[tuple[UUID, ...]] = []
+        commands.flush_requested.connect(lambda: saves.append("flush"))
+        commands.retry_save_requested.connect(lambda: saves.append("retry"))
+        commands.thumbnails_requested.connect(
+            lambda _operation, _generation, pages, *_args: previews.append(pages)
+        )
+        state = _state()
+        page, other_page = state.pages
+        window._state_changed(state)
+
+        rotated = replace(state, pages=(replace(page, rotation_degrees=90), other_page))
+        window._state_changed(replace(rotated, autosave_pending=True))
+        rotated_again = replace(rotated, pages=(replace(page, rotation_degrees=180), other_page))
+        window._state_changed(replace(rotated_again, autosave_pending=True))
+
+        assert window._autosave_timer.isActive()
+        assert window._autosave_timer.interval() == 0
+        assert not saves
+        window._preview_refresh_timer.stop()
+        window._preview_refresh_timer.timeout.emit()
+        assert not previews
+
+        window._autosave_timer.stop()
+        window._autosave_timer.timeout.emit()
+        assert saves == ["flush"]
+        assert not previews
+        window._failed(UiFailure("PWS_TEST_SAVE", "Synthetic save failed.", retryable=True))
+        assert window._retry_save_button.isVisible()
+        window._preview_refresh_timer.timeout.emit()
+        assert not previews
+        assert window._model.preview_state(PDF_PAGE_ID) is PreviewState.NOT_LOADED
+        assert window._model.preview(PDF_PAGE_ID) is None
+
+        window._retry_save_button.click()
+        assert saves == ["flush", "retry"]
+        assert not previews
+        window._state_changed(replace(rotated_again, revision=1))
+        assert not window._retry_save_button.isVisible()
+
+        assert window._preview_refresh_timer.isActive()
+        assert window._preview_refresh_timer.interval() == 0
+        window._preview_refresh_timer.stop()
+        window._preview_refresh_timer.timeout.emit()
+        assert len(previews) == 1 and PDF_PAGE_ID in previews[0]
+        assert window._model.pages[0].rotation_degrees == 180
+
+        window._schedule_preview_refresh()
+        assert window._preview_refresh_timer.interval() == _PREVIEW_REFRESH_DEBOUNCE_MS
+
+
+def test_reused_rotation_preview_keeps_autosave_coalescing() -> None:
+    with _window() as window:
+        operation_id, generation = _start_mixed_preview(window)
+        window._thumbnails_ready(operation_id, generation, (_pdf_result(), _image_result()))
+        window._finish_active_operation()
+        state = _state()
+        page, other_page = state.pages
+        window._state_changed(
+            replace(
+                state,
+                pages=(replace(page, rotation_degrees=90), other_page),
+                autosave_pending=True,
+            )
+        )
+
+        window._state_changed(replace(state, autosave_pending=True))
+
+        assert window._model.preview_state(PDF_PAGE_ID) is PreviewState.READY
+        assert window._autosave_timer.isActive()
+        assert window._autosave_timer.interval() == _AUTOSAVE_DEBOUNCE_MS

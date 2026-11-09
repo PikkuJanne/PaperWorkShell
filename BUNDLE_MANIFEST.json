@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.69",
+  "bundle_version": "0.2.70",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -20,8 +20,8 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 43422,
-      "sha256": "8255a991cde27358b0c76f01ea773e0bcea428ae776ef9cc92bf239c25103bde"
+      "bytes": 43452,
+      "sha256": "6062aa113006843f5202bfff1090c543b5989482d796497e3e27961c2f5ca95f"
     },
     {
       "path": "DECISIONS.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 510110,
-      "sha256": "4a2735b53f36c34400c8087ee3a617fac03b6d829d33848ee1a3706836753141"
+      "bytes": 511717,
+      "sha256": "ff3c9ebeb139ff1f32e15bce07a2c74897c02f47c338a473e60a8360b3e8f808"
     },
     {
       "path": "TASKS.schema.json",
@@ -40,13 +40,13 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 22941,
-      "sha256": "97264ed2b716b2988963e5cb156eab523512ce1b9263cd81529b5e39ef55d59d"
+      "bytes": 23636,
+      "sha256": "b0c7d784f70c6960b247283e8c05f1bc36bd17368878dc7a33dc268db84c1703"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 16970,
-      "sha256": "f51b2c7f51336368ccb1ce32245f1d09451e4dff02fec56ab6c6e91a90243b1c"
+      "bytes": 17322,
+      "sha256": "d715fddb76e95b7d08d6091120552b698005cf9e99580cf390f55c240dbeae7c"
     },
     {
       "path": "README.md",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 148692,
-      "sha256": "1ccbfb9ca4520f2329b6043f8ee13fd529f2e6fbd8f349f789d3b8c7ec6fca12"
+      "bytes": 153646,
+      "sha256": "521608c28869e75d39a46bc9cf9c02b2db1c6425152c25d1fd69f670081817c2"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",
@@ -635,6 +635,7 @@
     "all_tasks_reachable_from": "PWS-0001"
   },
   "notes": [
+    "PWS-0811 continuous work package 1: exact four-original offline R16 English OCR functional coverage, explicit full-phrase recognition limit, source fixes for package review order labels and selected rotation scheduling, focused gate-test repairs and constrained import phase attribution. Successor timing, final candidate and delivery remain open. PWS-0811 is in review, PWS-0812 is done and PWS-0808 remains dependency-gated. The current workflow batches related dependency-ready work within existing scope and approval requirements.",
     "PWS-0811 current internal repair assignment, 2026-11-06: preserve R9 and existing cases; repair the reported interface, journeys and redundant work; build and verify a unique successor with installed-interface and independent-output evidence. The supplied HT/T identifiers are coverage only. No current readiness, public-release, signing or sibling compatibility claim is made.",
     "PWS-0810 second-PC handoff follow-up, 2026-11-04: output/PaperWorkShell-R9-Second-PC contains the original-named byte-identical unsigned R9 installer, seven synthetic samples, local export folders and START-HERE.txt. Actual R9 installer/UI labels and image-only OCR source checked locally; no second-PC pass, application change, new installer, public-release claim, external contact or sibling dependency. PWS-0810 remains done; release-only work remains deferred.",
     "Current PWS-0810 internal-delivery completion, 2026-11-04: Internal build ready for use. Exact preserved R9, 512,732,779 bytes, SHA-256: d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4, NotSigned. Current Windows 11 Pro 26300.9711 AMD64 filtered-administrator installed GUI finite workflows and 3,195-file inventory pass, with accepted genuine-standard-account R9 and unchanged-boundary R6 evidence reused only in scope. All 11 exported PDFs pass strict reopen, syntax and rendering checks; clean overlay placement and GUI-saved summaries verified. OCR recognition/output-route limitations remain explicit. R9 was sufficient; no application source repair or R10. Final exact-case preservation passed: revision 19, four immutable sources, empty case temp and no installed workers. Canonical graph, schema, documentation and portfolio validators passed; final completion metadata retains the same scope. PWS-0810 is done; no dependency-ready unfinished task remains, so stop for optional ordinary-use feedback. Public signing, SignPath, publication and release-only qualification are deferred; real system-volume disk-full test not performed and deferred, with no VM request. Contact permission is exhausted; no new external contact or upload. PWS-0802 retains its original public-signing blocker, PWS-0804 and PWS-0805 remain done, PWS-0803 is not current. Standalone ownership and historical records preserved; no public-release or sibling-compatibility claim.",

@@ -184,15 +184,16 @@ class PackageExportDialog(QDialog):
         )
         content_layout.addWidget(guidance)
 
-        input_heading = QLabel(tr("Files and pages in this case"))
+        input_title = tr("Files and pages in case order")
+        input_heading = QLabel(input_title)
         input_heading.setWordWrap(True)
         input_heading.setVisible(bool(input_labels))
         self._input_names = QPlainTextEdit()
         self._input_names.setObjectName("packageExportInputNames")
-        self._input_names.setAccessibleName(tr("Files and pages in this case"))
+        self._input_names.setAccessibleName(input_title)
         self._input_names.setAccessibleDescription(
             tr(
-                "Saved case page order. The package summary below describes the actual planned output order and requirements."
+                "Saved case page order. See the package summary below for the planned files and assigned categories."
             )
         )
         self._input_names.setReadOnly(True)

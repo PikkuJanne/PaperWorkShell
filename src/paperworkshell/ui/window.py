@@ -398,6 +398,17 @@ def _quality_state_invalidates_review(
     )
 
 
+def _page_rotation_changed(
+    prior: OrganizerViewState, current: OrganizerViewState, page_id: UUID | None
+) -> bool:
+    prior_angle = next(
+        (page.rotation_degrees for page in prior.pages if page.page_id == page_id), None
+    )
+    return prior_angle is not None and any(
+        page.page_id == page_id and page.rotation_degrees != prior_angle for page in current.pages
+    )
+
+
 def _core_overlay_apply_result_matches(
     dialog: CoreOverlayToolsDialog,
     result: OrganizerViewState,
@@ -697,6 +708,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._preview_batch_complete = False
         self._deferred_import: tuple[Path, str] | None = None
         self._deferred_preview_state: OrganizerViewState | None = None
+        self._rotated_preview_after_save: UUID | None = None
         self._quality_generation = 0
         self._pending_quality_request: tuple[UUID, int] | None = None
         self._active_quality_binding: tuple[UUID, int, int] | None = None
@@ -803,7 +815,6 @@ class PaperWorkShellWindow(QMainWindow):
 
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
-        self._preview_refresh_timer.setInterval(_PREVIEW_REFRESH_DEBOUNCE_MS)
         self._preview_refresh_timer.timeout.connect(self._refresh_visible_previews)
 
         self._focus_reveal_timer = QTimer(self)
@@ -889,7 +900,6 @@ class PaperWorkShellWindow(QMainWindow):
 
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(_AUTOSAVE_DEBOUNCE_MS)
         self._autosave_timer.timeout.connect(self._request_autosave_flush)
         self._set_controls_enabled(False)
         self._show_workflow_page(self._welcome_page)
@@ -1955,6 +1965,8 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             self._dismiss_scan_review_after_state_change()
         prior_state = self._state
+        rotated_preview_after_save = self._rotated_preview_after_save
+        self._rotated_preview_after_save = None
         if _quality_state_invalidates_review(prior_state, state):
             self._invalidate_quality_review()
         focused_widget = QApplication.focusWidget()
@@ -2019,10 +2031,27 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._case_heading.setAccessibleName(case_description)
         self.setAccessibleName(tr("PaperWorkShell. {value1}", value1=case_description))
+        selected_preview_missing = (
+            selected_page is not None
+            and self._model.preview_state(selected_page) is PreviewState.NOT_LOADED
+        )
+        previous_case_state = (
+            prior_state
+            if prior_state is not None and prior_state.case_id == state.case_id
+            else None
+        )
         if state.autosave_pending:
             self._deferred_preview_state = None
             self._cancel_active_preview()
-            self._autosave_timer.start()
+            # Saving is on the critical path when a new angle has no live pixels.
+            rotation_needs_save = (
+                selected_preview_missing
+                and previous_case_state is not None
+                and _page_rotation_changed(previous_case_state, state, selected_page)
+            )
+            if rotation_needs_save:
+                self._rotated_preview_after_save = selected_page
+            self._autosave_timer.start(0 if rotation_needs_save else _AUTOSAVE_DEBOUNCE_MS)
         else:
             self._autosave_timer.stop()
             self._hide_retry_save()
@@ -2038,7 +2067,15 @@ class PaperWorkShellWindow(QMainWindow):
             and prior_state.pages == state.pages
         )
         if not state.autosave_pending and not export_only_refresh:
-            self._schedule_preview_refresh()
+            self._schedule_preview_refresh(
+                immediate=(
+                    selected_preview_missing
+                    and selected_page == rotated_preview_after_save
+                    and previous_case_state is not None
+                    and previous_case_state.autosave_pending
+                    and previous_case_state.pages == state.pages
+                )
+            )
         if preserve_focus:
             if focused_widget is not None and self._focus_widget_is_available(focused_widget):
                 focused_widget.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -3094,7 +3131,9 @@ class PaperWorkShellWindow(QMainWindow):
             operation.cancellation,
         )
 
-    def _schedule_preview_refresh(self, _value: int | None = None) -> None:
+    def _schedule_preview_refresh(
+        self, _value: int | None = None, *, immediate: bool = False
+    ) -> None:
         if self._case_close_pending:
             return
         if (
@@ -3118,7 +3157,7 @@ class PaperWorkShellWindow(QMainWindow):
             or self._quality_is_pending_or_running()
         ):
             return
-        self._preview_refresh_timer.start()
+        self._preview_refresh_timer.start(0 if immediate else _PREVIEW_REFRESH_DEBOUNCE_MS)
 
     @Slot()
     def _refresh_visible_previews(self) -> None:
@@ -3325,12 +3364,17 @@ class PaperWorkShellWindow(QMainWindow):
         source_path = Path(selected)
         self._queue_import(source_path, source_path.name)
 
-    def _page_label(self, page: OrganizerPageView) -> str:
+    def _page_label(self, page: OrganizerPageView, *, case_order: bool = False) -> str:
         name = getattr(page, "source_display_name", "") or tr(
             "Document {value1}", value1=page.document_number
         )
+        message = (
+            mark("{value1} — source page {value2}, case page {value3}")
+            if case_order
+            else mark("{value1} — source page {value2}, output page {value3}")
+        )
         return tr(
-            "{value1} — source page {value2}, output page {value3}",
+            message,
             value1=name,
             value2=page.source_page_number or 1,
             value3=page.position,
@@ -3650,7 +3694,7 @@ class PaperWorkShellWindow(QMainWindow):
         if not self._closing_requested:
             self._set_controls_enabled(True)
             if self._state is not None and self._state.autosave_pending:
-                self._autosave_timer.start()
+                self._autosave_timer.start(_AUTOSAVE_DEBOUNCE_MS)
             modal = QApplication.activeModalWidget()
             if modal is None or not modal.isVisible():
                 if (
@@ -4253,7 +4297,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._core_overlay_tools_start_operation_id = None
         if self._state is not None and self._state.autosave_pending and not self._closing_requested:
-            self._autosave_timer.start()
+            self._autosave_timer.start(_AUTOSAVE_DEBOUNCE_MS)
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
@@ -4745,7 +4789,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._redaction_tools_start_operation_id = None
         if self._state is not None and self._state.autosave_pending and not self._closing_requested:
-            self._autosave_timer.start()
+            self._autosave_timer.start(_AUTOSAVE_DEBOUNCE_MS)
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
@@ -4945,7 +4989,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._checklist_start_operation_id = None
         if self._state is not None and self._state.autosave_pending and not self._closing_requested:
-            self._autosave_timer.start()
+            self._autosave_timer.start(_AUTOSAVE_DEBOUNCE_MS)
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()
@@ -5159,7 +5203,9 @@ class PaperWorkShellWindow(QMainWindow):
                 review.allowed_modes,
                 self,
                 initial_mode=review.selected_mode,
-                input_labels=tuple(self._page_label(page) for page in self._state.pages)
+                input_labels=tuple(
+                    self._page_label(page, case_order=True) for page in self._state.pages
+                )
                 if self._state is not None
                 else (),
             )
@@ -6227,7 +6273,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._portal_constraints_start_operation_id = None
         if self._state is not None and self._state.autosave_pending and not self._closing_requested:
-            self._autosave_timer.start()
+            self._autosave_timer.start(_AUTOSAVE_DEBOUNCE_MS)
         self._update_import_availability()
         self._update_page_actions()
         self._update_quality_actions()

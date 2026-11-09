@@ -14,7 +14,7 @@ Read these files in order before making changes:
    interoperability work, `THIRDLIFE_ALIGNMENT.md`
 6. The code, tests, schemas, and ADRs relevant to the selected task
 
-Then identify one task ID and state it in the work log or completion report. Do not start from a broad milestone description when a task exists.
+Identify the selected task IDs in the work log or completion report. Do not start from a broad milestone description when a task exists.
 
 ## 2. Authority and conflict handling
 
@@ -73,27 +73,35 @@ Unless the maintainer names a task:
 5. Within that milestone, prefer `P0`, then `P1`, then `P2`.
 6. Prefer `critical_path: true`.
 7. Break ties by ascending task ID.
-8. Work on one task at a time.
+8. Apply this order when selecting the next task in an authorized work package.
 
 Do not begin a later milestone because it appears easier. Gate tasks are evidence and integration tasks, not substitutes for incomplete implementation tasks.
 
-### 3.1 Bounded thread workflow
+### 3.1 Continuous work packages
 
-Each Codex thread handles one bounded step, including its necessary checks. Work autonomously
-within that step and keep parallel work inside it. Record the result and the exact next step
-in the current continuation record, then stop. Janne opens a fresh thread for the next step.
-Functional correctness and reliable processing take priority. Keep deferred UI polish visible in
-the backlog. A completed step supplies evidence only for its own scope.
+Group related, dependency-ready tasks, fixes, checks, evidence updates, commits, and already
+authorized synchronization into coherent work packages. When substantial work remains, size a
+package for roughly 60–120 minutes of active work. Use that range for planning and continue as
+capacity permits. A completed task or check is a progress point. Work remains subject to the
+authorized scope, dependencies, and existing approval requirements.
 
-Every completed or partial step must end with a plain-language final reply that prints the complete
-ready-to-paste next-thread prompt. Saving that prompt only in a file, or saying that the file
-contains it, is insufficient. Include actual task IDs, paths, candidate identity, and branch/commit
-state. Each prompt authorizes exactly one bounded step and ends with a STOP instruction.
+At the start of a continuation, reconcile the actual current branch, candidate, task records,
+and evidence. Reuse verified results within their proven scope. Functional correctness and
+reliable processing take priority. Keep deferred UI polish visible in the backlog.
 
-If the step cannot be completed, save a compact partial checkpoint with the unfinished action,
-reproduction, changed files, verification commands and results, and the next exact action.
-The next thread resumes that step. Account for all edits and stop any owned background jobs
-before handing over.
+Before starting another substantial unit, assess whether its implementation, verification, and
+handover fit the remaining context. When a reliable meter is available, reserve roughly 20–25%
+for finishing the current unit and preparing the handover. End the session when the authorized
+objective is complete, context is insufficient for another coherent unit, or a genuine external
+blocker prevents further useful authorized work. State the actual reason.
+
+Before ending, update the current continuation record with outcomes, verification, limits,
+and current branch, commit, and candidate. For partial work, include the unfinished action,
+reproduction, changed files, verification results, and the first concrete action to resume.
+Account for all edits and stop owned background jobs. If work remains, print the complete
+ready-to-paste next-thread prompt in the final reply, with actual task IDs, paths, candidate
+identity, branch and commit, the next substantive outcome, and this continuous batching rule.
+If the authorized objective is complete, deliver the result.
 
 ## 4. Required work loop
 
