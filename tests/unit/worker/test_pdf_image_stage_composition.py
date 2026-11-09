@@ -12,6 +12,7 @@ from typing import cast
 import pytest
 
 from paperworkshell.worker import pdf_image_stage_composition as composition
+from paperworkshell.worker.client._windows import WindowsProcessLauncher
 from paperworkshell.worker.client.errors import WorkerClientError
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.host import _build_operation_registry
@@ -35,6 +36,8 @@ def test_composition_requests_only_stage_capability_and_revokes_on_close(
     ) as runtime:
         worker = cast(_FakeWorkerClient, runtime._worker)
         assert worker.required_capabilities == (PDF_IMAGE_STAGE_CAPABILITY,)
+        launcher = cast(WindowsProcessLauncher, worker.launcher)
+        assert launcher._config.operation_scope is WorkerOperationScope.ALL
         assert runtime.image_stage_processor.heavy_operations is heavy
         assert runtime.resource_snapshot() == worker.snapshot
         assert runtime.image_stage_processor._policy.limits == config.export_policy.limits
@@ -47,11 +50,12 @@ def test_composition_requests_only_stage_capability_and_revokes_on_close(
         runtime.__enter__()
 
 
-def test_stage_registration_is_separate_and_not_available_in_ocr_review_scope() -> None:
+@pytest.mark.parametrize("scope", ["quality-ocr-review-v1", "pdf-export-v1"])
+def test_stage_registration_is_separate_and_not_available_in_specialized_scopes(scope: str) -> None:
     assert PDF_IMAGE_STAGE_CAPABILITY in _build_operation_registry().capabilities
     assert (
         PDF_IMAGE_STAGE_CAPABILITY
-        not in _build_operation_registry(WorkerOperationScope.QUALITY_OCR_REVIEW).capabilities
+        not in _build_operation_registry(WorkerOperationScope(scope)).capabilities
     )
 
 

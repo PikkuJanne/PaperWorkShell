@@ -7074,6 +7074,17 @@ tasks:
       output/pws0811/functional-work-package-1 and
       output/pws0811/development/rotation-preview-scheduling-source-v1.md. PWS-0811 stays in
       review. PWS-0812 remains done and PWS-0808 stays dependency-gated.
+    - >-
+      Continuous work package 2 located installed R16 PNG inspection and cold ordinary export
+      delays relative to contained process creation. The slower supplemental runs remain separate
+      from the original installed cohorts. The constrained three-original source comparison
+      measured cold ready negotiation at 6.20 s before and 1.08 s after using a closed structural
+      PDF export registry. Both outputs match the R16 reference bytes and renders. Exact
+      runtime recovery, immutable inputs, separate worker generations and output checks passed
+      in the comparison. The original warm PNG target remains open with a measured rationale
+      for retaining the case-scoped runtime grant. See the functional work package 2 record in
+      docs/development/pws0811-repairs-20261106.md. The internal R17 allocation still needs
+      exact installed and final gate evidence.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline

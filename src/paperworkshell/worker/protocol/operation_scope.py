@@ -14,6 +14,7 @@ class WorkerOperationScope(StrEnum):
 
     ALL = "all-v1"
     DESKTOP = "desktop-v1"
+    PDF_EXPORT = "pdf-export-v1"
     REDACTION_EXPORT = "redaction-export-private-v1"
     REDACTION_SANITIZATION = "redaction-sanitization-private-v1"
     REDACTION_OCR = "redaction-ocr-private-v1"

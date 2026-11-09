@@ -39,6 +39,7 @@ from paperworkshell.worker.protocol.models import (
     CapabilityDescriptor,
     ResourceLimits,
 )
+from paperworkshell.worker.protocol.operation_scope import WorkerOperationScope
 
 
 class _FakeWorkerClient:
@@ -165,6 +166,7 @@ def test_factory_builds_a_separate_export_only_client_and_broker(
     assert cast(Any, export_port)._worker is worker
     assert type(cast(Any, export_port)._policy) is PdfExportBrokerPolicy
     launch_config = cast(Any, worker.launcher)._config
+    assert launch_config.operation_scope is WorkerOperationScope.PDF_EXPORT
     assert launch_config.qpdf_executable.is_file()
     assert launch_config.qpdf_executable.name == "qpdf.exe"
     assert worker.resource_policy.maximum_processes == 2
@@ -174,6 +176,28 @@ def test_factory_builds_a_separate_export_only_client_and_broker(
     assert cast(Any, export_port)._heavy_operations is cast(Any, composition)._heavy_operations
     assert composition.heavy_operation_snapshot().maximum_concurrency == 1
     composition.close()
+
+
+def test_export_scope_preserves_the_shared_fixed_runtime_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    owner = WindowsProcessLauncher(config._launch_config, retain_runtime_access=True)
+    authority = owner.runtime_access_authority
+    assert authority is not None
+    monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+
+    with create_pdf_export_worker_composition(
+        config, heavy_operations=HeavyOperationCoordinator(1), runtime_access=authority
+    ) as composition:
+        worker = cast(_FakeWorkerClient, composition._worker)
+        launcher = cast(WindowsProcessLauncher, worker.launcher)
+        assert launcher.runtime_access_authority is authority
+        assert launcher._config.operation_scope is WorkerOperationScope.PDF_EXPORT
+        assert replace(launcher._config, operation_scope=WorkerOperationScope.ALL) == (
+            config._launch_config
+        )
+    assert config._launch_config.operation_scope is WorkerOperationScope.ALL
 
 
 def test_factory_rejects_a_coordinator_whose_limit_differs_from_config(
@@ -206,6 +230,7 @@ def test_export_composition_negotiates_explicit_image_or_portal_version_without_
     worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
     assert worker.required_capabilities == (capability,)
     launch = cast(Any, worker.launcher)._config
+    assert launch.operation_scope is WorkerOperationScope.PDF_EXPORT
     assert launch.tesseract_executable is None
     assert launch.tessdata_root is None
     composition.close()

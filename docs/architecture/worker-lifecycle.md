@@ -26,10 +26,14 @@ image rasterization, image transformation, PDF inspection and PDF thumbnails.
 Their real adapter construction and engine checks still precede advertisement;
 an unavailable adapter is omitted independently. Export and OCR handlers are not
 imported into this scope, so opening an image does not load their unrelated
-engines. Required PDF/PDFium adapters remain part of the desktop contract. The
-default `all-v1` registry and separate export/OCR/removal compositions retain
-their behavior. This changes no RPC descriptor/schema, trusted-resource
-verification, process policy, source authority or user-facing command line.
+engines. Required PDF/PDFium adapters remain part of the desktop contract.
+
+The structural PDF export composition uses the closed internal `pdf-export-v1`
+scope. It constructs the existing `pdf.export` versions 1 through 3 and
+`protocol.noop` without initializing unrelated desktop, OCR or other export
+handlers. Image staging still uses the general registry, as do existing
+compositions that rely on it. Both scopes preserve the RPC descriptors,
+trusted-resource verification, process policy and source authority.
 
 The registry now contains `protocol.noop` version 1, `pdf.inspect` version 1, `pdf.thumbnail`
 version 1, `image.normalize` version 1, `image.transform` version 1, `pdf.export` versions 1 and 2,

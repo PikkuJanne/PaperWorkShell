@@ -758,10 +758,11 @@ def create_pdf_export_worker_composition(
             WorkerClientContext.CONFIGURATION,
         )
     _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
+    launch_config = replace(config._launch_config, operation_scope=WorkerOperationScope.PDF_EXPORT)
     launcher = (
-        WindowsProcessLauncher(config._launch_config)
+        WindowsProcessLauncher(launch_config)
         if runtime_access is None
-        else WindowsProcessLauncher(config._launch_config, runtime_access=runtime_access)
+        else WindowsProcessLauncher(launch_config, runtime_access=runtime_access)
     )
     worker = WorkerClient(
         launcher,

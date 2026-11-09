@@ -82,6 +82,9 @@ def _build_operation_registry(
     if type(operation_scope) is not WorkerOperationScope:
         raise WorkerProcessCreationDenied from None
     handlers: list[OperationHandler] = [NoopOperationHandler()]
+    if operation_scope is WorkerOperationScope.PDF_EXPORT:
+        _append_pdf_export_handlers(handlers)
+        return RuntimeOperationRegistry(tuple(handlers))
     if operation_scope is WorkerOperationScope.REDACTION_EXPORT:
         try:
             from paperworkshell.worker.redaction_export_operation import (
@@ -182,16 +185,7 @@ def _build_operation_registry(
         # Keep their real adapter construction/admission above, and avoid loading
         # unrelated OCR/export engines merely to inspect or preview an image.
         return RuntimeOperationRegistry(tuple(handlers))
-    try:
-        from paperworkshell.worker.pdf_export_operation import (
-            build_pdf_export_operation_handler,
-        )
-
-        handlers.append(build_pdf_export_operation_handler())
-        handlers.append(build_pdf_export_operation_handler(operation_version=2))
-        handlers.append(build_pdf_export_operation_handler(operation_version=3))
-    except Exception:
-        pass
+    _append_pdf_export_handlers(handlers)
     try:
         from paperworkshell.worker.pdf_image_stage_operation import (
             build_pdf_image_stage_operation_handler,
@@ -234,6 +228,19 @@ def _build_operation_registry(
     # Never advertise a document capability whose adapter failed to load. The
     # client rejects negotiation when its required capability is unavailable.
     return RuntimeOperationRegistry(tuple(handlers))
+
+
+def _append_pdf_export_handlers(handlers: list[OperationHandler]) -> None:
+    try:
+        from paperworkshell.worker.pdf_export_operation import (
+            build_pdf_export_operation_handler,
+        )
+
+        handlers.append(build_pdf_export_operation_handler())
+        handlers.append(build_pdf_export_operation_handler(operation_version=2))
+        handlers.append(build_pdf_export_operation_handler(operation_version=3))
+    except Exception:
+        pass
 
 
 def _append_quality_ocr_review_handler(handlers: list[OperationHandler]) -> None:
