@@ -6770,6 +6770,11 @@ tasks:
       three original preview identities to installed screenshots and saved manifests,
       and rejected a changed revision hash and a wrong painted source. The 128 focused
       tests, task graph, docs, schemas, portfolio and scoped Git whitespace checks passed.
+    - >-
+      Functional Step 15 rehashed the exact R16 Setup, original criteria, delivery record and the
+      Step 13 and Step 14 seals. The offline Step 14 artifact verifier reproduced the sealed host
+      report and both rejection controls passed. Task graph, docs, schema, portfolio and scoped
+      Git whitespace checks passed.
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -7017,6 +7022,14 @@ tasks:
       obsolete-delivery scopes. Wider T01/HT-01 and PWS-0811 stay in review pending the
       supplemental disposition. See step-result.md under
       output/pws0811/installed-r16/functional-step-14/hyper-v-20261109.
+    - >-
+      Functional Step 15 records all original T01 and HT-01 criteria as evidenced in their bounded
+      scope. Step 14 binds the initial reserved PDF loading slot and settled revision 3 paint for
+      the original PDF, JPEG and PNG. Step 5 fourth-page growth, delivery T01 six-page scrolling
+      and Step 8 controlled obsolete delivery retain separate scopes. Installed obsolete callback
+      arrival remains unobserved. The original partial delivery rows are preserved. The supplemental
+      disposition and local checkpoint are under
+      output/pws0811/installed-r16/functional-step-15/t01-ht01-disposition. PWS-0811 remains in review.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
