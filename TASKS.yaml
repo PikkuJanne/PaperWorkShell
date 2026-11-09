@@ -7085,6 +7085,16 @@ tasks:
       for retaining the case-scoped runtime grant. See the functional work package 2 record in
       docs/development/pws0811-repairs-20261106.md. The internal R17 allocation still needs
       exact installed and final gate evidence.
+    - >-
+      R17 built offline from 5aed744f18e00e4d8a6133f3bcf263c697eff84e. Setup is
+      512,833,743 bytes with SHA-256 16208fbb6311f0123f3009ddc1ead761f4d55cacfe9dbf904197a9e692507ec6.
+      Frozen static checks, 359 accessibility tests, 1,329 security tests and 23 focused native
+      checks passed. The original unit run had 8,022 passes, two skips and two timing-test
+      failures. The test-only correction passed a 64-test focused rerun. Full-root scan-secrets
+      reached the unchanged 512 MiB cap, and installed R17 and full integration remain open.
+      The original R16 T06 seal has one known before-snapshot mismatch from a later helper
+      invocation. The other 40 members rehashed and the later snapshot is separately labeled.
+      See output/pws0811/functional-work-package-2 for the build, gate and incident receipts.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline

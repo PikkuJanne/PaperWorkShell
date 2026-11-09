@@ -70,20 +70,21 @@ def test_selection_after_close_request_cannot_restart_preview_queue() -> None:
         window._preview_refresh_timer.stop()
         _application().processEvents()
         assert window._active_operation is None and window._current_preview_page_ids()
-        window._preview_refresh_timer.setInterval(0)
         window._request_close_case()
         assert events == ["close"]
         window._page_view.setCurrentIndex(window._model.index(1, 0))
-        QTest.qWait(5)
-        _application().processEvents()
+        assert window._case_close_pending and not window._preview_refresh_timer.isActive()
+        window._preview_refresh_timer.timeout.emit()
         assert events == ["close"]
         worker.state_changed.emit(OrganizerViewState.empty())
         worker.case_close_finished.emit()
+        assert not window._case_close_pending and not window._preview_refresh_timer.isActive()
         worker.state_changed.emit(
             replace(state, pages=tuple(replace(p, preview_supported=True) for p in state.pages))
         )
-        QTest.qWait(5)
-        _application().processEvents()
+        assert window._preview_refresh_timer.isActive() and events == ["close"]
+        window._preview_refresh_timer.stop()
+        window._preview_refresh_timer.timeout.emit()
         assert events == ["close", "preview"]
 
 
@@ -129,17 +130,19 @@ def test_close_acknowledgement_allows_recovery_after_backend_failure() -> None:
         )
         window._preview_refresh_timer.stop()
         _application().processEvents()
-        window._preview_refresh_timer.setInterval(0)
         window._request_close_case()
         assert not window._controls_enabled
         window._request_close_case()
         window._page_view.setCurrentIndex(window._model.index(1, 0))
-        QTest.qWait(5)
+        assert window._case_close_pending and not window._preview_refresh_timer.isActive()
+        window._preview_refresh_timer.timeout.emit()
         assert events == []
         worker.close_case()
+        assert not window._case_close_pending and window._controls_enabled
         window._page_view.setCurrentIndex(window._model.index(0, 0))
-        QTest.qWait(5)
-        _application().processEvents()
+        assert window._preview_refresh_timer.isActive() and events == []
+        window._preview_refresh_timer.stop()
+        window._preview_refresh_timer.timeout.emit()
         assert events == ["preview"]
 
 
