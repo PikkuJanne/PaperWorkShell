@@ -6761,6 +6761,10 @@ tasks:
       chooser destination with its own ready pixels, and ready repaint after returning to the
       original case. Host artifact verification, 128 focused tests, task graph, docs, schemas,
       portfolio and scoped Git whitespace checks passed.
+    - >-
+      Functional Step 13 verified the Step 12 checkpoint, exact Setup, original delivery
+      references and Functional Steps 4–12 evidence seals. Task graph, docs, schemas,
+      portfolio and scoped Git whitespace checks passed.
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -6987,6 +6991,16 @@ tasks:
       Step 8 remains controlled source evidence for obsolete delivery. Wider T01/HT-01
       and PWS-0811 stay in review. See step-result.md under
       output/pws0811/installed-r16/functional-step-12/hyper-v-20261109.
+    - >-
+      Functional Step 13 reconciled the original T01 and HT-01 criteria against exact R16.
+      T01.4 permits controlled slow and out-of-order evidence alongside real installed
+      loading. Step 8 establishes obsolete-result rejection on the frozen source. Exact
+      callback delivery in installed R16 remains unobserved and requires no installed
+      injection under the original criteria. T01.2 still needs the original three-file
+      import's reserved loading slot and settled readiness of all three rows at one saved
+      revision. The delivery statuses and earlier receipt scopes remain intact. See the
+      matrix and receipt index under
+      output/pws0811/installed-r16/functional-step-13/t01-ht01-reconciliation.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
