@@ -6738,6 +6738,10 @@ tasks:
       organizer regressions. The generation-only in-process negative control failed all three
       at the stale-pixel assertion as expected. Task graph, docs, schema and portfolio
       validators and the scoped Git whitespace check passed.
+    - >-
+      Functional Step 9 verified the timed installed Rotate dispatch, saved revision and
+      independent clockwise pixel comparison. The 128 focused tests, task graph, docs,
+      schema, portfolio and scoped Git whitespace checks passed.
     - "Targeted repeat of four unchanged frozen nodes in a neutral scratch folder exited 0. Receipt SHA256 ca0b180f4ecb04a71e35bf28bec777d7d53a8af24b4d7bb4514742c58df97127. It does not replace the failed full unit run."
     - >-
       Functional Step 2 used PowerShell Direct, the installed PWSTest desktop and scoped Process Monitor
@@ -6929,6 +6933,15 @@ tasks:
       page identity. The Step 4–7 installed receipts retain their observed scope. Exact obsolete
       delivery in the installed candidate remains unobserved. Wider T01/HT-01 and PWS-0811 stay
       in review. See output/pws0811/installed-r16/functional-step-8/source-obsolete-preview.
+    - >-
+      Functional Step 9 passed the installed T01/HT-01 Rotate right dispatch and recovery
+      check. The selected upright delivery scan was visibly loading with active Preview lookup
+      immediately before and after the normal pointer input. Revision 2 saved one clockwise
+      rotation, and the same page painted ready against the independent fixture reference.
+      The case and page IDs, source/output page 1, frame and manifest hashes, and unchanged
+      immutable original bind the observation. Exact installed obsolete-generation delivery
+      remains unobserved. PWS-0811 and wider T01/HT-01 stay in review. See
+      output/pws0811/installed-r16/functional-step-9/hyper-v-20261109.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
