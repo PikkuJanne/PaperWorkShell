@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 509129,
-      "sha256": "a419f1b4e8b9f9d6e4761928fb07f9de05347f4942bfcd7e3184cad3ee20c1fe"
+      "bytes": 510110,
+      "sha256": "4a2735b53f36c34400c8087ee3a617fac03b6d829d33848ee1a3706836753141"
     },
     {
       "path": "TASKS.schema.json",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 144124,
-      "sha256": "0c413cb26130ee5a79e51f8e388a40d671bae7862ac4a643a0ff97e265257409"
+      "bytes": 148692,
+      "sha256": "1ccbfb9ca4520f2329b6043f8ee13fd529f2e6fbd8f349f789d3b8c7ec6fca12"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",

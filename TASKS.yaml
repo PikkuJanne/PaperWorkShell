@@ -7042,6 +7042,18 @@ tasks:
       and repository-after.json under
       output/pws0811/installed-r16/functional-step-16/t12-ht17-reconciliation. PWS-0811 stays
       in review, PWS-0812 is done and PWS-0808 stays dependency-gated.
+    - >-
+      Functional Step 17 reconciles original T06 and the OCR portions of HT-08, HT-09 and
+      HT-10 for exact R16. Connected installed evidence covers all four originals and a
+      separate exact RIVER BRIDGE 732 export. Offline Steps 1 and 2 cover the form, PNG and
+      image-only PDF with stable page mapping and the visible verified-English export route.
+      Each scan page has searchable text and matches PAGE 206 but extracts SCAM PAGE 206, so
+      the literal SCAN PAGE 206 query misses. The original digital heading remains searchable
+      once. T06 stays partial pending the exact four-file offline run with 01-page.pdf.
+      Original delivery entries, the Sandbox policy block and earlier evidence are preserved.
+      See reconciliation.md, pdf-audit.json and repository-after.json under
+      output/pws0811/installed-r16/functional-step-17/t06-ocr-reconciliation. PWS-0811 stays
+      in review, PWS-0812 is done and PWS-0808 stays dependency-gated.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
