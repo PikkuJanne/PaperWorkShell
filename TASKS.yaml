@@ -6756,6 +6756,11 @@ tasks:
       Functional Step 11 verified the installed failed card, focused Retry control, same-page
       repaint and byte-identical saved manifest and original. Host artifact verification,
       128 focused tests, task graph, docs, schemas, portfolio and scoped Git whitespace checks passed.
+    - >-
+      Functional Step 12 verified timed installed Close during active preview lookup, a distinct
+      chooser destination with its own ready pixels, and ready repaint after returning to the
+      original case. Host artifact verification, 128 focused tests, task graph, docs, schemas,
+      portfolio and scoped Git whitespace checks passed.
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -6971,6 +6976,17 @@ tasks:
       source/output page 1 to the unchanged imported original. Step 8 remains controlled
       source evidence for obsolete delivery. PWS-0811 and wider T01/HT-01 stay in review. See
       output/pws0811/installed-r16/functional-step-11/hyper-v-20261109.
+    - >-
+      Functional Step 12 passed the installed T01/HT-01 distinct-case switch on exact R16.
+      Close was dispatched 1.2522 ms after the selected scan's active lookup frame, and the
+      immediate frame stayed byte-identical. The chooser opened a distinct saved case whose
+      selected form painted its own pixels. Reopening the original case restored the selected
+      clockwise scan. Frame bindings identify both cases, page IDs and source/output positions.
+      Both immutable originals matched the delivery hashes. B's saved manifest and A's
+      post-rotation manifest were byte-identical across their respective reopens.
+      Step 8 remains controlled source evidence for obsolete delivery. Wider T01/HT-01
+      and PWS-0811 stay in review. See step-result.md under
+      output/pws0811/installed-r16/functional-step-12/hyper-v-20261109.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
