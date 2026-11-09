@@ -7030,6 +7030,18 @@ tasks:
       arrival remains unobserved. The original partial delivery rows are preserved. The supplemental
       disposition and local checkpoint are under
       output/pws0811/installed-r16/functional-step-15/t01-ht01-disposition. PWS-0811 remains in review.
+    - >-
+      Functional Step 16 reconciles T12 and HT-17 for exact R16 from retained receipts.
+      The prepared SAC-Off Hyper-V guest passed standard-user Setup, offline ordinary PDF,
+      English OCR and text edit/export. Scoped ordinary and OCR traces establish bundled
+      runtime origins and the OneDrive comparison. The connected host's R9 case migration
+      and separate R15-to-R16 Keep cases byte check retain their original scopes. A pristine
+      guest replay, SAC-enforced installation, direct R9 application upgrade, preservation
+      of existing nonzero rotations and marks, and physical second-PC delivery remain unverified.
+      The original Sandbox block and delivery partial rows are preserved. See reconciliation.md
+      and repository-after.json under
+      output/pws0811/installed-r16/functional-step-16/t12-ht17-reconciliation. PWS-0811 stays
+      in review, PWS-0812 is done and PWS-0808 stays dependency-gated.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
