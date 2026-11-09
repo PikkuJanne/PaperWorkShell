@@ -6752,6 +6752,10 @@ tasks:
       destination and source painted pixels, and unchanged saved manifest and immutable originals.
       The 128 focused tests, task graph, docs, schema, portfolio and scoped Git whitespace
       checks passed.
+    - >-
+      Functional Step 11 verified the installed failed card, focused Retry control, same-page
+      repaint and byte-identical saved manifest and original. Host artifact verification,
+      128 focused tests, task graph, docs, schemas, portfolio and scoped Git whitespace checks passed.
     notes:
     - Explicit maintainer repair assignment dated 2026-11-06 authorizes this task and next
       internal candidate; HT/T identifiers are coverage IDs, not repository tasks.
@@ -6957,6 +6961,16 @@ tasks:
       reused that exact disposable case. Exact installed obsolete-generation delivery remains
       unobserved. PWS-0811 and wider T01/HT-01 stay in review. See
       output/pws0811/installed-r16/functional-step-10/hyper-v-20261109.
+    - >-
+      Functional Step 11 passed the installed T01/HT-01 preview failure and ordinary Retry
+      check on R16. A read-only sharing handle on one disposable case thumbnail triggered
+      PDF_THUMBNAIL_CACHE_INVALID. The selected form card showed Preview failed and focused
+      Retry selected preview. It remained failed after release until Retry repainted the same
+      form from its verified cache entry. The empty slot still said Preview pending beside the
+      failed caption. Four frames and byte-identical revision 1 snapshots bind the same case and
+      source/output page 1 to the unchanged imported original. Step 8 remains controlled
+      source evidence for obsolete delivery. PWS-0811 and wider T01/HT-01 stay in review. See
+      output/pws0811/installed-r16/functional-step-11/hyper-v-20261109.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
