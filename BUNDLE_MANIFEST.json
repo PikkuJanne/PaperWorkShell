@@ -481,7 +481,7 @@
     {
       "path": "packaging/windows/product-v1.json",
       "bytes": 751,
-      "sha256": "f1f1ddd13de1ca0645c814b7d839c006187977623dd36081efa95634048aa975"
+      "sha256": "7d2eb927328154aaa00071226f6d17f391fc87858033f3347ebf9648e2947189"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 160961,
-      "sha256": "54e2e1300f86b38174b3eda19a8d6228e73032f2359dfaed5b0707c0b52681d5"
+      "bytes": 162448,
+      "sha256": "d42bc17974505a78c172ae9027e273e2436a00c07642fbd4bcaf9432de78d3ed"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",

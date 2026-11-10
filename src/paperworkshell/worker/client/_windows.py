@@ -5273,6 +5273,7 @@ def _scan_private_temp_tree_bytes(root: Path) -> int:
                 directory,
                 expected_size=0,
                 is_directory=True,
+                retained_directory=retained_directory,
             )
             try:
                 with os.scandir(directory) as iterator:
@@ -5335,6 +5336,7 @@ def _scan_private_temp_tree_bytes(root: Path) -> int:
                 directory,
                 expected_size=0,
                 is_directory=True,
+                retained_directory=retained_directory,
             )
         finally:
             if not _close_owned_handle_bounded(retained_directory):
@@ -5367,6 +5369,7 @@ def _require_no_private_temp_alternate_streams(
     *,
     expected_size: int,
     is_directory: bool,
+    retained_directory: _OwnedHandle | None = None,
 ) -> int:
     """Fail closed when a path has storage that ``scandir`` cannot account for."""
 
@@ -5395,6 +5398,12 @@ def _require_no_private_temp_alternate_streams(
             return 0
         if failure in {_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND}:
             raise _PrivateTempTreeChanged
+        if failure == _ERROR_ACCESS_DENIED and retained_directory is not None:
+            # A path reopen can be denied after the exact directory is marked for deletion.
+            # The retained handle supplies the witness before this scan releases it and retries.
+            current = _query_retained_resource_info(retained_directory.value)
+            if current.delete_pending and current.is_directory and not current.is_reparse_point:
+                raise _PrivateTempTreeChanged
         raise OSError
     try:
         if is_directory or stream.stream_name != "::$DATA":

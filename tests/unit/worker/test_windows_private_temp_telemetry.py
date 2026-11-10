@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
+from ctypes import wintypes
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,6 +96,77 @@ def test_private_temp_scan_retries_a_delete_pending_retained_directory(
     assert windows._private_temp_tree_bytes(tmp_path.resolve()) == 7
     assert calls == 3
     assert closes == 2
+
+
+def _mark_directory_delete_pending(path: Path) -> None:
+    kernel32 = windows._kernel32()
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(path),
+        windows._DELETE,
+        windows._FILE_SHARE_READ | windows._FILE_SHARE_WRITE | windows._FILE_SHARE_DELETE,
+        None,
+        windows._OPEN_EXISTING,
+        windows._FILE_FLAG_BACKUP_SEMANTICS | windows._FILE_FLAG_OPEN_REPARSE_POINT,
+        None,
+    )
+    if handle == windows._INVALID_HANDLE_VALUE:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        disposition = ctypes.c_ubyte(1)  # FILE_DISPOSITION_INFO.DeleteFile is a Win32 BOOLEAN.
+        set_information = kernel32.SetFileInformationByHandle
+        set_information.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD)
+        set_information.restype = wintypes.BOOL
+        if not set_information(handle, 4, ctypes.byref(disposition), ctypes.sizeof(disposition)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        assert windows._close_owned_handle_bounded(windows._OwnedHandle(handle))
+
+
+@pytest.mark.parametrize("stream_query", [1, 2])
+def test_private_temp_scan_retries_native_removal_during_directory_stream_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stream_query: int,
+) -> None:
+    child = tmp_path / "operation"
+    child.mkdir()
+    (tmp_path / "survivor.bin").write_bytes(b"bounded")
+    check_streams = windows._require_no_private_temp_alternate_streams
+    scans = 0
+    child_queries = 0
+    scan = windows._scan_private_temp_tree_bytes
+
+    def count_scan(root: Path) -> int:
+        nonlocal scans
+        scans += 1
+        return scan(root)
+
+    def remove_before_query(path: Path, **kwargs: Any) -> int:
+        nonlocal child_queries
+        if path == child:
+            child_queries += 1
+            if child_queries == stream_query:
+                _mark_directory_delete_pending(child)
+        return check_streams(path, **kwargs)
+
+    monkeypatch.setattr(windows, "_scan_private_temp_tree_bytes", count_scan)
+    monkeypatch.setattr(windows, "_require_no_private_temp_alternate_streams", remove_before_query)
+
+    assert windows._private_temp_tree_bytes(tmp_path.resolve()) == 7
+    assert child_queries == stream_query
+    assert scans == 2
+    assert not child.exists()
 
 
 @pytest.mark.parametrize(
