@@ -23,7 +23,7 @@ from paperworkshell.worker.client._windows import (
     WindowsLaunchConfig,
     WindowsProcessLauncher,
 )
-from paperworkshell.worker.client.client import WorkerClient
+from paperworkshell.worker.client.client import WorkerClient, WorkerClientGroup
 from paperworkshell.worker.client.errors import (
     WorkerClientContext,
     WorkerClientErrorCode,
@@ -157,6 +157,7 @@ _REQUIRED_DESKTOP_CAPABILITIES = (
     SIGNATURE_IMAGE_RASTER_CAPABILITY,
     TEXT_COMPANION_CAPABILITY,
 )
+_REQUIRED_IMAGE_PAGE_CAPABILITIES = (IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY)
 
 # The desktop composition root may import this GUI-safe client module, but it
 # must not import the worker-host coordinator module directly.  Keep creation
@@ -298,14 +299,16 @@ class PdfExportWorkerCompositionConfig:
 
 
 class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"]):
-    """Own one shared worker client and its structural inspection/rendering ports."""
+    """Own desktop worker clients and their structural inspection/rendering ports."""
 
     __slots__ = (
+        "_client_group",
         "_closed",
         "_heavy_operations",
         "_image_page_generator",
         "_image_source_inspector",
         "_image_page_transformer",
+        "_image_worker",
         "_signature_image_rasterizer",
         "_owner_thread_id",
         "_source_inspector",
@@ -326,9 +329,13 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         heavy_operations: HeavyOperationCoordinator,
         *,
         launcher: WindowsProcessLauncher | None = None,
+        image_worker: WorkerClient | None = None,
+        client_group: WorkerClientGroup | None = None,
     ) -> None:
         self._worker = worker
+        self._client_group = client_group
         self._launcher = launcher
+        self._image_worker = image_worker
         self._source_inspector = source_inspector
         self._thumbnail_generator = thumbnail_generator
         self._image_source_inspector = image_source_inspector
@@ -385,7 +392,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Forward safe worker accounting without exposing process authority."""
 
         self._require_owner()
-        return self._worker.resource_snapshot()
+        return self._latest_worker().resource_snapshot()
 
     def text_companion_extractor(self, policy: ResourcePolicy) -> BrokeredTextCompanionExtractor:
         """Bind opt-in final-derivative extraction to the existing heavy-work gate."""
@@ -398,7 +405,12 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         """Return the last protocol acknowledgement latency, excluding teardown."""
 
         self._require_owner()
-        return self._worker.query().last_cancellation_acknowledgement_ms
+        return self._latest_worker().query().last_cancellation_acknowledgement_ms
+
+    def _latest_worker(self) -> WorkerClient:
+        if self._client_group is not None and self._client_group.latest is not None:
+            return self._client_group.latest
+        return self._worker
 
     def heavy_operation_snapshot(self) -> HeavyOperationSnapshot:
         """Expose shared content-free backpressure accounting."""
@@ -416,7 +428,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         return self._closed
 
     def close(self) -> None:
-        """Idempotently terminate the shared client on its construction thread."""
+        """Idempotently terminate the clients on their construction thread."""
 
         self._require_owner()
         if self._closed:
@@ -440,14 +452,19 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._closed = True
 
     def release_case_resources(self) -> None:
-        """Stop the parser and retire static access before the case lease closes."""
+        """Stop both parsers before retiring the one shared static lease."""
 
         self._require_owner()
         pending: BaseException | None = None
-        try:
-            self._worker.terminate()
-        except BaseException as error:
-            pending = error
+        workers = (
+            (self._worker,) if self._image_worker is None else (self._worker, self._image_worker)
+        )
+        for worker in workers:
+            try:
+                worker.terminate()
+            except BaseException as error:
+                if pending is None:
+                    pending = error
         if self._launcher is not None:
             try:
                 self._launcher.release_case_resources()
@@ -599,7 +616,7 @@ def create_desktop_worker_composition(
     thumbnail_cache: ThumbnailCacheStore,
     heavy_operations: HeavyOperationCoordinator,
 ) -> DesktopWorkerComposition:
-    """Build the fixed launcher, shared client, and both desktop broker ports."""
+    """Build desktop brokers with one fixed authority for installed launches."""
 
     if type(config) is not DesktopWorkerCompositionConfig:
         reject_client(
@@ -625,12 +642,29 @@ def create_desktop_worker_composition(
         if config.retain_runtime_access
         else WindowsProcessLauncher(config._launch_config)
     )
+    runtime_access = launcher.runtime_access_authority
+    client_group = None if runtime_access is None else WorkerClientGroup()
     worker = WorkerClient(
         launcher,
         config.resource_policy,
         config.timeout_policy,
         required_capabilities=_REQUIRED_DESKTOP_CAPABILITIES,
+        group=client_group,
     )
+    image_worker = None
+    if runtime_access is not None:
+        image_launcher = WindowsProcessLauncher(
+            replace(config._launch_config, operation_scope=WorkerOperationScope.IMAGE_PAGES),
+            runtime_access=runtime_access,
+        )
+        image_worker = WorkerClient(
+            image_launcher,
+            config.resource_policy,
+            config.timeout_policy,
+            required_capabilities=_REQUIRED_IMAGE_PAGE_CAPABILITIES,
+            group=client_group,
+        )
+    image_page_client = worker if image_worker is None else image_worker
     inspector = BrokeredPdfSourceInspector(
         worker,
         prepared_sources,
@@ -646,14 +680,14 @@ def create_desktop_worker_composition(
         heavy_operations=heavy_operations,
     )
     image_inspector, image_generator = create_image_page_brokers(
-        worker,
+        image_page_client,
         prepared_sources,
         selected_image_pages,
         config.image_policy,
         heavy_operations=heavy_operations,
     )
     image_transformer = BrokeredImagePageTransformer(
-        worker,
+        image_page_client,
         selected_image_pages,
         config.image_transform_policy,
         heavy_operations=heavy_operations,
@@ -677,6 +711,8 @@ def create_desktop_worker_composition(
         signature_image_rasterizer,
         heavy_operations,
         launcher=launcher if config.retain_runtime_access else None,
+        image_worker=image_worker,
+        client_group=client_group,
     )
 
 

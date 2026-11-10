@@ -105,6 +105,14 @@ class _ActiveOperation:
         )
 
 
+@dataclass(slots=True)
+class WorkerClientGroup:
+    """Share sticky cleanup and accounting across one owner's desktop clients."""
+
+    latest: WorkerClient | None = None
+    cleanup_unconfirmed: bool = False
+
+
 class WorkerClient:
     """Coordinate launch, RPC, deadlines, cancellation, shutdown, and restart.
 
@@ -128,6 +136,7 @@ class WorkerClient:
         id_factory: Callable[[], UUID] = uuid4,
         capability_factory: Callable[[], SessionCapability] = _default_capability_factory,
         resource_sampling_interval_ms: int | None = None,
+        group: WorkerClientGroup | None = None,
     ) -> None:
         if (
             type(resource_policy) is not WorkerResourcePolicy
@@ -184,6 +193,7 @@ class WorkerClient:
         self._id_factory = id_factory
         self._capability_factory = capability_factory
         self._resource_sampling_interval_ms = resource_sampling_interval_ms
+        self._group = group
         self._owner_thread_id = threading.get_ident()
 
         self._generation = 0
@@ -229,7 +239,7 @@ class WorkerClient:
         self._require_uuid4(case_id)
         if self._phase not in {WorkerLifecyclePhase.STOPPED, WorkerLifecyclePhase.FAULTED}:
             reject_client(WorkerClientErrorCode.STATE_INVALID, WorkerClientContext.STATE)
-        if self._cleanup_unconfirmed:
+        if self._has_unconfirmed_cleanup():
             self._set_failure(
                 WorkerClientErrorCode.TERMINATION_FAILED,
                 WorkerClientContext.PROCESS,
@@ -279,6 +289,8 @@ class WorkerClient:
         )
 
         self._generation = generation
+        if self._group is not None:
+            self._group.latest = self
         self._phase = WorkerLifecyclePhase.STARTING
         self._case_id = case_id
         self._session_id = session_id
@@ -1016,10 +1028,15 @@ class WorkerClient:
         """Discard a static lease after a broker rejects post-termination output."""
 
         self._require_owner()
-        if self._process is not None or self._cleanup_unconfirmed:
+        if self._process is not None or self._has_unconfirmed_cleanup():
             reject_client(WorkerClientErrorCode.TERMINATION_FAILED, WorkerClientContext.PROCESS)
         if isinstance(self._launcher, RetainedRuntimeLauncher):
             self._launcher.retire_runtime_access()
+
+    def _has_unconfirmed_cleanup(self) -> bool:
+        return self._cleanup_unconfirmed or (
+            self._group is not None and self._group.cleanup_unconfirmed
+        )
 
     def _dispose_process(self, *, terminate: bool, allow_runtime_reuse: bool = False) -> bool:
         if self._cleanup_unconfirmed:
@@ -1074,6 +1091,8 @@ class WorkerClient:
             # kill-on-close protection, but make the uncertainty sticky rather
             # than treating a later idempotent no-op as fresh evidence.
             self._cleanup_unconfirmed = True
+            if self._group is not None:
+                self._group.cleanup_unconfirmed = True
         return success
 
     def _mark_private_temp_measurement_incomplete(self) -> None:

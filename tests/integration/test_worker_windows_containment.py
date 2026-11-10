@@ -780,6 +780,74 @@ def test_overlapping_hardlink_guards_preserve_preexisting_user_deny(
     _assert_profile_removed(second_folder)
 
 
+@pytest.mark.parametrize("auto_inherited", [False, True])
+def test_prepared_file_captures_inheritance_and_guard_from_one_live_dacl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auto_inherited: bool
+) -> None:
+    recovery_root = tmp_path / "worker-acl-recovery"
+    monkeypatch.setattr(windows_module, "_acl_recovery_directory_path", lambda: recovery_root)
+    approved = tmp_path / "approved-runtime"
+    approved.mkdir()
+    existing = approved / "module.py"
+    existing.write_bytes(b"VALUE = 1\n")
+    original_sddl = _dacl_sddl(existing)
+    profile = _AppContainerProfile.create((approved,))
+    peer_sid = windows_module._convert_string_sid(windows_module._current_process_user_sid_string())
+    fixture, _ = windows_module._open_retained_resource(existing, acl_authority=True)
+    fixture_auto = windows_module._dacl_auto_inherited_handle(fixture.value)
+    try:
+        windows_module._append_exact_deny_ace_handle(
+            fixture.value, peer_sid, windows_module._FILE_WRITE_ATTRIBUTES
+        )
+        windows_module._restore_dacl_auto_inherited_handle(fixture.value, auto_inherited)
+        guarded_sddl = _dacl_sddl(existing)
+        open_resource = windows_module._open_retained_resource
+        advapi = windows_module._advapi32()
+        get_security = advapi.GetSecurityInfo
+        write_entry = AclRecoveryJournal.write
+        file_handle = 0
+        live_reads = 0
+        prepared: list[tuple[int, bool, int | None]] = []
+
+        def identify_file(path: Path, **kwargs: Any) -> Any:
+            nonlocal file_handle
+            result = open_resource(path, **kwargs)
+            if path == existing:
+                file_handle = result[0].value
+            return result
+
+        def count_read(handle: wintypes.HANDLE, *args: Any) -> Any:
+            nonlocal live_reads
+            if handle.value == file_handle:
+                live_reads += 1
+            return get_security(handle, *args)
+
+        def observe_prepared(journal: AclRecoveryJournal, entry: AclRecoveryEntry) -> None:
+            if entry.phase is AclRecoveryPhase.PREPARED:
+                item = next(obj for obj in entry.objects if obj.path == existing)
+                prepared.append((live_reads, item.auto_inherited, item.guard_baseline))
+            write_entry(journal, entry)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(windows_module, "_open_retained_resource", identify_file)
+            scoped.setattr(advapi, "GetSecurityInfo", count_read)
+            scoped.setattr(AclRecoveryJournal, "write", observe_prepared)
+            profile.grant_read_execute((approved,))
+        profile.require_read_execute((approved, existing))
+        assert profile.close_no_raise()
+        assert _dacl_sddl(existing) == guarded_sddl
+        assert prepared == [(1, auto_inherited, 1)]
+    finally:
+        assert profile.close_no_raise()
+        windows_module._remove_one_exact_deny_ace_handle(
+            fixture.value, peer_sid, windows_module._FILE_WRITE_ATTRIBUTES
+        )
+        windows_module._restore_dacl_auto_inherited_handle(fixture.value, fixture_auto)
+        fixture.close()
+        windows_module._local_free(peer_sid)
+    assert _dacl_sddl(existing) == original_sddl
+
+
 def test_second_lease_rejects_missing_shared_guard_without_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

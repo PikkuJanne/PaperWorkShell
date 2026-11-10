@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,6 +22,7 @@ from paperworkshell.worker._windows_broker import (
     WindowsResultPipe,
 )
 from paperworkshell.worker.client._windows import WindowsProcessLauncher
+from paperworkshell.worker.client.client import WorkerClientGroup
 from paperworkshell.worker.client.errors import (
     WorkerClientError,
     WorkerClientErrorCode,
@@ -59,6 +61,7 @@ from paperworkshell.worker.protocol.models import (
     CapabilityDescriptor,
     ResourceLimits,
 )
+from paperworkshell.worker.protocol.operation_scope import WorkerOperationScope
 from paperworkshell.worker.protocol.text_companion import TEXT_COMPANION_CAPABILITY
 from paperworkshell.worker.signature_image_raster_broker import (
     CommittedSignatureImageAssetStore,
@@ -97,11 +100,13 @@ class _FakeWorkerClient:
         timeout_policy: WorkerTimeoutPolicy,
         *,
         required_capabilities: tuple[CapabilityDescriptor, ...],
+        group: WorkerClientGroup | None = None,
     ) -> None:
         self.launcher = launcher
         self.resource_policy = resource_policy
         self.timeout_policy = timeout_policy
         self.required_capabilities = required_capabilities
+        self.group = group
         self.constructed_thread = threading.get_ident()
         self.terminate_calls = 0
         self.resource_snapshot_calls = 0
@@ -257,6 +262,53 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     assert composition.resource_snapshot() == worker.snapshot
     assert worker.resource_snapshot_calls == 1
     composition.close()
+
+
+def test_retained_desktop_routes_image_work_to_a_closed_scope_with_the_same_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+    prepared, committed, cache = _ports()
+    composition = create_desktop_worker_composition(
+        replace(_config(tmp_path), retain_runtime_access=True),
+        prepared_sources=prepared,
+        committed_pages=committed,
+        committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
+        thumbnail_cache=cache,
+        heavy_operations=HeavyOperationCoordinator(1),
+    )
+    worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
+    image_worker = cast(_FakeWorkerClient, cast(Any, composition)._image_worker)
+    assert image_worker is not worker
+    assert isinstance(image_worker.launcher, WindowsProcessLauncher)
+    assert isinstance(worker.launcher, WindowsProcessLauncher)
+    assert worker.launcher._config.operation_scope is WorkerOperationScope.DESKTOP
+    assert image_worker.launcher._config.operation_scope is WorkerOperationScope.IMAGE_PAGES
+    assert worker.group is not None and image_worker.group is worker.group
+    assert (
+        image_worker.launcher.runtime_access_authority
+        is worker.launcher.runtime_access_authority
+        is composition.runtime_access_authority
+    )
+    assert image_worker.required_capabilities == (
+        IMAGE_NORMALIZE_CAPABILITY,
+        IMAGE_TRANSFORM_CAPABILITY,
+    )
+    assert cast(Any, composition.image_source_inspector)._worker is image_worker
+    assert cast(Any, composition.image_page_generator)._worker is image_worker
+    assert cast(Any, composition.image_page_transformer)._worker is image_worker
+    assert cast(Any, composition.source_inspector)._worker is worker
+    assert cast(Any, composition.thumbnail_generator)._worker is worker
+    assert cast(Any, composition.signature_image_rasterizer)._worker is worker
+    releases: list[WindowsProcessLauncher] = []
+
+    def release(launcher: WindowsProcessLauncher) -> None:
+        assert worker.terminate_calls == image_worker.terminate_calls == 1
+        releases.append(launcher)
+
+    monkeypatch.setattr(WindowsProcessLauncher, "release_case_resources", release)
+    composition.close()
+    assert releases == [worker.launcher]
 
 
 def test_image_cache_is_one_optional_complete_typed_port() -> None:

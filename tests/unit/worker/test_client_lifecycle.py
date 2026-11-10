@@ -10,7 +10,7 @@ from uuid import UUID
 
 import pytest
 
-from paperworkshell.worker.client.client import WorkerClient
+from paperworkshell.worker.client.client import WorkerClient, WorkerClientGroup
 from paperworkshell.worker.client.errors import (
     WorkerClientError,
     WorkerClientErrorCode,
@@ -300,12 +300,15 @@ def _limits(*, wall_time_ms: int = 1_000) -> ResourceLimits:
 def _client(
     launcher: FakeLauncher,
     clock: FakeClock | None = None,
+    *,
+    group: WorkerClientGroup | None = None,
 ) -> WorkerClient:
     return WorkerClient(
         launcher,
         _resource_policy(),
         _timeout_policy(),
         clock=clock or FakeClock(),
+        group=group,
     )
 
 
@@ -321,9 +324,10 @@ def _ready_client(
     *,
     clock: FakeClock | None = None,
     launcher: FakeLauncher | None = None,
+    group: WorkerClientGroup | None = None,
 ) -> tuple[WorkerClient, FakeLauncher, LaunchRecord, int]:
     selected_launcher = launcher or FakeLauncher()
-    client = _client(selected_launcher, clock)
+    client = _client(selected_launcher, clock, group=group)
     generation = client.start(CASE_ID)
     record = selected_launcher.records[-1]
     hello = _consume(record)
@@ -1074,6 +1078,25 @@ def test_unconfirmed_cleanup_is_sticky_and_blocks_a_second_generation() -> None:
     assert record.process.terminate_calls == 1
     assert record.process.close_calls == 1
     assert client.query().phase is WorkerLifecyclePhase.FAULTED
+
+
+def test_desktop_scope_switch_cannot_bypass_unconfirmed_cleanup() -> None:
+    group = WorkerClientGroup()
+    client, _launcher, record, _generation = _ready_client(group=group)
+    next_launcher = FakeLauncher()
+    next_client = _client(next_launcher, group=group)
+    assert group.latest is client
+
+    record.process.fail_close = True
+    with pytest.raises(WorkerClientError) as termination_error:
+        client.terminate()
+    with pytest.raises(WorkerClientError) as start_error:
+        next_client.start(CASE_ID)
+
+    assert termination_error.value.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert start_error.value.code is WorkerClientErrorCode.TERMINATION_FAILED
+    assert not next_launcher.records
+    assert group.latest is client
 
 
 def test_successful_final_close_recovers_from_an_initial_terminate_failure() -> None:

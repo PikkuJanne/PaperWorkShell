@@ -82,6 +82,10 @@ def _build_operation_registry(
     if type(operation_scope) is not WorkerOperationScope:
         raise WorkerProcessCreationDenied from None
     handlers: list[OperationHandler] = [NoopOperationHandler()]
+    if operation_scope is WorkerOperationScope.IMAGE_PAGES:
+        _append_image_normalize_handler(handlers)
+        _append_image_transform_handler(handlers)
+        return RuntimeOperationRegistry(tuple(handlers))
     if operation_scope is WorkerOperationScope.PDF_EXPORT:
         _append_pdf_export_handlers(handlers)
         return RuntimeOperationRegistry(tuple(handlers))
@@ -140,14 +144,7 @@ def _build_operation_registry(
         handlers.append(build_text_companion_operation_handler())
     except Exception:
         pass
-    try:
-        from paperworkshell.worker.image_normalize_operation import (
-            build_image_normalize_operation_handler,
-        )
-
-        handlers.append(build_image_normalize_operation_handler())
-    except Exception:
-        pass
+    _append_image_normalize_handler(handlers)
     try:
         from paperworkshell.worker.signature_image_raster_operation import (
             build_signature_image_raster_operation_handler,
@@ -156,14 +153,7 @@ def _build_operation_registry(
         handlers.append(build_signature_image_raster_operation_handler())
     except Exception:
         pass
-    try:
-        from paperworkshell.worker.image_transform_operation import (
-            build_image_transform_operation_handler,
-        )
-
-        handlers.append(build_image_transform_operation_handler())
-    except Exception:
-        pass
+    _append_image_transform_handler(handlers)
     try:
         from paperworkshell.worker.pdf_operation import (
             build_pdf_inspection_operation_handler,
@@ -181,9 +171,8 @@ def _build_operation_registry(
     except Exception:
         pass
     if operation_scope is WorkerOperationScope.DESKTOP:
-        # The shared desktop client negotiates these six fixed capabilities.
-        # Keep their real adapter construction/admission above, and avoid loading
-        # unrelated OCR/export engines merely to inspect or preview an image.
+        # Preserve the existing general desktop capabilities without admitting
+        # unrelated OCR/export engines.
         return RuntimeOperationRegistry(tuple(handlers))
     _append_pdf_export_handlers(handlers)
     try:
@@ -228,6 +217,28 @@ def _build_operation_registry(
     # Never advertise a document capability whose adapter failed to load. The
     # client rejects negotiation when its required capability is unavailable.
     return RuntimeOperationRegistry(tuple(handlers))
+
+
+def _append_image_normalize_handler(handlers: list[OperationHandler]) -> None:
+    try:
+        from paperworkshell.worker.image_normalize_operation import (
+            build_image_normalize_operation_handler,
+        )
+
+        handlers.append(build_image_normalize_operation_handler())
+    except Exception:
+        pass
+
+
+def _append_image_transform_handler(handlers: list[OperationHandler]) -> None:
+    try:
+        from paperworkshell.worker.image_transform_operation import (
+            build_image_transform_operation_handler,
+        )
+
+        handlers.append(build_image_transform_operation_handler())
+    except Exception:
+        pass
 
 
 def _append_pdf_export_handlers(handlers: list[OperationHandler]) -> None:

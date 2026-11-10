@@ -1901,15 +1901,15 @@ class _AccessGrantLease:
                 )
                 active_entries = _validated_active_acl_entries_locked(allowed)
                 for resource in inventory.resources:
-                    resource.original_auto_inherited = _dacl_auto_inherited_handle(
-                        resource.handle.value
-                    )
-                for resource in inventory.resources:
                     baseline: int | None = None
                     if resource.info.is_directory:
+                        auto_inherited = _dacl_auto_inherited_handle(resource.handle.value)
                         resource.hardlink_guard_baseline = None
                     else:
                         _require_retained_resource_unchanged(resource)
+                        auto_inherited, current_baseline = _capture_file_grant_baseline(
+                            resource.handle.value, peer_sid
+                        )
                         shared_baseline = _shared_guard_baseline(
                             resource,
                             self.peer_sid_string,
@@ -1917,21 +1917,10 @@ class _AccessGrantLease:
                         )
                         resource.hardlink_guard_shared = shared_baseline is not None
                         if shared_baseline is None:
-                            baseline = _exact_deny_ace_count_handle(
-                                resource.handle.value,
-                                peer_sid,
-                                _FILE_WRITE_ATTRIBUTES,
-                            )
+                            baseline = current_baseline
                         else:
                             baseline = shared_baseline
-                            if (
-                                _exact_deny_ace_count_handle(
-                                    resource.handle.value,
-                                    peer_sid,
-                                    _FILE_WRITE_ATTRIBUTES,
-                                )
-                                != baseline + 1
-                            ):
+                            if current_baseline != baseline + 1:
                                 self._discard_unmutated_inventory(inventory)
                                 _reject(
                                     WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
@@ -1939,13 +1928,7 @@ class _AccessGrantLease:
                                     "Windows could not verify an approved shared resource guard.",
                                 )
                         resource.hardlink_guard_baseline = baseline
-                    auto_inherited = resource.original_auto_inherited
-                    if auto_inherited is None:
-                        _reject(
-                            WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-                            "access.recovery_inventory",
-                            "Worker access recovery could not authenticate inheritance state.",
-                        )
+                    resource.original_auto_inherited = auto_inherited
                     captured = _capture_exact_acl_recovery_object(
                         resource,
                         guard_baseline=baseline,
@@ -2356,49 +2339,24 @@ class _ActiveLeaseRecoveryWitness:
     owner_thread: int
 
 
-def _capture_security_descriptor_handle(handle: int) -> bytes:
-    advapi32 = _advapi32()
-    get_security_info = advapi32.GetSecurityInfo
-    get_security_info.argtypes = (
-        wintypes.HANDLE,
-        ctypes.c_int,
-        wintypes.DWORD,
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-    )
-    get_security_info.restype = wintypes.DWORD
-    get_length = advapi32.GetSecurityDescriptorLength
+def _security_descriptor_bytes(descriptor: ctypes.c_void_p) -> bytes:
+    get_length = _advapi32().GetSecurityDescriptorLength
     get_length.argtypes = (ctypes.c_void_p,)
     get_length.restype = wintypes.DWORD
-    descriptor = ctypes.c_void_p()
-    status = get_security_info(
-        wintypes.HANDLE(handle),
-        _SE_FILE_OBJECT,
-        _DACL_SECURITY_INFORMATION,
-        None,
-        None,
-        None,
-        None,
-        ctypes.byref(descriptor),
-    )
-    if status != _ERROR_SUCCESS or not descriptor.value:
+    size = int(get_length(descriptor))
+    if not 20 <= size <= 65_536:
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
             "access.inspect",
             "Windows could not inspect an approved worker resource policy.",
         )
+    return ctypes.string_at(descriptor, size)
+
+
+def _capture_security_descriptor_handle(handle: int) -> bytes:
+    descriptor, _ = _live_handle_dacl(handle, guard_check=False)
     try:
-        size = int(get_length(descriptor))
-        if size < 20 or size > 65_536:
-            _reject(
-                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
-                "access.inspect",
-                "Windows could not inspect an approved worker resource policy.",
-            )
-        return ctypes.string_at(descriptor, size)
+        return _security_descriptor_bytes(descriptor)
     finally:
         _local_free(descriptor)
 
@@ -2420,7 +2378,7 @@ def _descriptor_control(descriptor: bytes | bytearray) -> int:
     return control
 
 
-def _require_non_null_dacl(descriptor: bytes | bytearray) -> None:
+def _require_non_null_dacl(descriptor: bytes | bytearray) -> int:
     control = _descriptor_control(descriptor)
     if not control & _SE_DACL_PRESENT or int.from_bytes(descriptor[16:20], "little") == 0:
         _reject(
@@ -2428,12 +2386,30 @@ def _require_non_null_dacl(descriptor: bytes | bytearray) -> None:
             "access.inspect",
             "An approved worker resource has an unsupported access policy.",
         )
+    return control
 
 
 def _dacl_auto_inherited_handle(handle: int) -> bool:
     descriptor = _capture_security_descriptor_handle(handle)
-    _require_non_null_dacl(descriptor)
-    return bool(_descriptor_control(descriptor) & _SE_DACL_AUTO_INHERITED)
+    return bool(_require_non_null_dacl(descriptor) & _SE_DACL_AUTO_INHERITED)
+
+
+def _capture_file_grant_baseline(handle: int, peer_sid: ctypes.c_void_p) -> tuple[bool, int]:
+    """Read both PREPARED baseline values from the same live DACL."""
+    descriptor, dacl = _live_handle_dacl(handle, guard_check=False)
+    try:
+        control = _require_non_null_dacl(_security_descriptor_bytes(descriptor))
+        if not dacl.value:
+            _reject(
+                WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+                "access.inspect",
+                "An approved worker resource has an unsupported access policy.",
+            )
+        return bool(control & _SE_DACL_AUTO_INHERITED), _exact_deny_ace_count(
+            dacl, peer_sid, _FILE_WRITE_ATTRIBUTES
+        )
+    finally:
+        _local_free(descriptor)
 
 
 def _restore_dacl_auto_inherited_handle(handle: int, expected: bool) -> None:
@@ -2478,7 +2454,9 @@ def _convert_string_sid(value: str) -> ctypes.c_void_p:
     return sid
 
 
-def _live_handle_dacl(handle: int) -> tuple[ctypes.c_void_p, ctypes.c_void_p]:
+def _live_handle_dacl(
+    handle: int, *, guard_check: bool = True
+) -> tuple[ctypes.c_void_p, ctypes.c_void_p]:
     get_security_info = _advapi32().GetSecurityInfo
     get_security_info.argtypes = (
         wintypes.HANDLE,
@@ -2503,14 +2481,20 @@ def _live_handle_dacl(handle: int) -> tuple[ctypes.c_void_p, ctypes.c_void_p]:
         None,
         ctypes.byref(descriptor),
     )
-    if status != _ERROR_SUCCESS or not descriptor.value or not dacl.value:
-        _local_free(descriptor)
+    if status == _ERROR_SUCCESS and descriptor.value and (dacl.value or not guard_check):
+        return descriptor, dacl
+    _local_free(descriptor)
+    if guard_check:
         _reject(
             WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
             "access.guard_read",
             "Windows could not authenticate an approved worker resource guard.",
         )
-    return descriptor, dacl
+    _reject(
+        WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
+        "access.inspect",
+        "Windows could not inspect an approved worker resource policy.",
+    )
 
 
 def _acl_size_information(dacl: ctypes.c_void_p) -> _AclSizeInformation:
@@ -2584,18 +2568,22 @@ def _is_exact_deny_ace(
     return bool(equal_sid(ace_sid, sid))
 
 
-def _exact_deny_ace_count_handle(
-    handle: int,
+def _exact_deny_ace_count(
+    dacl: ctypes.c_void_p,
     sid: ctypes.c_void_p,
     mask: int,
 ) -> int:
+    information = _acl_size_information(dacl)
+    return sum(
+        _is_exact_deny_ace(_acl_ace_pointer(dacl, index), sid, mask)
+        for index in range(int(information.ace_count))
+    )
+
+
+def _exact_deny_ace_count_handle(handle: int, sid: ctypes.c_void_p, mask: int) -> int:
     descriptor, dacl = _live_handle_dacl(handle)
     try:
-        information = _acl_size_information(dacl)
-        return sum(
-            _is_exact_deny_ace(_acl_ace_pointer(dacl, index), sid, mask)
-            for index in range(int(information.ace_count))
-        )
+        return _exact_deny_ace_count(dacl, sid, mask)
     finally:
         _local_free(descriptor)
 
