@@ -26,6 +26,7 @@ from secrets import token_hex
 from typing import TYPE_CHECKING, Any, Final, Never, Self
 from uuid import UUID
 
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.worker.client._acl_recovery import (
     ACL_RECOVERY_JOURNAL_VERSION,
     ACL_RECOVERY_LEGACY_VERSION,
@@ -6702,6 +6703,12 @@ class WindowsProcessLauncher:
                 "A previous worker launch still requires deterministic cleanup.",
             )
         runtime_access = self._runtime_access
+        scope = phase_observer.current_scope()
+        observe_retained = scope is not None and scope[1] is phase_observer.Role.PREVIEW
+        if scope is not None and observe_retained:
+            scope[0].launcher_event(
+                scope[1], request, runtime_access, phase_observer.Event.RETAINED_RECOVERY_ENTER
+            )
         witness = (
             None
             if runtime_access is None
@@ -6715,6 +6722,10 @@ class WindowsProcessLauncher:
                     self._config.approved_recovery_roots,
                     _active_lease_witness=witness,
                 )
+                if scope is not None and observe_retained:
+                    scope[0].launcher_event(
+                        scope[1], request, runtime_access, phase_observer.Event.RETAINED_RECOVERY_OK
+                    )
         except BaseException:
             if runtime_access is not None and witness is not None:
                 runtime_access.poison_recovery_witness()
@@ -6765,9 +6776,29 @@ class WindowsProcessLauncher:
                 ):
                     grant_roots = (*grant_roots, tesseract_runtime_root)
             if runtime_access is None or profile.access.inventory is None:
+                if scope is not None and not observe_retained:
+                    scope[0].launcher_event(
+                        scope[1], request, runtime_access, phase_observer.Event.FIXED_GRANT_ENTER
+                    )
                 profile.grant_read_execute(grant_roots)
+                if scope is not None and not observe_retained:
+                    scope[0].launcher_event(
+                        scope[1],
+                        request,
+                        runtime_access,
+                        phase_observer.Event.FIXED_GRANT_OK,
+                        profile.access.inventory,
+                    )
             # Shared compositions may only use actual objects from the original
             # pinned inventory. An engine outside it cannot expand the grant.
+            if scope is not None and observe_retained:
+                scope[0].launcher_event(
+                    scope[1],
+                    request,
+                    runtime_access,
+                    phase_observer.Event.RETAINED_INVENTORY_ENTER,
+                    profile.access.inventory,
+                )
             profile.require_read_execute(
                 (
                     *self._config.required_startup_resources,
@@ -6777,6 +6808,14 @@ class WindowsProcessLauncher:
                 if runtime_access is not None
                 else self._config.required_startup_resources
             )
+            if scope is not None and observe_retained:
+                scope[0].launcher_event(
+                    scope[1],
+                    request,
+                    runtime_access,
+                    phase_observer.Event.RETAINED_INVENTORY_OK,
+                    profile.access.inventory,
+                )
             if runtime_access is None and self._config.qpdf_executable is not None:
                 qpdf_executable = self._config.qpdf_executable
                 profile.ensure_read_execute(

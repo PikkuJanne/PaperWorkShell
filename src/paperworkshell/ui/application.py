@@ -112,6 +112,7 @@ def run_desktop_application(
     argv: Sequence[str] | None = None,
     *,
     resource_policy: ResourcePolicy,
+    phase_observer_enabled: bool = False,
 ) -> int:
     """Run the accessible desktop shell until its backend closes cleanly."""
 
@@ -137,7 +138,12 @@ def run_desktop_application(
     )
     backend_thread.finished.connect(application.quit)
 
-    window = PaperWorkShellWindow(commands, worker, resource_policy=resource_policy)
+    window = PaperWorkShellWindow(
+        commands,
+        worker,
+        resource_policy=resource_policy,
+        phase_observer_enabled=phase_observer_enabled,
+    )
     window.show()
     backend_thread.start()
     exit_code = application.exec()

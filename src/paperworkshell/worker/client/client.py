@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Never, cast
 from uuid import UUID, uuid4
 
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.worker.client.errors import (
     WorkerClientContext,
     WorkerClientError,
@@ -299,6 +300,10 @@ class WorkerClient:
         self._pending_shutdown_reason = None
 
         launched: WorkerProcess | None = None
+        scope = phase_observer.current_scope()
+        if scope is not None:
+            observation, role = scope
+            observation.launch(role, self, generation, case_id, request)
         try:
             launched = self._launcher.launch(request)
         except Exception:
@@ -342,6 +347,8 @@ class WorkerClient:
                     WorkerClientContext.ISOLATION,
                 )
             self._capture_private_temp_snapshot(required=False)
+            if scope is not None:
+                scope[0].client_event(scope[1], self, generation, phase_observer.Event.LAUNCH_OK)
 
             # AppContainer/profile/ACL setup is a separate trusted launch phase and
             # can legitimately serialize with another application instance.  The
@@ -714,6 +721,11 @@ class WorkerClient:
             self._phase = WorkerLifecyclePhase.READY
             self._capabilities = payload.capabilities
             self._handshake_deadline = None
+            scope = phase_observer.current_scope()
+            if scope is not None:
+                scope[0].client_event(
+                    scope[1], self, self._generation, phase_observer.Event.READY_VALIDATED
+                )
             return
         if message_type is MessageType.OPERATION_ACCEPTED:
             active = self._matching_active(message)

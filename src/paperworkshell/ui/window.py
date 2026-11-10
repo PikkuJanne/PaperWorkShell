@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import pairwise
@@ -49,6 +50,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -96,6 +98,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import AssistedUseError, AssistedUseErrorCode
 from paperworkshell.domain.case_lifecycle import CaseDeletionResult, CaseDeletionStatus, CaseIndex
 from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
@@ -106,6 +109,7 @@ from paperworkshell.domain.image_pages import (
 from paperworkshell.domain.image_transforms import (
     ImagePageTransformResult,
     ImagePageTransformSnapshot,
+    ImageTransformIntent,
 )
 from paperworkshell.domain.package_summary import PackageSummary, PackageSummaryStatus
 from paperworkshell.domain.page_coordinates import (
@@ -665,6 +669,7 @@ class PaperWorkShellWindow(QMainWindow):
         worker: OrganizerBackendWorker,
         *,
         resource_policy: ResourcePolicy | None = None,
+        phase_observer_enabled: bool = False,
     ) -> None:
         super().__init__()
         selected_policy = select_resource_policy() if resource_policy is None else resource_policy
@@ -895,6 +900,15 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._diagnostic_bundle_action.triggered.connect(self._show_diagnostic_bundle)
         help_menu.addAction(self._diagnostic_bundle_action)
+        if phase_observer_enabled:
+            arm_phase = QAction("Arm synthetic PNG phase observation", self)
+            arm_phase.setObjectName("armSyntheticPngPhaseObservation")
+            arm_phase.triggered.connect(self._toggle_phase_observation)
+            help_menu.addAction(arm_phase)
+            save_phase = QAction("Save synthetic PNG phase receipt…", self)
+            save_phase.setObjectName("saveSyntheticPngPhaseReceipt")
+            save_phase.triggered.connect(self._save_phase_observation)
+            help_menu.addAction(save_phase)
         self._build_shortcuts()
         self._connect_backend()
 
@@ -1947,6 +1961,17 @@ class PaperWorkShellWindow(QMainWindow):
             return
         if type(state) is not OrganizerViewState:
             return
+        observation = phase_observer.active
+        if (
+            observation is not None
+            and not observation.terminal
+            and (
+                state.case_id != observation.case_id
+                or state.autosave_pending
+                or state.revision not in (observation.original_revision, observation.revision)
+            )
+        ):
+            observation.terminal = True
         compression = self._compression_review_state
         if compression is not None and (
             state.case_id != compression.case_id
@@ -2141,6 +2166,29 @@ class PaperWorkShellWindow(QMainWindow):
         self._model.evict_previews(
             protected_page_ids=retained,
         )
+        observation = phase_observer.active
+        if (
+            observation is not None
+            and observation.preview_id == (operation_id, generation)
+            and not active.cancellation.cancelled()
+            and self._state is not None
+            and len(snapshots) == 1
+        ):
+            snapshot = snapshots[0][0]
+            if (
+                type(snapshot) is ImagePageTransformSnapshot
+                and snapshot.intent == ImageTransformIntent()
+                and self._model.preview_state(snapshot.page_id) is PreviewState.READY
+            ):
+                observation.preview_accepted(
+                    operation_id,
+                    generation,
+                    snapshot.case_id,
+                    snapshot.source_id,
+                    snapshot.page_id,
+                    self._state.revision,
+                    self._selected_page_id(),
+                )
 
     @Slot(int, int, object)
     def _quality_review_ready(
@@ -2816,6 +2864,16 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         if active is None or active.operation_id != operation_id:
             return
+        observation = phase_observer.active
+        if (
+            observation is not None
+            and not observation.terminal
+            and (
+                (observation.import_id == operation_id and observation.page_id is None)
+                or observation.preview_id == (operation_id, self._thumbnail_generation)
+            )
+        ):
+            observation.terminal = True
         finished_preview = active.kind is _LongOperationKind.PREVIEW
         finished_export = active.kind in {
             _LongOperationKind.PDF_EXPORT,
@@ -3122,6 +3180,16 @@ class PaperWorkShellWindow(QMainWindow):
         self._active_preview_page_ids = page_ids
         self._preview_batch_complete = False
         self._model.set_preview_loading(page_ids)
+        observation = phase_observer.active
+        if observation is not None and self._state is not None:
+            observation.preview_dispatch(
+                operation.operation_id,
+                generation,
+                self._state.case_id,
+                self._state.revision,
+                page_ids,
+                self._selected_page_id(),
+            )
         self._commands.thumbnails_requested.emit(
             operation.operation_id,
             generation,
@@ -3359,6 +3427,9 @@ class PaperWorkShellWindow(QMainWindow):
             options=self._file_dialog_options(),
         )
         if not selected:
+            observation = phase_observer.active
+            if observation is not None and observation.import_id is None:
+                phase_observer.active = None
             self._announce(tr("Import selection cancelled."))
             return
         source_path = Path(selected)
@@ -3563,12 +3634,98 @@ class PaperWorkShellWindow(QMainWindow):
         self._set_import_file_target(display_name)
         operation = self._begin_long_operation(_LongOperationKind.IMPORT)
         self._announce(tr("Import started. You can cancel this operation."))
+        observation = phase_observer.active
+        if observation is not None and self._state is not None:
+            observation.dispatch(operation.operation_id, self._state.case_id, self._state.revision)
         self._commands.import_requested.emit(
             operation.operation_id,
             source_path,
             display_name,
             operation.cancellation,
         )
+
+    def _toggle_phase_observation(self) -> None:
+        observation = phase_observer.active
+        if observation is not None and not observation.terminal:
+            phase_observer.active = None
+            self._announce("Synthetic PNG phase observation disarmed.")
+            return
+        state = self._state
+        if (
+            state is None
+            or state.case_id is None
+            or state.revision != 0
+            or state.pages
+            or state.autosave_pending
+            or self._active_operation is not None
+            or self._closing_requested
+            or self._assisted_session.active
+        ):
+            self._announce("Open a new saved empty case to arm phase observation.", assertive=True)
+            return
+        try:
+            clock, frequency = phase_observer.windows_clock()
+            phase_observer.active = phase_observer.Observation(state.case_id, 0, clock, frequency)
+        except Exception:
+            self._announce("The engineering phase clock is unavailable.", assertive=True)
+            return
+        self._announce("Synthetic PNG phase observation armed for the next import.")
+
+    def _save_phase_observation(self) -> None:
+        observation = phase_observer.active
+        if observation is None or self._active_operation is not None:
+            self._announce("No synthetic phase receipt is ready.", assertive=True)
+            return
+        try:
+            receipt = observation.receipt()
+        except Exception:
+            receipt = None
+        if receipt is None:
+            self._announce("No synthetic phase receipt is ready.", assertive=True)
+            return
+        review = QMessageBox(self)
+        review.setWindowTitle("Review synthetic PNG phase receipt")
+        review.setText("Review the timing fields before saving this local engineering receipt.")
+        review.setDetailedText(receipt.decode("ascii"))
+        review.setStandardButtons(
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
+        )
+        review.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if review.exec() != int(QMessageBox.StandardButton.Save):
+            return
+        directory = Path.home() / "PWS0811PhaseEvidence"
+        try:
+            directory.mkdir(exist_ok=True)
+            info = directory.lstat()
+            if not stat.S_ISDIR(info.st_mode) or (
+                getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+            ):
+                raise OSError
+            selected, _filter = QFileDialog.getSaveFileName(
+                self,
+                "Save synthetic PNG phase receipt",
+                str(directory / "phase-receipt.json"),
+                "Engineering receipt (*.json)",
+                options=QFileDialog.Option.DontConfirmOverwrite,
+            )
+            if not selected:
+                return
+            destination = Path(selected)
+            if (
+                destination.parent != directory
+                or destination.suffix != ".json"
+                or not destination.stem.replace("-", "").replace("_", "").isalnum()
+            ):
+                raise OSError
+            with destination.open("xb") as output:
+                output.write(receipt)
+        except OSError:
+            self._announce(
+                "Choose a new JSON file in the engineering evidence folder.", assertive=True
+            )
+            return
+        phase_observer.active = None
+        self._announce("Synthetic PNG phase receipt saved.")
 
     def _set_import_file_target(self, display_name: str) -> None:
         """Expose only the user-chosen basename, outside scrolling workflow content."""

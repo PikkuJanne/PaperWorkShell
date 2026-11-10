@@ -9,6 +9,7 @@ from types import TracebackType
 from typing import Final, Protocol, Self, runtime_checkable
 from uuid import UUID
 
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.pdf_export import (
     PdfExportPlan,
     PdfExportSourceEncryptionState,
@@ -438,6 +439,16 @@ class SourceIngestService:
                 summary = _require_prepared_summary(active.summary, selected_case)
                 _require_not_cancelled(cancellation_probe, context="import.before_inspection")
 
+                scope = phase_observer.current_scope()
+                if scope is not None:
+                    observation, _role = scope
+                    observation.qualify(
+                        summary.case_id,
+                        summary.source_id,
+                        summary.media_type,
+                        summary.byte_size,
+                        summary.sha256,
+                    )
                 phase = SourceIngestErrorCode.INSPECT_FAILED
                 inspection = self._inspector.inspect(
                     summary,
@@ -446,6 +457,8 @@ class SourceIngestService:
                     progress=progress_sink,
                 )
                 _require_matching_inspection(inspection, summary)
+                if scope is not None:
+                    scope[0].record(phase_observer.Event.INSPECTION_VALIDATED)
                 _require_not_cancelled(cancellation_probe, context="import.before_commit")
 
                 phase = SourceIngestErrorCode.COMMIT_FAILED

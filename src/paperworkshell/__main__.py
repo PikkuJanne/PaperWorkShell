@@ -88,6 +88,7 @@ from paperworkshell.app.target_size_pdf_export import (
     PdfImageStageProcessorPort,
     TargetSizePdfCandidateProducer,
 )
+from paperworkshell.diagnostics.phase_observer import ENGINEERING_CANDIDATE
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
@@ -2258,15 +2259,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the desktop application."""
 
     try:
-        if _installed_runtime() is not None:
+        installed = _installed_runtime()
+        if installed is not None:
             _set_installed_application_identity()
         resources = create_desktop_application_resource_context()
     except InstalledRuntimeError as error:
         _show_installed_startup_error(error)
         return 2
+    arguments = sys.argv if argv is None else argv
+    if installed is not None and installed.candidate_id == ENGINEERING_CANDIDATE:
+        return run_desktop_application(
+            lambda: build_backend(resources),
+            arguments,
+            resource_policy=resources.resource_policy,
+            phase_observer_enabled=True,
+        )
     return run_desktop_application(
         lambda: build_backend(resources),
-        sys.argv if argv is None else argv,
+        arguments,
         resource_policy=resources.resource_policy,
     )
 

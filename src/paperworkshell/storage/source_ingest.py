@@ -16,6 +16,7 @@ from types import TracebackType
 from typing import Final, Never, Self, cast
 from uuid import UUID, uuid4
 
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.case_lifecycle import (
     MAX_SAFE_MANIFEST_INTEGER,
     CaseLifecycleError,
@@ -2092,6 +2093,9 @@ class WindowsSourceIngestStore:
             )
             committed_revision = saved.revision
             preserve_source = True
+            scope = phase_observer.current_scope()
+            if scope is not None:
+                scope[0].record(phase_observer.Event.DURABLE_COMMIT_VERIFIED)
         except _ManifestTransactionInterruption as interruption:
             failure = interruption.cause
             preserve_source = source_published and interruption.preserve_recovery

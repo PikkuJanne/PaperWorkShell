@@ -57,6 +57,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import (
     AssistedUseError,
     AssistedUseErrorCode,
@@ -774,6 +775,25 @@ class OrganizerBackendWorker(QObject):
                 progress=lambda progress: self._source_progress(operation_id, progress),
             )
             state = outcome.state
+            scope = phase_observer.current_scope()
+            if scope is not None:
+                observation, _role = scope
+                result = outcome.committed_import
+                if (
+                    not outcome.refresh_required
+                    and not state.autosave_pending
+                    and state.revision == result.manifest_revision
+                    and len(state.pages) == 1
+                    and result.page_ids == (state.pages[0].page_id,)
+                    and state.pages[0].position == 1
+                    and state.pages[0].source_page_number == 1
+                    and state.pages[0].rotation_degrees == 0
+                ):
+                    observation.import_refreshed(
+                        state.case_id, result.source_id, state.revision, state.pages[0].page_id
+                    )
+                else:
+                    observation.terminal = True
             self.state_changed.emit(state)
             if outcome.refresh_required:
                 self.case_reopen_required.emit(operation_id, outcome.safe_message)
@@ -786,7 +806,12 @@ class OrganizerBackendWorker(QObject):
                     ),
                 )
 
-        self._run_long(operation_id, "Import", action)
+        observation = phase_observer.active
+        if observation is not None and observation.import_id == operation_id:
+            with phase_observer.backend_scope(observation, phase_observer.Role.INSPECTION):
+                self._run_long(operation_id, "Import", action)
+        else:
+            self._run_long(operation_id, "Import", action)
 
     @Slot(int, object, object)
     def export_pages_pdf(
@@ -941,7 +966,12 @@ class OrganizerBackendWorker(QObject):
                 tr("Preview update complete for {value1} pages.", value1=len(results)),
             )
 
-        self._run_long(operation_id, "Preview", action)
+        observation = phase_observer.active
+        if observation is not None and observation.preview_id == (operation_id, generation):
+            with phase_observer.backend_scope(observation, phase_observer.Role.PREVIEW):
+                self._run_long(operation_id, "Preview", action)
+        else:
+            self._run_long(operation_id, "Preview", action)
 
     @Slot(int, int, object, int, object)
     def analyze_quality(

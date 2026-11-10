@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Never, Protocol
 from uuid import UUID, uuid4
 
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.image_pages import (
     MAX_IMAGE_DIMENSION_PIXELS,
     MAX_IMAGE_MEMORY_BYTES,
@@ -381,6 +382,9 @@ class BrokeredImagePageTransformer:
             return artifact
         if lookup.artifact is not None:
             reject_image_page(ImagePageErrorCode.RESULT_INVALID, "image.transform_cache_miss")
+        scope = phase_observer.current_scope()
+        if scope is not None and not lookup.corrupt_removed:
+            scope[0].record(phase_observer.Event.TRANSFORM_CACHE_MISS)
         with self._cache.create_image_transform_stage(key) as stage:
             if (
                 stage.key != key
