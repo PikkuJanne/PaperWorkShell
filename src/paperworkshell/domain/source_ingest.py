@@ -10,6 +10,14 @@ from enum import StrEnum
 from typing import Final, Never
 from uuid import UUID
 
+from paperworkshell.domain.image_pages import (
+    ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+    ORGANIZER_PREVIEW_WIDTH_PIXELS,
+    ImagePageArtifact,
+    ImagePagePreviewResult,
+    ImageQuarterTurn,
+    ImageSourceFormat,
+)
 from paperworkshell.domain.import_precheck import DetectedMediaType
 
 MAX_SAFE_SOURCE_INTEGER: Final = 9_007_199_254_740_991
@@ -235,6 +243,30 @@ class PreparedSourceSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedImagePreview:
+    """One authenticated, bounded PNG preview of the exact prepared copy."""
+
+    source: PreparedSourceSummary
+    artifact: ImagePageArtifact = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.source) is not PreparedSourceSummary
+            or self.source.media_type is not DetectedMediaType.PNG
+            or type(self.artifact) is not ImagePageArtifact
+        ):
+            reject_source_ingest(SourceIngestErrorCode.INSPECTION_INVALID, "inspection.preview")
+        result = self.artifact.header.result
+        if (
+            result.metadata.source_format is not ImageSourceFormat.PNG
+            or result.additional_rotation is not ImageQuarterTurn.DEGREES_0
+            or result.width_pixels > ORGANIZER_PREVIEW_WIDTH_PIXELS
+            or result.height_pixels > ORGANIZER_PREVIEW_HEIGHT_PIXELS
+        ):
+            reject_source_ingest(SourceIngestErrorCode.INSPECTION_INVALID, "inspection.preview")
+
+
+@dataclass(frozen=True, slots=True)
 class CompletedSourceInspection:
     """Complete worker-owned metadata bound to one prepared source."""
 
@@ -244,6 +276,7 @@ class CompletedSourceInspection:
     signature_state: SourceSignatureState
     encryption_state: SourceEncryptionState
     inspection_version: int = 1
+    initial_preview: PreparedImagePreview | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         require_internal_id(self.pending_id, context="inspection.pending_id")
@@ -266,6 +299,13 @@ class CompletedSourceInspection:
                 SourceIngestErrorCode.INSPECTION_INVALID,
                 "inspection.states",
             )
+        preview = self.initial_preview
+        if preview is not None and (
+            type(preview) is not PreparedImagePreview
+            or preview.source.pending_id != self.pending_id
+            or preview.source.media_type is not self.media_type
+        ):
+            reject_source_ingest(SourceIngestErrorCode.INSPECTION_INVALID, "inspection.preview")
         if self.media_type is DetectedMediaType.PDF:
             if (
                 self.signature_state is SourceSignatureState.NOT_APPLICABLE
@@ -324,6 +364,7 @@ class SourceImportResult:
     sha256: str = field(repr=False)
     manifest_revision: int
     duplicate: DuplicateContentSignal = field(default_factory=DuplicateContentSignal)
+    initial_preview: ImagePagePreviewResult | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         require_internal_id(self.case_id, context="result.case_id")
@@ -352,6 +393,18 @@ class SourceImportResult:
             self.duplicate.matching_source_ids
         ):
             reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "result.duplicate")
+        preview = self.initial_preview
+        if preview is not None and (
+            type(preview) is not ImagePagePreviewResult
+            or self.media_type is not DetectedMediaType.PNG
+            or preview.request.case_id != self.case_id
+            or self.page_ids != (preview.request.page_id,)
+            or preview.request.maximum_width_pixels != ORGANIZER_PREVIEW_WIDTH_PIXELS
+            or preview.request.maximum_height_pixels != ORGANIZER_PREVIEW_HEIGHT_PIXELS
+            or preview.request.additional_rotation is not ImageQuarterTurn.DEGREES_0
+            or preview.snapshot.metadata.source_format is not ImageSourceFormat.PNG
+        ):
+            reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "result.preview")
 
 
 class SourceIntegrityStatus(StrEnum):

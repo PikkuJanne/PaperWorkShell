@@ -407,10 +407,16 @@ class PagePreviewService:
         timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
         cancellation: CancellationProbe | None = None,
         progress: PagePreviewProgressSink | None = None,
+        initial_image_preview: ImagePagePreviewResult | None = None,
     ) -> tuple[PagePreviewResult, ...]:
         """Return exact ordered snapshots or fail without changing authoritative state."""
 
         selected = _require_request_batch(requests)
+        if initial_image_preview is not None and (
+            type(initial_image_preview) is not ImagePagePreviewResult
+            or selected != (initial_image_preview.request,)
+        ):
+            reject_page_preview(PagePreviewErrorCode.RESULT_INVALID, "preview.initial_image")
         timeout = _require_timeout(timeout_seconds)
         operation_id = self._new_operation_id()
         deadline = _MonotonicDeadline(timeout, self._monotonic)
@@ -436,7 +442,9 @@ class PagePreviewService:
                     total,
                 )
             )
-            if type(request) is PdfThumbnailRequest:
+            if initial_image_preview is not None:
+                result: PagePreviewResult = initial_image_preview
+            elif type(request) is PdfThumbnailRequest:
 
                 def report_pdf_phase(
                     phase: PdfThumbnailProgressPhase,
@@ -477,7 +485,7 @@ class PagePreviewService:
                 callback_failure.raise_if_pending()
                 if type(pdf_result) is not PdfThumbnailResult or pdf_result.request != request:
                     reject_page_preview(PagePreviewErrorCode.RESULT_INVALID, "preview.pdf_result")
-                result: PagePreviewResult = pdf_result
+                result = pdf_result
             elif type(request) is ImagePagePreviewRequest:
 
                 def report_image_phase(

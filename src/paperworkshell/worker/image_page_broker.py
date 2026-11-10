@@ -22,6 +22,8 @@ from paperworkshell.domain.image_pages import (
     MAX_IMAGE_SOURCE_BYTES,
     MAX_IMAGE_SOURCE_PIXELS,
     MAX_IMAGE_WALL_TIME_MS,
+    ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+    ORGANIZER_PREVIEW_WIDTH_PIXELS,
     ImageNormalizationLimits,
     ImageNormalizationRequest,
     ImagePageArtifact,
@@ -41,6 +43,7 @@ from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
+    PreparedImagePreview,
     PreparedSourceSummary,
     SourceEncryptionState,
     SourceImportProgress,
@@ -73,6 +76,8 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_NORMALIZE_SOURCE_HANDLE_PARAMETER,
     CancelReason,
     CaseObjectReference,
+    ErrorCategory,
+    ErrorCode,
     OperationOutcome,
     OperationStartPayload,
     ReferenceArea,
@@ -642,7 +647,6 @@ class BrokeredImageSourceInspector:
     def _heavy_operations(self) -> HeavyOperationCoordinator:
         return self._core._heavy_operations
 
-    @retire_runtime_on_failure
     def inspect(
         self,
         source: PreparedSourceSummary,
@@ -650,6 +654,36 @@ class BrokeredImageSourceInspector:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: SourceProgressSink,
+    ) -> CompletedSourceInspection:
+        return self._inspect(
+            source, deadline=deadline, cancellation=cancellation, progress=progress
+        )
+
+    def inspect_with_preview(
+        self,
+        source: PreparedSourceSummary,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: SourceProgressSink,
+    ) -> CompletedSourceInspection:
+        return self._inspect(
+            source,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=progress,
+            include_preview=True,
+        )
+
+    @retire_runtime_on_failure
+    def _inspect(
+        self,
+        source: PreparedSourceSummary,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: SourceProgressSink,
+        include_preview: bool = False,
     ) -> CompletedSourceInspection:
         if type(source) is not PreparedSourceSummary or source.media_type not in {
             DetectedMediaType.JPEG,
@@ -659,6 +693,20 @@ class BrokeredImageSourceInspector:
                 SourceIngestErrorCode.INSPECTION_INVALID, "inspection.image_source"
             )
         _report_source_progress(progress, source.pending_id, 0)
+        width, height = 1, 1
+        if include_preview and source.media_type is DetectedMediaType.PNG:
+            try:
+                _operation_limits(
+                    self._core._policy.limits,
+                    ORGANIZER_PREVIEW_WIDTH_PIXELS,
+                    ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+                )
+            except ImagePageError as error:
+                if error.code is not ImagePageErrorCode.LIMIT_EXCEEDED:
+                    raise
+            else:
+                width, height = ORGANIZER_PREVIEW_WIDTH_PIXELS, ORGANIZER_PREVIEW_HEIGHT_PIXELS
+        preview: PreparedImagePreview | None = None
         image_failure: ImagePageErrorCode | None = None
         try:
             with self._sources.borrow_prepared_source(source) as lease:
@@ -672,16 +720,21 @@ class BrokeredImageSourceInspector:
                     sha256=source.sha256,
                     handle_value=lease.handle_value,
                 )
-                self._core.normalize(
-                    resolved,
-                    maximum_width_pixels=1,
-                    maximum_height_pixels=1,
-                    additional_rotation=ImageQuarterTurn.DEGREES_0,
-                    deadline=deadline,
-                    cancellation=cancellation,
-                    progress=None,
-                    forbidden_ids={source.pending_id},
-                )
+                try:
+                    artifact = self._normalize_prepared(
+                        resolved, source.pending_id, width, height, deadline, cancellation
+                    )
+                except ImagePageError as error:
+                    if width == 1 or error.code is not ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY:
+                        raise
+                    # Only the successful free-space probe can request this retry. The
+                    # failed Job stopped before reading source bytes and has been retired.
+                    width = height = 1
+                    artifact = self._normalize_prepared(
+                        resolved, source.pending_id, width, height, deadline, cancellation
+                    )
+                if width != 1:
+                    preview = PreparedImagePreview(source, artifact)
         except SourceIngestError:
             raise
         except ImagePageError as error:
@@ -694,9 +747,30 @@ class BrokeredImageSourceInspector:
             page_count=1,
             signature_state=SourceSignatureState.NOT_APPLICABLE,
             encryption_state=SourceEncryptionState.NOT_APPLICABLE,
+            initial_preview=preview,
         )
         _report_source_progress(progress, source.pending_id, 1)
         return completed
+
+    def _normalize_prepared(
+        self,
+        source: _ResolvedSource,
+        pending_id: UUID,
+        width: int,
+        height: int,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+    ) -> ImagePageArtifact:
+        return self._core.normalize(
+            source,
+            maximum_width_pixels=width,
+            maximum_height_pixels=height,
+            additional_rotation=ImageQuarterTurn.DEGREES_0,
+            deadline=deadline,
+            cancellation=cancellation,
+            progress=None,
+            forbidden_ids={pending_id},
+        )
 
 
 def create_image_page_brokers(
@@ -847,6 +921,12 @@ def _require_successful_output(
     if result.outcome is OperationOutcome.TIMED_OUT:
         reject_image_page(ImagePageErrorCode.TIMED_OUT, "image.worker_result")
     if result.outcome is OperationOutcome.FAILED:
+        if (
+            result.error_code is ErrorCode.WORKER_OPERATION_FAILED
+            and result.error_category is ErrorCategory.RESOURCE_LIMIT
+            and not result.outputs
+        ):
+            reject_image_page(ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY, "image.worker_result")
         reject_image_page(ImagePageErrorCode.DEPENDENCY_FAILED, "image.worker_result")
     if result.outcome is not OperationOutcome.SUCCEEDED or len(result.outputs) != 1:
         reject_image_page(ImagePageErrorCode.DEPENDENCY_FAILED, "image.worker_result")
@@ -986,7 +1066,7 @@ def _raise_source_inspection_error(code: ImagePageErrorCode) -> Never:
         reject_source_ingest(SourceIngestErrorCode.CANCELLED, "inspection.image_cancelled")
     if code is ImagePageErrorCode.TIMED_OUT:
         reject_source_ingest(SourceIngestErrorCode.TIMED_OUT, "inspection.image_timed_out")
-    if code is ImagePageErrorCode.LIMIT_EXCEEDED:
+    if code in {ImagePageErrorCode.LIMIT_EXCEEDED, ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY}:
         reject_source_ingest(SourceIngestErrorCode.CAPACITY_EXCEEDED, "inspection.image_limit")
     if code is ImagePageErrorCode.SOURCE_INVALID:
         reject_source_ingest(

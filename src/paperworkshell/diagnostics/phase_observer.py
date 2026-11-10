@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID
 
-ENGINEERING_CANDIDATE: Final = "pws0811-engineering-image-startup-v1"
+ENGINEERING_CANDIDATE: Final = "pws0811-engineering-image-preview-v2"
 _FIXTURE_SHA256: Final = "f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82"
 _FIXTURE_BYTES: Final = 21_992
 _LIMIT_SECONDS: Final = 120
@@ -30,6 +30,7 @@ class Event(StrEnum):
     DURABLE_COMMIT_VERIFIED = "durable_commit_verified"
     IMPORT_REFRESHED = "import_refreshed"
     PREVIEW_DISPATCH = "preview_dispatch"
+    INITIAL_PREVIEW_REUSED = "initial_preview_reused"
     TRANSFORM_CACHE_MISS = "transform_cache_miss"
     RETAINED_RECOVERY_ENTER = "retained_recovery_enter"
     RETAINED_RECOVERY_OK = "retained_recovery_ok"
@@ -43,7 +44,7 @@ class Role(StrEnum):
     PREVIEW = "preview"
 
 
-_EXPECTED: Final = (
+_EXPECTED_PREFIX: Final = (
     (Event.IMPORT_DISPATCH, None),
     (Event.LAUNCH_ENTER, Role.INSPECTION),
     (Event.FIXED_GRANT_ENTER, Role.INSPECTION),
@@ -54,6 +55,14 @@ _EXPECTED: Final = (
     (Event.DURABLE_COMMIT_VERIFIED, None),
     (Event.IMPORT_REFRESHED, None),
     (Event.PREVIEW_DISPATCH, None),
+)
+_EXPECTED_INITIAL_PREVIEW: Final = (
+    *_EXPECTED_PREFIX,
+    (Event.INITIAL_PREVIEW_REUSED, None),
+    (Event.PREVIEW_ACCEPTED, None),
+)
+_EXPECTED: Final = (
+    *_EXPECTED_PREFIX,
     (Event.TRANSFORM_CACHE_MISS, None),
     (Event.LAUNCH_ENTER, Role.PREVIEW),
     (Event.RETAINED_RECOVERY_ENTER, Role.PREVIEW),
@@ -109,6 +118,7 @@ class Observation:
         self.page_id: UUID | None = None
         self.revision: int | None = None
         self.events: list[tuple[Event, Role | None, int]] = []
+        self._expected: tuple[tuple[Event, Role | None], ...] = _EXPECTED
         self._worker: int | None = None
         self._launch: tuple[Role, int, int] | None = None
         self._first_generation: int | None = None
@@ -127,7 +137,7 @@ class Observation:
 
     def _record(self, event: Event, role: Role | None) -> None:
         index = len(self.events)
-        if index >= min(_MAX_EVENTS, len(_EXPECTED)) or _EXPECTED[index] != (event, role):
+        if index >= min(_MAX_EVENTS, len(self._expected)) or self._expected[index] != (event, role):
             self.terminal = True
             return
         now = self._clock()
@@ -232,6 +242,41 @@ class Observation:
             self.terminal = True
             return
         self.record(Event.PREVIEW_ACCEPTED)
+
+    def initial_preview_reused(
+        self, case_id: UUID, source_id: UUID, page_id: UUID, revision: int
+    ) -> None:
+        if self.terminal:
+            return
+        if (
+            not self.qualified
+            or self.preview_id is None
+            or len(self.events) != len(_EXPECTED_PREFIX)
+            or case_id != self.case_id
+            or source_id != self.source_id
+            or page_id != self.page_id
+            or revision != self.revision
+        ):
+            self.terminal = True
+            return
+        self._expected = _EXPECTED_INITIAL_PREVIEW
+        self.record(Event.INITIAL_PREVIEW_REUSED)
+
+    def initial_preview_accepted(
+        self,
+        operation_id: int,
+        generation: int,
+        case_id: UUID,
+        page_id: UUID,
+        revision: int | None,
+        selected_page: UUID | None,
+    ) -> None:
+        if self._expected is not _EXPECTED_INITIAL_PREVIEW or self.source_id is None:
+            self.terminal = True
+            return
+        self.preview_accepted(
+            operation_id, generation, case_id, self.source_id, page_id, revision, selected_page
+        )
 
     def launch(
         self, role: Role, client: object, generation: int, case_id: UUID, request: object

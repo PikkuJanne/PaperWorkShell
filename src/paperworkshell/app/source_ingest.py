@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import replace
 from pathlib import Path
 from types import TracebackType
 from typing import Final, Protocol, Self, runtime_checkable
 from uuid import UUID
 
 from paperworkshell.diagnostics import phase_observer
+from paperworkshell.domain.image_pages import (
+    ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+    ORGANIZER_PREVIEW_WIDTH_PIXELS,
+    ImagePageError,
+    ImagePagePreviewRequest,
+    image_page_preview_result_from_artifact,
+)
 from paperworkshell.domain.pdf_export import (
     PdfExportPlan,
     PdfExportSourceEncryptionState,
@@ -24,6 +32,7 @@ from paperworkshell.domain.searchable_pdf_export import (
 )
 from paperworkshell.domain.source_ingest import (
     CompletedSourceInspection,
+    PreparedImagePreview,
     PreparedSourceSummary,
     SourceImportProgress,
     SourceImportResult,
@@ -457,6 +466,9 @@ class SourceIngestService:
                     progress=progress_sink,
                 )
                 _require_matching_inspection(inspection, summary)
+                preview = inspection.initial_preview
+                if preview is not None:
+                    inspection = replace(inspection, initial_preview=None)
                 if scope is not None:
                     scope[0].record(phase_observer.Event.INSPECTION_VALIDATED)
                 _require_not_cancelled(cancellation_probe, context="import.before_commit")
@@ -469,6 +481,8 @@ class SourceIngestService:
                     progress=progress_sink,
                 )
                 validated_result = _require_matching_result(result, summary, inspection)
+                if preview is not None and not cancellation_probe():
+                    validated_result = _with_initial_preview(validated_result, preview)
         except SourceIngestError:
             if validated_result is not None:
                 return validated_result
@@ -568,6 +582,7 @@ def _require_matching_inspection(
     if (
         type(value) is not CompletedSourceInspection
         or value.pending_id != source.pending_id
+        or (value.initial_preview is not None and value.initial_preview.source != source)
         or value.media_type is not source.media_type
     ):
         reject_source_ingest(
@@ -590,9 +605,30 @@ def _require_matching_result(
         or value.byte_size != source.byte_size
         or value.sha256 != source.sha256
         or len(value.page_ids) != inspection.page_count
+        or value.initial_preview is not None
     ):
         reject_source_ingest(SourceIngestErrorCode.RESULT_INVALID, "import.commit_result")
     return value
+
+
+def _with_initial_preview(
+    result: SourceImportResult, preview: PreparedImagePreview
+) -> SourceImportResult:
+    # The commit result now supplies the final page identity. Optional presentation
+    # data must never turn a verified commit into a retryable import.
+    request = ImagePagePreviewRequest(
+        case_id=result.case_id,
+        page_id=result.page_ids[0],
+        maximum_width_pixels=ORGANIZER_PREVIEW_WIDTH_PIXELS,
+        maximum_height_pixels=ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+    )
+    try:
+        return replace(
+            result,
+            initial_preview=image_page_preview_result_from_artifact(request, preview.artifact),
+        )
+    except ImagePageError:
+        return result
 
 
 def _phase_context(code: SourceIngestErrorCode) -> str:

@@ -245,6 +245,8 @@ class ImageNormalizeOperationHandler:
                 return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
             if error.code is ImagePageErrorCode.TIMED_OUT:
                 return timed_out_operation_result()
+            if error.code is ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY:
+                return resource_limited_operation_result()
             raise
 
         # The adapter has consumed both handles. Late terminal state suppresses

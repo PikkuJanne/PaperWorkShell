@@ -103,8 +103,11 @@ from paperworkshell.domain.assisted_use import AssistedUseError, AssistedUseErro
 from paperworkshell.domain.case_lifecycle import CaseDeletionResult, CaseDeletionStatus, CaseIndex
 from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import (
+    ORGANIZER_PREVIEW_HEIGHT_PIXELS,
+    ORGANIZER_PREVIEW_WIDTH_PIXELS,
     ImagePagePreviewResult,
     ImagePagePreviewSnapshot,
+    ImageQuarterTurn,
 )
 from paperworkshell.domain.image_transforms import (
     ImagePageTransformResult,
@@ -194,8 +197,8 @@ from paperworkshell.ui.signature_images import (
 )
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
-_THUMBNAIL_WIDTH: Final = 240
-_THUMBNAIL_HEIGHT: Final = 320
+_THUMBNAIL_WIDTH: Final = ORGANIZER_PREVIEW_WIDTH_PIXELS
+_THUMBNAIL_HEIGHT: Final = ORGANIZER_PREVIEW_HEIGHT_PIXELS
 _PREVIEW_REFRESH_DEBOUNCE_MS: Final = 75
 _SCAN_REVIEW_PREVIEW_WIDTH: Final = 600
 _SCAN_REVIEW_PREVIEW_HEIGHT: Final = 800
@@ -2185,6 +2188,24 @@ class PaperWorkShellWindow(QMainWindow):
                     generation,
                     snapshot.case_id,
                     snapshot.source_id,
+                    snapshot.page_id,
+                    self._state.revision,
+                    self._selected_page_id(),
+                )
+            elif (
+                type(snapshot) is ImagePagePreviewSnapshot
+                and snapshot.additional_rotation is ImageQuarterTurn.DEGREES_0
+                and self._state.case_id == snapshot.case_id
+                and len(self._state.pages) == 1
+                and self._state.pages[0].page_id == snapshot.page_id
+                and self._state.pages[0].source_page_number == 1
+                and self._state.pages[0].scan_review_intent == ImageTransformIntent()
+                and self._model.preview_state(snapshot.page_id) is PreviewState.READY
+            ):
+                observation.initial_preview_accepted(
+                    operation_id,
+                    generation,
+                    snapshot.case_id,
                     snapshot.page_id,
                     self._state.revision,
                     self._selected_page_id(),

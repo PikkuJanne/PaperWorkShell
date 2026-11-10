@@ -31,6 +31,8 @@ MAX_IMAGE_OUTPUT_BYTES: Final = 1_073_741_824
 MAX_IMAGE_MEMORY_BYTES: Final = 1_073_741_824
 MAX_IMAGE_WALL_TIME_MS: Final = 3_600_000
 IMAGE_RGBA8_BYTES_PER_PIXEL: Final = 4
+ORGANIZER_PREVIEW_WIDTH_PIXELS: Final = 240
+ORGANIZER_PREVIEW_HEIGHT_PIXELS: Final = 320
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -179,6 +181,7 @@ class ImagePageErrorCode(StrEnum):
     METADATA_INVALID = "IMAGE_PAGE_METADATA_INVALID"
     GEOMETRY_INVALID = "IMAGE_PAGE_GEOMETRY_INVALID"
     LIMIT_EXCEEDED = "IMAGE_PAGE_LIMIT_EXCEEDED"
+    PREVIEW_STORAGE_CAPACITY = "IMAGE_PAGE_PREVIEW_STORAGE_CAPACITY"
     MALFORMED = "IMAGE_PAGE_MALFORMED"
     UNSUPPORTED = "IMAGE_PAGE_UNSUPPORTED"
     CANCELLED = "IMAGE_PAGE_CANCELLED"
@@ -198,6 +201,7 @@ _SAFE_ERROR_MESSAGES: Final[dict[ImagePageErrorCode, str]] = {
     ImagePageErrorCode.METADATA_INVALID: "The image contains invalid metadata.",
     ImagePageErrorCode.GEOMETRY_INVALID: "The image has invalid page geometry.",
     ImagePageErrorCode.LIMIT_EXCEEDED: "The image exceeds a configured safety limit.",
+    ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY: "There is not enough space to prepare the image.",
     ImagePageErrorCode.MALFORMED: "The image is malformed or incomplete.",
     ImagePageErrorCode.UNSUPPORTED: "The image uses an unsupported encoding or color model.",
     ImagePageErrorCode.CANCELLED: "Image processing was cancelled before completion.",

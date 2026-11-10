@@ -1430,6 +1430,7 @@ class WindowsLaunchConfig:
     tessdata_root: Path | None = None
     operation_scope: WorkerOperationScope = WorkerOperationScope.ALL
     recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
+    exact_runtime_files: tuple[Path, ...] = field(default=(), repr=False)
     _tesseract_runtime_root: Path | None = field(
         default=None,
         init=False,
@@ -1456,6 +1457,20 @@ class WindowsLaunchConfig:
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
                 "config.operation_scope",
                 "The worker operation scope is outside the closed launch allowlist.",
+            )
+        if type(self.exact_runtime_files) is not tuple or (
+            self.exact_runtime_files
+            and (
+                self.operation_scope is not WorkerOperationScope.IMAGE_PAGES
+                or self.venv_launcher is not None
+                or self.qpdf_executable is not None
+                or self.tesseract_executable is not None
+            )
+        ):
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "config.exact_runtime_inventory",
+                "An exact runtime inventory requires the installed image worker scope.",
             )
         if (self.tesseract_executable is None) != (self.tessdata_root is None):
             _reject(
@@ -1880,14 +1895,18 @@ class _AccessGrantLease:
         self.cleanup_verified = False
         self._clear()
 
-    def grant_all(self, paths: tuple[Path, ...]) -> None:
+    def grant_all(self, paths: tuple[Path, ...], *, exact_files: tuple[Path, ...] = ()) -> None:
         if self.inventory is not None:
             _reject(
                 WindowsLaunchErrorCode.ACCESS_GRANT_FAILED,
                 "access.state",
                 "Worker resource access has already been configured.",
             )
-        inventory = _open_approved_resource_inventory(paths)
+        inventory = (
+            _open_exact_runtime_inventory(paths, exact_files)
+            if exact_files
+            else _open_approved_resource_inventory(paths)
+        )
         self.inventory = inventory
         self.peer_sid_string = _current_process_user_sid_string()
         peer_sid = _convert_string_sid(self.peer_sid_string)
@@ -3033,6 +3052,70 @@ def _open_approved_resource_inventory(
                     for child in reversed(children)
                     if not _is_mutable_python_cache_entry(child)
                 )
+        return inventory
+    except BaseException:
+        _close_failed_inventory(inventory)
+        raise
+
+
+def _open_exact_runtime_inventory(
+    roots: tuple[Path, ...], files: tuple[Path, ...]
+) -> _ApprovedResourceInventory:
+    """Pin only the listed files and the directories needed to reach them."""
+
+    def reject_inventory() -> Never:
+        _reject(
+            WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+            "config.exact_runtime_inventory",
+            "The installed image worker inventory is incomplete or changed.",
+        )
+
+    if not 0 < len(files) <= _MAX_APPROVED_RESOURCE_ENTRIES:
+        reject_inventory()
+    file_paths: dict[str, Path] = {}
+    directory_paths: dict[str, Path] = {}
+    root_keys = {_normalized_path(root) for root in roots}
+    for path in files:
+        if (
+            not isinstance(path, Path)
+            or not path.is_absolute()
+            or ".." in path.parts
+            or len(path.parts) > _MAX_APPROVED_RESOURCE_DEPTH
+            or _has_named_data_stream(path)
+            or any(_is_mutable_python_cache_entry(part) for part in (path, *path.parents))
+        ):
+            reject_inventory()
+        key = _normalized_path(path)
+        if key in file_paths or key in root_keys:
+            reject_inventory()
+        file_paths[key] = path
+        ancestors = list(path.parents)
+        ancestor_keys = [_normalized_path(parent) for parent in ancestors]
+        matching_roots = [
+            i for i, parent_key in enumerate(ancestor_keys) if parent_key in root_keys
+        ]
+        if not matching_roots:
+            reject_inventory()
+        through_root = max(matching_roots) + 1
+        directory_paths.update(
+            zip(ancestor_keys[:through_root], ancestors[:through_root], strict=True)
+        )
+    if (
+        root_keys - directory_paths.keys()
+        or file_paths.keys() & directory_paths.keys()
+        or len(file_paths) + len(directory_paths) > _MAX_APPROVED_RESOURCE_ENTRIES
+    ):
+        reject_inventory()
+
+    inventory = _ApprovedResourceInventory()
+    try:
+        for directory in sorted(directory_paths.values(), key=lambda path: len(path.parts)):
+            _retain_ancestor_guards(directory.parent, inventory)
+            if not _retain_approved_resource(directory, inventory).info.is_directory:
+                reject_inventory()
+        for path in file_paths.values():
+            if _retain_approved_resource(path, inventory).info.is_directory:
+                reject_inventory()
         return inventory
     except BaseException:
         _close_failed_inventory(inventory)
@@ -4711,8 +4794,13 @@ class _AppContainerProfile:
             pycache_guard=pycache_guard,
         )
 
-    def grant_read_execute(self, paths: tuple[Path, ...]) -> None:
-        self.access.grant_all(paths)
+    def grant_read_execute(
+        self, paths: tuple[Path, ...], *, exact_files: tuple[Path, ...] = ()
+    ) -> None:
+        if exact_files:
+            self.access.grant_all(paths, exact_files=exact_files)
+        else:
+            self.access.grant_all(paths)
 
     @property
     def pycache_prefix(self) -> Path:
@@ -4884,6 +4972,8 @@ class _CaseRuntimeAccess:
         self._active = False
         self._poisoned = False
         self._fixed_identity: tuple[object, ...] | None = None
+        self._image_inventory: tuple[Path, ...] = ()
+        self._using_image_inventory = False
 
     def bind(self, config: WindowsLaunchConfig) -> None:
         """Borrow only the same closed interpreter/code and recovery authority."""
@@ -4906,6 +4996,14 @@ class _CaseRuntimeAccess:
                 "runtime_access.identity",
                 "Worker compositions do not share the same fixed runtime authority.",
             )
+        if config.exact_runtime_files:
+            if self._image_inventory and self._image_inventory != config.exact_runtime_files:
+                _reject(
+                    WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                    "runtime_access.image_inventory",
+                    "Worker compositions do not share the same fixed image inventory.",
+                )
+            self._image_inventory = config.exact_runtime_files
 
     @property
     def snapshot(self) -> RuntimeAccessSnapshot:
@@ -4921,7 +5019,9 @@ class _CaseRuntimeAccess:
                 "Worker runtime access requires verified coordinator cleanup.",
             )
 
-    def active_recovery_witness(self, case_id: UUID) -> _ActiveLeaseRecoveryWitness | None:
+    def active_recovery_witness(
+        self, case_id: UUID, *, use_image_inventory: bool = False
+    ) -> _ActiveLeaseRecoveryWitness | None:
         self._require_owner()
         if self._active or self._case_id not in {None, case_id}:
             _reject(
@@ -4929,6 +5029,10 @@ class _CaseRuntimeAccess:
                 "runtime_access.case",
                 "Worker runtime access belongs to another active operation or case.",
             )
+        if self._profile is not None and self._using_image_inventory != use_image_inventory:
+            # Revoke one exact inventory before creating a different profile and
+            # grant. A failed release prevents any replacement or widening.
+            self.retire()
         return None if self._profile is None else self._profile.access._active_recovery_witness()
 
     def poison_recovery_witness(self) -> None:
@@ -4936,7 +5040,7 @@ class _CaseRuntimeAccess:
         if self._profile is not None:
             self._profile.access._last_published_entry = None
 
-    def acquire(self, case_id: UUID) -> _AppContainerProfile:
+    def acquire(self, case_id: UUID, *, use_image_inventory: bool = False) -> _AppContainerProfile:
         self._require_owner()
         if self._active or self._case_id not in {None, case_id}:
             _reject(
@@ -4948,6 +5052,7 @@ class _CaseRuntimeAccess:
         try:
             if self._profile is None:
                 self._profile = _AppContainerProfile.create(self._recovery_roots)
+                self._using_image_inventory = use_image_inventory
             elif self._profile._deleted:
                 _recreate_profile_storage(self._profile)
             self._active = True
@@ -6691,6 +6796,8 @@ class WindowsProcessLauncher:
                 "A previous worker launch still requires deterministic cleanup.",
             )
         runtime_access = self._runtime_access
+        exact_files = self._config.exact_runtime_files
+        use_image_inventory = bool(exact_files)
         scope = phase_observer.current_scope()
         observe_retained = scope is not None and scope[1] is phase_observer.Role.PREVIEW
         if scope is not None and observe_retained:
@@ -6700,7 +6807,9 @@ class WindowsProcessLauncher:
         witness = (
             None
             if runtime_access is None
-            else runtime_access.active_recovery_witness(request.case_id)
+            else runtime_access.active_recovery_witness(
+                request.case_id, use_image_inventory=use_image_inventory
+            )
         )
         try:
             if witness is None:
@@ -6724,7 +6833,7 @@ class WindowsProcessLauncher:
         profile = (
             _AppContainerProfile.create(self._config.approved_recovery_roots)
             if runtime_access is None
-            else runtime_access.acquire(request.case_id)
+            else runtime_access.acquire(request.case_id, use_image_inventory=use_image_inventory)
         )
         job: _Job | None = None
         job_assigned = False
@@ -6768,7 +6877,10 @@ class WindowsProcessLauncher:
                     scope[0].launcher_event(
                         scope[1], request, runtime_access, phase_observer.Event.FIXED_GRANT_ENTER
                     )
-                profile.grant_read_execute(grant_roots)
+                if exact_files:
+                    profile.grant_read_execute(grant_roots, exact_files=exact_files)
+                else:
+                    profile.grant_read_execute(grant_roots)
                 if scope is not None and not observe_retained:
                     scope[0].launcher_event(
                         scope[1],

@@ -26,6 +26,7 @@ from paperworkshell.app.flattened_pdf_export import (
     FlattenedPdfRasterizer,
     VerifiedFlattenedPdfCandidate,
 )
+from paperworkshell.app.installed_image_runtime import installed_image_runtime_files
 from paperworkshell.app.installed_runtime import (
     INSTALLED_APPLICATION_ID,
     InstalledRuntime,
@@ -1301,6 +1302,7 @@ def _build_backend(
             SourceInspectorRouter(
                 composition.source_inspector,
                 composition.image_source_inspector,
+                png_preview=composition.image_source_inspector.inspect_with_preview,
             ),
         )
         thumbnails = PagePreviewService(
@@ -1942,8 +1944,12 @@ def _desktop_worker_config(
         code_roots,
         working_directory,
     ) = _worker_runtime_resources()
+    installed = _installed_runtime()
     return create_desktop_worker_composition_config(
-        retain_runtime_access=_installed_runtime() is not None,
+        retain_runtime_access=installed is not None,
+        image_runtime_files=(
+            () if installed is None else installed_image_runtime_files(installed.runtime_root)
+        ),
         # A venv's python.exe is a launcher that creates the base interpreter as
         # a child. The worker job deliberately permits one process, so launch the
         # approved base interpreter directly. CPython consumes the fixed venv

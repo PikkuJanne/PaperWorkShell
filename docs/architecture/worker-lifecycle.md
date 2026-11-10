@@ -239,11 +239,12 @@ restores and verifies each object's original auto-inheritance state without repl
 descriptor.
 
 PWS-0811 optionally retains only the validated installed desktop's immutable runtime/code
-lease for one active case. Its ordinary exporters explicitly borrow the same fixed
-owner, with unchanged per-launch tool admission, environment, handler scopes and Job
-limits. Borrowers must match fixed runtime/code identity and recovery authority; all
-actual engine resources must already belong to the original pinned inventory. There
-is no lazy grant expansion or concurrent borrowed generation. Default/development,
+lease for one active case. Installed image workers use an explicit file list and its
+required parent directories. The desktop and ordinary exporters share the case owner
+and use the full inventory for their scopes. A scope change confirms release of the
+old exact lease before creating the replacement. An uncertain release blocks the
+replacement. Borrowers must match fixed runtime/code identity and recovery authority,
+and actual engine resources must belong to their pinned inventory. Default/development,
 package and qualified redaction launchers retain the
 per-operation lifetime above. Every operation still has a fresh parser, Job, pipes,
 bootstrap, capability and session, and the complete tree must stop before output is

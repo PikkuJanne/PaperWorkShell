@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -99,6 +99,7 @@ from paperworkshell.app.source_ingest import (
 from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
+from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import AssistedUseErrorCode, reject_assisted_use
 from paperworkshell.domain.case_lifecycle import (
     CaseDeletionResult,
@@ -281,6 +282,7 @@ class _PagePreviewServicePort(Protocol):
         timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
         cancellation: PreviewCancellationProbe | None = None,
         progress: PagePreviewProgressSink | None = None,
+        initial_image_preview: ImagePagePreviewResult | None = None,
     ) -> tuple[PagePreviewResult, ...]: ...
 
 
@@ -632,12 +634,26 @@ class OrganizerSignatureImageDeleteOutcome:
 
 
 @dataclass(slots=True)
+class _InitialImagePreview:
+    committed: SourceImportResult
+    preview: ImagePagePreviewResult
+    import_cancellation: SourceCancellationProbe | None
+
+    def import_completed(self) -> bool:
+        try:
+            return self.import_cancellation is None or self.import_cancellation() is False
+        except Exception:
+            return False
+
+
+@dataclass(slots=True)
 class _OrganizerSession:
     snapshot: ManifestSnapshot
     history: PageCommandHistory
     autosave: ManifestAutosaveService
     load_status: ManifestLoadStatus
     pending_case_name: str | None = field(default=None, repr=False)
+    initial_image_preview: _InitialImagePreview | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -962,6 +978,7 @@ class OrganizerBackend:
         """Flush pending edits and rebuild state from the latest durable snapshot."""
 
         session = self._require_session()
+        session.initial_image_preview = None
         self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         pending = self._pending_committed_import
@@ -990,6 +1007,7 @@ class OrganizerBackend:
             if self._assisted_use is not None:
                 self._assisted_use.release()
             return OrganizerViewState.empty()
+        session.initial_image_preview = None
         result = session.autosave.close()
         if result.snapshot is not None:
             session.snapshot = result.snapshot
@@ -1027,6 +1045,7 @@ class OrganizerBackend:
         """Import once, then report a closed post-commit organizer refresh outcome."""
 
         session = self._require_session()
+        session.initial_image_preview = None
         self._require_core_overlay_tools_inactive()
         self._active_scan_review = None
         pending = self._pending_committed_import
@@ -1054,11 +1073,15 @@ class OrganizerBackend:
                 ManifestRepositoryErrorCode.CASE_MISMATCH,
                 "organizer.import_result",
             )
+        preview = result.initial_preview
+        if preview is not None:
+            result = replace(result, initial_preview=None)
         # Returning SourceImportResult is the immutable-ingest commit point.
         # Record it before any fallible reload/session construction so no
         # later exception can make the caller retry the ingest itself.
         self._pending_committed_import = result
-        return self._reconcile_committed_import(session, result)
+        seed = _InitialImagePreview(result, preview, cancellation) if preview is not None else None
+        return self._reconcile_committed_import(session, result, initial_preview=seed)
 
     def begin_removal_export(self) -> RemovalExportReview:
         """Review saved intent without granting permission to publish."""
@@ -1983,6 +2006,8 @@ class OrganizerBackend:
         """
 
         session = self._require_session()
+        initial_preview = session.initial_image_preview
+        session.initial_image_preview = None
         _require_thumbnail_dimension(maximum_width_pixels, "preview.organizer_width")
         _require_thumbnail_dimension(maximum_height_pixels, "preview.organizer_height")
         media_by_source = _preview_media_by_source(session.snapshot)
@@ -2028,6 +2053,46 @@ class OrganizerBackend:
             if timeout_seconds is None
             else timeout_seconds
         )
+        if (
+            initial_preview is not None
+            and len(requests) == 1
+            and initial_preview.import_completed()
+        ):
+            committed, preview = initial_preview.committed, initial_preview.preview
+            transform = requests[0]
+            request = preview.request
+            if (
+                type(transform) is ImagePageTransformRequest
+                and transform.intent == ImageTransformIntent()
+                and transform.case_id == request.case_id
+                and transform.page_id == request.page_id
+                and transform.maximum_width_pixels == request.maximum_width_pixels
+                and transform.maximum_height_pixels == request.maximum_height_pixels
+                and session.snapshot.revision == committed.manifest_revision
+                and not session.autosave.pending
+            ):
+                page = projection.state_for(request.page_id)
+                if (
+                    page.page.source_id == committed.source_id
+                    and page.page.source_page_index == 0
+                    and media_by_source[page.page.source_id] is committed.media_type
+                ):
+                    results = self._thumbnails.get_previews(
+                        (request,),
+                        timeout_seconds=selected_timeout,
+                        cancellation=cancellation,
+                        progress=progress,
+                        initial_image_preview=preview,
+                    )
+                    scope = phase_observer.current_scope()
+                    if scope is not None and results == (preview,):
+                        scope[0].initial_preview_reused(
+                            request.case_id,
+                            committed.source_id,
+                            request.page_id,
+                            committed.manifest_revision,
+                        )
+                    return results
         return self._thumbnails.get_previews(
             tuple(requests),
             timeout_seconds=selected_timeout,
@@ -2313,6 +2378,8 @@ class OrganizerBackend:
         self,
         session: _OrganizerSession,
         result: SourceImportResult,
+        *,
+        initial_preview: _InitialImagePreview | None = None,
     ) -> OrganizerImportOutcome:
         """Best-effort refresh after the immutable-ingest commit point."""
 
@@ -2328,6 +2395,12 @@ class OrganizerBackend:
                 utc_now=self._utc_now,
             )
             refreshed_state = _view_state(replacement)
+            if (
+                initial_preview is not None
+                and loaded.status is ManifestLoadStatus.CURRENT
+                and loaded.snapshot.revision == result.manifest_revision
+            ):
+                replacement.initial_image_preview = initial_preview
         except BaseException:
             return OrganizerImportOutcome(
                 result,
@@ -2633,6 +2706,7 @@ def _queue_session_edit(session: _OrganizerSession, candidate: Mapping[str, obje
         candidate = dict(candidate)
         candidate["case_name"] = session.pending_case_name
     session.autosave.queue(candidate)
+    session.initial_image_preview = None
 
 
 def _view_state(session: _OrganizerSession) -> OrganizerViewState:

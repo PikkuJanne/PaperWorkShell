@@ -207,6 +207,7 @@ class DesktopWorkerCompositionConfig:
     venv_launcher: Path | None = field(default=None, repr=False)
     recovery_authority_roots: tuple[Path, ...] = field(default=(), repr=False)
     retain_runtime_access: bool = False
+    image_runtime_files: tuple[Path, ...] = field(default=(), repr=False)
     _launch_config: WindowsLaunchConfig = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -224,6 +225,8 @@ class DesktopWorkerCompositionConfig:
             or type(self.image_transform_policy) is not ImageTransformBrokerPolicy
             or type(self.thumbnail_policy) is not PdfThumbnailBrokerPolicy
             or type(self.retain_runtime_access) is not bool
+            or type(self.image_runtime_files) is not tuple
+            or (self.image_runtime_files and not self.retain_runtime_access)
         ):
             reject_client(
                 WorkerClientErrorCode.CONFIGURATION_INVALID,
@@ -654,7 +657,11 @@ def create_desktop_worker_composition(
     image_worker = None
     if runtime_access is not None:
         image_launcher = WindowsProcessLauncher(
-            replace(config._launch_config, operation_scope=WorkerOperationScope.IMAGE_PAGES),
+            replace(
+                config._launch_config,
+                operation_scope=WorkerOperationScope.IMAGE_PAGES,
+                exact_runtime_files=config.image_runtime_files,
+            ),
             runtime_access=runtime_access,
         )
         image_worker = WorkerClient(
@@ -733,6 +740,7 @@ def create_desktop_worker_composition_config(
     venv_launcher: Path | None = None,
     recovery_authority_roots: tuple[Path, ...] = (),
     retain_runtime_access: bool = False,
+    image_runtime_files: tuple[Path, ...] = (),
 ) -> DesktopWorkerCompositionConfig:
     """Build broker policies behind the sole desktop-worker composition boundary."""
 
@@ -752,6 +760,7 @@ def create_desktop_worker_composition_config(
         venv_launcher=venv_launcher,
         recovery_authority_roots=recovery_authority_roots,
         retain_runtime_access=retain_runtime_access,
+        image_runtime_files=image_runtime_files,
     )
 
 

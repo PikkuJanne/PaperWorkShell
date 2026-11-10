@@ -92,6 +92,12 @@ versions; the transform engine-profile SHA-256; the upstream strict-normalizatio
 and the admitted Pillow version. Neither a friendly profile label nor a dependency name alone is a
 sufficient pixel-policy binding.
 
+For an initial organizer PNG preview, inspection can return a bounded upright raster.
+The organizer can consume it once after durable import commit and a refresh that binds
+the saved revision, immutable source, selected page, and preview bounds. Reuse requires
+identity transform intent. The raster is separate from the persistent transform cache.
+Other requests follow the normal transform path.
+
 The key is not source authority. Storage reauthenticates the current committed source before lookup
 or worker launch. A stale generation, mismatched operation digest, wrong dimensions, unexpected
 alpha, or wrong result correlation is rejected. Disposable result invalidation never changes the

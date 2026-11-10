@@ -47,6 +47,7 @@ from paperworkshell.worker.operations import (
 )
 from paperworkshell.worker.private_temp import (
     OsWorkerPrivateTempStorage,
+    WorkerPrivateTempCapacityError,
     WorkerPrivateTempStorage,
     WorkerPrivateTempStorageError,
 )
@@ -325,6 +326,8 @@ class WindowsImageNormalizeAdapter:
                 temp_root,
                 limits.maximum_output_bytes,
             )
+        except WorkerPrivateTempCapacityError:
+            reject_image_page(ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY, "image.temp_capacity")
         except WorkerPrivateTempStorageError:
             reject_image_page(ImagePageErrorCode.LIMIT_EXCEEDED, "image.temp_capacity")
         try:

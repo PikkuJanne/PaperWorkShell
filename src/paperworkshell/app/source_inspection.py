@@ -40,14 +40,32 @@ class ImageSourceInspector(Protocol):
     ) -> CompletedSourceInspection: ...
 
 
+class PreparedPngPreviewInspector(Protocol):
+    def __call__(
+        self,
+        source: PreparedSourceSummary,
+        *,
+        deadline: DeadlineProbe,
+        cancellation: CancellationProbe,
+        progress: ProgressSink,
+    ) -> CompletedSourceInspection: ...
+
+
 class SourceInspectorRouter:
     """Route every supported source to its isolated worker decoder."""
 
-    __slots__ = ("_image", "_pdf")
+    __slots__ = ("_image", "_pdf", "_png_preview")
 
-    def __init__(self, pdf: PdfSourceInspector, image: ImageSourceInspector) -> None:
+    def __init__(
+        self,
+        pdf: PdfSourceInspector,
+        image: ImageSourceInspector,
+        *,
+        png_preview: PreparedPngPreviewInspector | None = None,
+    ) -> None:
         self._pdf = pdf
         self._image = image
+        self._png_preview = png_preview
 
     def inspect(
         self,
@@ -69,7 +87,10 @@ class SourceInspectorRouter:
                 progress=progress,
             )
         if source.media_type in {DetectedMediaType.JPEG, DetectedMediaType.PNG}:
-            return self._image.inspect(
+            inspect = self._image.inspect
+            if source.media_type is DetectedMediaType.PNG and self._png_preview is not None:
+                inspect = self._png_preview
+            return inspect(
                 source,
                 deadline=deadline,
                 cancellation=cancellation,

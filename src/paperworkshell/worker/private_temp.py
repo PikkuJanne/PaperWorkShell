@@ -21,6 +21,10 @@ class WorkerPrivateTempStorageError(OSError):
         super().__init__()
 
 
+class WorkerPrivateTempCapacityError(WorkerPrivateTempStorageError):
+    """The volume probe succeeded and reported insufficient free space."""
+
+
 class WorkerPrivateTempStorage(Protocol):
     """Capacity and file-creation authority for one authenticated temp root."""
 
@@ -69,8 +73,10 @@ class OsWorkerPrivateTempStorage:
         except Exception:
             raise WorkerPrivateTempStorageError from None
         required = byte_count + self.minimum_free_space_reserve_bytes
-        if type(available) is not int or available < required:
+        if type(available) is not int or available < 0:
             raise WorkerPrivateTempStorageError from None
+        if available < required:
+            raise WorkerPrivateTempCapacityError from None
 
     def open_anonymous(self, root: Path) -> BinaryIO:
         try:
