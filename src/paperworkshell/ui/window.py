@@ -277,6 +277,13 @@ class _LongOperation:
 
 
 @dataclass(frozen=True, slots=True)
+class _FirstPngPreviewTarget:
+    case_id: UUID
+    revision: int
+    page_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class _ScanReviewPreviewOperation:
     """One exact provisional preview request owned by the GUI thread."""
 
@@ -716,6 +723,9 @@ class PaperWorkShellWindow(QMainWindow):
         self._preview_batch_complete = False
         self._deferred_import: tuple[Path, str] | None = None
         self._deferred_preview_state: OrganizerViewState | None = None
+        self._first_png_import_origin: tuple[UUID, int] | None = None
+        self._first_png_import_preview: _FirstPngPreviewTarget | None = None
+        self._queued_import_preview: _FirstPngPreviewTarget | None = None
         self._rotated_preview_after_save: UUID | None = None
         self._quality_generation = 0
         self._pending_quality_request: tuple[UUID, int] | None = None
@@ -1655,6 +1665,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.ocr_languages_changed.connect(self._ocr_languages_changed)
         self._worker.ocr_languages_failed.connect(self._ocr_languages_failed)
         self._worker.state_changed.connect(self._state_changed)
+        self._worker.first_png_import_saved.connect(self._first_png_import_saved)
         self._worker.case_close_finished.connect(self._case_close_finished)
         self._worker.thumbnails_ready.connect(self._thumbnails_ready)
         self._worker.quality_review_ready.connect(self._quality_review_ready)
@@ -2007,6 +2018,8 @@ class PaperWorkShellWindow(QMainWindow):
         )
         selected_page = self._selected_page_id()
         if state.case_id is None or prior_state is None or prior_state.case_id != state.case_id:
+            self._first_png_import_origin = None
+            self._first_png_import_preview = None
             self._import_file_label.clear()
             self._import_file_label.setAccessibleName("")
             self._import_file_label.setAccessibleDescription("")
@@ -2825,6 +2838,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._case_reopen_required = True
         if active.kind is _LongOperationKind.IMPORT:
+            self._first_png_import_preview = None
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.REOPEN_REQUIRED
         self._update_organizer_guidance()
@@ -2860,6 +2874,7 @@ class PaperWorkShellWindow(QMainWindow):
         if active is None or active.operation_id != operation_id:
             return
         if active.kind is _LongOperationKind.IMPORT:
+            self._first_png_import_preview = None
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.CANCELLED
             self._update_organizer_guidance()
@@ -2879,6 +2894,23 @@ class PaperWorkShellWindow(QMainWindow):
             self._update_quality_summary()
             self._pending_failure_focus = "quality"
         self._announce(message, assertive=True)
+
+    @Slot(int, object, object, object)
+    def _first_png_import_saved(
+        self, operation_id: int, case_id: UUID, revision: int, page_id: UUID
+    ) -> None:
+        active = self._active_operation
+        if (
+            active is None
+            or active.kind is not _LongOperationKind.IMPORT
+            or active.operation_id != operation_id
+            or active.cancellation.cancelled()
+            or self._first_png_import_origin != (case_id, revision - 1)
+        ):
+            return
+        target = _FirstPngPreviewTarget(case_id, revision, page_id)
+        if self._first_png_preview_is_current(target):
+            self._first_png_import_preview = target
 
     @Slot(int)
     def _operation_finished(self, operation_id: int) -> None:
@@ -2904,6 +2936,12 @@ class PaperWorkShellWindow(QMainWindow):
         finished_quality = active.kind is _LongOperationKind.QUALITY
         quality_result_focus_requested = finished_quality and self._quality_result_focus_requested
         preview_batch_complete = self._preview_batch_complete
+        first_png_preview = None
+        if active.kind is _LongOperationKind.IMPORT:
+            if not active.cancellation.cancelled():
+                first_png_preview = self._first_png_import_preview
+            self._first_png_import_origin = None
+            self._first_png_import_preview = None
         if finished_preview:
             self._model.finish_preview_loading(self._active_preview_page_ids)
         self._finish_active_operation()
@@ -2997,7 +3035,9 @@ class PaperWorkShellWindow(QMainWindow):
             return
         deferred_preview = self._deferred_preview_state
         self._deferred_preview_state = None
-        if deferred_preview is not None and not deferred_preview.autosave_pending:
+        if first_png_preview is not None and self._first_png_preview_is_current(first_png_preview):
+            self._schedule_preview_refresh(immediate=True, import_preview=first_png_preview)
+        elif deferred_preview is not None and not deferred_preview.autosave_pending:
             self._schedule_preview_refresh()
         elif finished_preview and preview_batch_complete:
             self._schedule_preview_refresh()
@@ -3039,6 +3079,7 @@ class PaperWorkShellWindow(QMainWindow):
                 self._model.set_preview_failed(page_id)
             self._preview_batch_complete = False
         elif correlated_kind is _LongOperationKind.IMPORT:
+            self._first_png_import_preview = None
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.FAILED
         elif correlated_kind is _LongOperationKind.QUALITY:
@@ -3220,8 +3261,26 @@ class PaperWorkShellWindow(QMainWindow):
             operation.cancellation,
         )
 
+    def _first_png_preview_is_current(self, target: _FirstPngPreviewTarget) -> bool:
+        state = self._state
+        return (
+            state is not None
+            and state.case_id == target.case_id
+            and state.revision == target.revision
+            and not state.autosave_pending
+            and len(state.pages) == 1
+            and state.pages[0].page_id == target.page_id
+            and state.pages[0].preview_supported
+            and self._selected_page_id() == target.page_id
+            and self._model.preview_state(target.page_id) is PreviewState.NOT_LOADED
+        )
+
     def _schedule_preview_refresh(
-        self, _value: int | None = None, *, immediate: bool = False
+        self,
+        _value: int | None = None,
+        *,
+        immediate: bool = False,
+        import_preview: _FirstPngPreviewTarget | None = None,
     ) -> None:
         if self._case_close_pending:
             return
@@ -3246,10 +3305,22 @@ class PaperWorkShellWindow(QMainWindow):
             or self._quality_is_pending_or_running()
         ):
             return
+        queued_import = self._queued_import_preview
+        if (
+            import_preview is None
+            and queued_import is not None
+            and self._preview_refresh_timer.isActive()
+            and self._first_png_preview_is_current(queued_import)
+        ):
+            # Focus and layout can emit scroll events before the queued timeout.
+            return
+        self._queued_import_preview = import_preview
         self._preview_refresh_timer.start(0 if immediate else _PREVIEW_REFRESH_DEBOUNCE_MS)
 
     @Slot()
     def _refresh_visible_previews(self) -> None:
+        import_preview = self._queued_import_preview
+        self._queued_import_preview = None
         state = self._state
         if (
             self._case_close_pending
@@ -3266,6 +3337,12 @@ class PaperWorkShellWindow(QMainWindow):
             or self._package_export_is_opening_or_active()
             or self._quality_is_pending_or_running()
         ):
+            return
+        if import_preview is not None and (
+            self._active_operation is not None
+            or not self._first_png_preview_is_current(import_preview)
+        ):
+            self._schedule_preview_refresh()
             return
         self._request_previews(state)
 
@@ -3653,6 +3730,17 @@ class PaperWorkShellWindow(QMainWindow):
     def _start_import(self, source_path: Path, display_name: str) -> None:
         self._hide_error()
         self._set_import_file_target(display_name)
+        state = self._state
+        self._first_png_import_origin = (
+            (state.case_id, state.revision)
+            if state is not None
+            and state.case_id is not None
+            and state.revision is not None
+            and not state.autosave_pending
+            and not state.pages
+            else None
+        )
+        self._first_png_import_preview = None
         operation = self._begin_long_operation(_LongOperationKind.IMPORT)
         self._announce(tr("Import started. You can cancel this operation."))
         observation = phase_observer.active

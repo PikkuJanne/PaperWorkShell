@@ -69,6 +69,7 @@ from paperworkshell.domain.checklist import ChecklistError
 from paperworkshell.domain.compression_review import CompressionPagePreview, CompressionReviewState
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
 from paperworkshell.domain.image_transforms import ImageTransformIntent
+from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import ManifestRepositoryError
 from paperworkshell.domain.ocr import OcrError
 from paperworkshell.domain.ocr_languages import (
@@ -416,6 +417,7 @@ class OrganizerBackendWorker(QObject):
     ocr_languages_changed = Signal(int, object)
     ocr_languages_failed = Signal(int, object)
     state_changed = Signal(object)
+    first_png_import_saved = Signal(int, object, object, object)
     thumbnails_ready = Signal(int, int, object)
     quality_review_ready = Signal(int, int, object)
     scan_review_preview_ready = Signal(int, int, object)
@@ -775,20 +777,22 @@ class OrganizerBackendWorker(QObject):
                 progress=lambda progress: self._source_progress(operation_id, progress),
             )
             state = outcome.state
+            result = outcome.committed_import
+            saved_single_page = (
+                not outcome.refresh_required
+                and not state.autosave_pending
+                and state.case_id == result.case_id
+                and state.revision == result.manifest_revision
+                and len(state.pages) == 1
+                and result.page_ids == (state.pages[0].page_id,)
+                and state.pages[0].position == 1
+                and state.pages[0].source_page_number == 1
+                and state.pages[0].rotation_degrees == 0
+            )
             scope = phase_observer.current_scope()
             if scope is not None:
                 observation, _role = scope
-                result = outcome.committed_import
-                if (
-                    not outcome.refresh_required
-                    and not state.autosave_pending
-                    and state.revision == result.manifest_revision
-                    and len(state.pages) == 1
-                    and result.page_ids == (state.pages[0].page_id,)
-                    and state.pages[0].position == 1
-                    and state.pages[0].source_page_number == 1
-                    and state.pages[0].rotation_degrees == 0
-                ):
+                if saved_single_page:
                     observation.import_refreshed(
                         state.case_id, result.source_id, state.revision, state.pages[0].page_id
                     )
@@ -798,6 +802,10 @@ class OrganizerBackendWorker(QObject):
             if outcome.refresh_required:
                 self.case_reopen_required.emit(operation_id, outcome.safe_message)
             else:
+                if saved_single_page and result.media_type is DetectedMediaType.PNG:
+                    self.first_png_import_saved.emit(
+                        operation_id, result.case_id, result.manifest_revision, result.page_ids[0]
+                    )
                 self.operation_status_changed.emit(
                     operation_id,
                     tr(
