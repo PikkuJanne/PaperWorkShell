@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID
 
-ENGINEERING_CANDIDATE: Final = "pws0811-engineering-image-preview-v3"
+ENGINEERING_CANDIDATE: Final = "pws0811-engineering-image-preview-v4"
 _FIXTURE_SHA256: Final = "f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82"
 _FIXTURE_BYTES: Final = 21_992
 _LIMIT_SECONDS: Final = 120
