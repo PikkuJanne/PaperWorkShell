@@ -19,10 +19,6 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportErrorCode,
 )
-from paperworkshell.overlays.exporting import (
-    FlattenedPdfExportError,
-    FlattenedPdfExportErrorCode,
-)
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND,
@@ -1061,6 +1057,11 @@ class FlattenedPdfExportOperationHandler:
         if context.deadline_expired():
             self.adapter.discard_handles(context, request)
             return timed_out_operation_result()
+
+        from paperworkshell.overlays.exporting import (
+            FlattenedPdfExportError,
+            FlattenedPdfExportErrorCode,
+        )
 
         try:
             output = self.adapter.export(context, request)
