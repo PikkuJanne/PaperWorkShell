@@ -385,7 +385,7 @@ def test_private_temp_capacity_refusal_precedes_decoder_and_output(
             destination,  # type: ignore[arg-type]
         )
 
-    assert caught.value.code is ImagePageErrorCode.LIMIT_EXCEEDED
+    assert caught.value.code is ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY
     assert caught.value.context == "image.temp_capacity"
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None

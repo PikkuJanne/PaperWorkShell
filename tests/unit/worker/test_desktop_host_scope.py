@@ -151,6 +151,10 @@ blocked=('ocrmypdf','pydantic','fpdf','fontTools','uharfbuzz',
          'paperworkshell.worker.searchable_pdf_export_operation')
 if scope is WorkerOperationScope.IMAGE_PAGES:
     blocked+=('pikepdf','pypdfium2','paperworkshell.worker.pdf_operation',
+              'paperworkshell.domain.ocr',
+              'paperworkshell.domain.pdf_inspection',
+              'paperworkshell.domain.pdf_rendering',
+              'paperworkshell.domain.pdf_thumbnails',
               'paperworkshell.worker.pdf_thumbnail_operation',
               'paperworkshell.worker.signature_image_raster_operation',
               'paperworkshell.worker.text_companion_operation')

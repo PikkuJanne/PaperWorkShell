@@ -6,14 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Event
 from types import MappingProxyType
-from typing import Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 from uuid import UUID
 
 from paperworkshell.domain.image_pages import ImagePageError, ImagePageErrorCode
-from paperworkshell.domain.ocr import OcrError, OcrErrorCode
-from paperworkshell.domain.pdf_inspection import PdfInspectionError, PdfInspectionErrorCode
-from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailError, PdfThumbnailErrorCode
 from paperworkshell.worker.protocol.models import (
     FLATTENED_PDF_EXPORT_CAPABILITY,
     FLATTENED_PDF_EXPORT_OUTPUT_CONTENT_KIND,
@@ -112,6 +108,10 @@ from paperworkshell.worker.protocol.models import (
     ScalarValueType,
     TaggedScalar,
 )
+
+if TYPE_CHECKING:
+    from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
+
 
 NOOP_COOPERATION_WINDOW_SECONDS: Final = 0.100
 
@@ -633,6 +633,8 @@ class PdfThumbnailRenderRequest:
     additional_rotation: PdfRenderRotation
 
     def __post_init__(self) -> None:
+        from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
+
         if (
             type(self.source_handle) is not int
             or self.source_handle <= 0
@@ -691,6 +693,11 @@ class PdfThumbnailOperationHandler:
         if context.deadline_expired():
             self.adapter.discard_handles(request.source_handle, request.cache_handle)
             return timed_out_operation_result()
+
+        from paperworkshell.domain.pdf_thumbnails import (
+            PdfThumbnailError,
+            PdfThumbnailErrorCode,
+        )
 
         try:
             output = self.adapter.render_to_cache(context, request)
@@ -798,6 +805,8 @@ class OcrProcessOperationHandler:
         if context.deadline_expired():
             self.adapter.discard_handles(context, request)
             return timed_out_operation_result()
+
+        from paperworkshell.domain.ocr import OcrError, OcrErrorCode
 
         try:
             output = self.adapter.process(context, request)
@@ -1294,6 +1303,8 @@ def _require_searchable_pdf_export_outputs(
 
 
 def _pdf_thumbnail_render_request(context: OperationContext) -> PdfThumbnailRenderRequest:
+    from paperworkshell.domain.pdf_rendering import PdfPageBox, PdfRenderRotation
+
     page_box_value = _token_parameter(context, PDF_THUMBNAIL_PAGE_BOX_PARAMETER)
     if page_box_value == PdfPageBox.CROP.value:
         page_box = PdfPageBox.CROP
@@ -1420,6 +1431,11 @@ class PdfInspectionOperationHandler[InspectionT]:
             finally:
                 self.result_writer.discard_result(result_handle)
             return OperationResultPayload(OperationOutcome.CANCELLED, (), None)
+        from paperworkshell.domain.pdf_inspection import (
+            PdfInspectionError,
+            PdfInspectionErrorCode,
+        )
+
         try:
             inspection = self.adapter.inspect(context, source_handle)
         except PdfInspectionError as error:
