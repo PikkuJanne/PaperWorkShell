@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from threading import Barrier, Event, Lock
 from typing import cast
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
@@ -565,6 +566,41 @@ def test_duplicate_content_keeps_distinct_copies_and_returns_advisory(
     ]
     assert document["page_sequence"] == document["page_sequence_base"]
     _assert_no_staged_files(stack)
+
+
+def test_png_prepare_uses_one_inventory_for_three_capacity_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stack = _stack(tmp_path)
+    source = (tmp_path / "prepared.png").resolve()
+    source.write_bytes(
+        (PROJECT_ROOT / "tests/fixtures/synthetic/v1/image/ocr-raster-text.png").read_bytes()
+    )
+    external_before = _external_snapshot(source)
+    manifest_before = stack.layout.manifest.read_bytes()
+    measure = Mock(wraps=stack.manager._measure_usage_and_identity)
+    monkeypatch.setattr(stack.manager, "_measure_usage_and_identity", measure)
+
+    with stack.manager.observe_capacity_claims(CASE_ID) as observed:
+        with stack.store.prepare(
+            CASE_ID,
+            source,
+            "Prepared synthetic.png",
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            progress=lambda _: None,
+        ) as pending:
+            assert pending.summary.media_type is DetectedMediaType.PNG
+            assert measure.call_count == 1
+            assert observed.snapshot.current.entry_count == 3
+
+        assert observed.snapshot.current.is_empty
+
+    assert stack.layout.manifest.read_bytes() == manifest_before
+    assert list(stack.layout.originals.iterdir()) == []
+    _assert_no_staged_files(stack)
+    assert _external_snapshot(source) == external_before
 
 
 def test_cancellation_after_first_copy_chunk_leaves_no_record_or_case_copy(

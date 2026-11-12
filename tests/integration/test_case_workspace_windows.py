@@ -17,13 +17,20 @@ from paperworkshell.storage.permissions import (
     PermissionVerification,
     WindowsPrivateDirectoryPermissions,
 )
-from paperworkshell.storage.quotas import QuotaArea, WorkspaceQuota, WorkspaceUsage
+from paperworkshell.storage.quotas import (
+    QuotaArea,
+    QuotaReservation,
+    QuotaReservationBook,
+    WorkspaceQuota,
+    WorkspaceUsage,
+)
 from paperworkshell.storage.workspace import (
     DEFAULT_CASES_ROOT_PARTS,
     CaseWorkspaceManager,
     CaseWorkspacePaths,
     CleanupStatus,
     CleanupTarget,
+    WorkspaceCapacityRequest,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -532,6 +539,235 @@ def test_reserve_checkpoint_failure_after_acquire_releases_before_measurement(
     with ThreadPoolExecutor(max_workers=1) as pool:
         assert pool.submit(prove_lock_was_released).result(timeout=2) == 2
     existing.release()
+
+
+def _temp_batch() -> tuple[WorkspaceCapacityRequest, ...]:
+    return (
+        WorkspaceCapacityRequest("temp/source.tmp", False, 1),
+        WorkspaceCapacityRequest("temp/manifest.tmp", False, 1),
+        WorkspaceCapacityRequest("temp/journal.tmp", False, 1),
+    )
+
+
+@pytest.mark.parametrize(
+    ("alias", "code"),
+    (
+        (r"temp\source.tmp", WorkspaceErrorCode.QUOTA_INVALID),
+        ("temp/Source.tmp", WorkspaceErrorCode.NAME_INVALID),
+        ("TEMP/source.tmp", WorkspaceErrorCode.NAME_INVALID),
+    ),
+)
+def test_reserve_capacity_batch_rejects_aliases_before_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    code: WorkspaceErrorCode,
+) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+
+    def reject_inventory(_layout: CaseWorkspacePaths) -> tuple[WorkspaceUsage, FileIdentity]:
+        pytest.fail("invalid batch aliases reached workspace inventory")
+
+    monkeypatch.setattr(manager, "_measure_usage_and_identity", reject_inventory)
+    with pytest.raises(WorkspaceError) as raised:
+        manager.reserve_capacity_batch(
+            layout.case_id,
+            QuotaArea.TEMP,
+            (_temp_batch()[0], WorkspaceCapacityRequest(alias, False, 1)),
+        )
+
+    assert raised.value.code is code
+
+
+def test_reserve_capacity_batch_rolls_back_when_third_claim_exceeds_quota(
+    tmp_path: Path,
+) -> None:
+    manager = CaseWorkspaceManager(
+        profile_root=tmp_path, quota=_quota(case_bytes=10, cache_bytes=10, temp_bytes=10)
+    )
+    layout = manager.provision()
+    with (
+        manager.reserve_capacity(
+            layout.case_id,
+            QuotaArea.TEMP,
+            relative_path="temp/existing.tmp",
+            is_directory=False,
+            byte_count=8,
+        ) as existing,
+        manager.observe_capacity_claims(layout.case_id) as observed,
+    ):
+        with pytest.raises(WorkspaceError) as raised:
+            manager.reserve_capacity_batch(layout.case_id, QuotaArea.TEMP, _temp_batch())
+
+        assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
+        assert observed.snapshot.high_water.temp_bytes == 10
+        assert observed.snapshot.current.temp_bytes == existing.byte_count
+        assert observed.snapshot.current.entry_count == 1
+        assert existing.is_active
+    assert tuple(layout.temp.iterdir()) == ()
+
+
+def test_reserve_capacity_batch_checks_aggregate_volume_with_existing_claims(
+    tmp_path: Path,
+) -> None:
+    probes = 0
+
+    def available_space(_case_root: Path) -> int:
+        nonlocal probes
+        probes += 1
+        return 14
+
+    manager = CaseWorkspaceManager(
+        profile_root=tmp_path,
+        quota=_quota(),
+        minimum_free_space_reserve_bytes=10,
+        available_space_probe=available_space,
+    )
+    layout = manager.provision()
+    with (
+        manager.reserve_capacity(
+            layout.case_id,
+            QuotaArea.TEMP,
+            relative_path="temp/existing.tmp",
+            is_directory=False,
+            byte_count=2,
+        ) as existing,
+        manager.observe_capacity_claims(layout.case_id) as observed,
+    ):
+        with pytest.raises(WorkspaceError) as raised:
+            manager.reserve_capacity_batch(layout.case_id, QuotaArea.TEMP, _temp_batch())
+
+        assert raised.value.code is WorkspaceErrorCode.QUOTA_EXCEEDED
+        assert raised.value.context == "quota.volume_capacity"
+        assert probes == 2
+        assert observed.snapshot.high_water.temp_bytes == existing.byte_count
+        assert observed.snapshot.current.temp_bytes == existing.byte_count
+
+
+def test_reserve_capacity_batch_checks_cancellation_before_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = CaseWorkspaceManager(profile_root=tmp_path, quota=_quota())
+    layout = manager.provision()
+    events: list[str] = []
+    cancelled = True
+    measure = manager._measure_usage_and_identity
+
+    def record_inventory(paths: CaseWorkspacePaths) -> tuple[WorkspaceUsage, FileIdentity]:
+        events.append("inventory")
+        return measure(paths)
+
+    def checkpoint() -> None:
+        events.append("checkpoint")
+        if cancelled and len(events) == 2:
+            raise RuntimeError("synthetic reservation batch cancellation")
+
+    monkeypatch.setattr(manager, "_measure_usage_and_identity", record_inventory)
+    with manager.observe_capacity_claims(layout.case_id) as observed:
+        with pytest.raises(RuntimeError, match="reservation batch cancellation"):
+            manager.reserve_capacity_batch(
+                layout.case_id,
+                QuotaArea.TEMP,
+                _temp_batch(),
+                coordination_checkpoint=checkpoint,
+            )
+
+        assert events == ["checkpoint", "checkpoint"]
+        assert observed.snapshot.high_water.is_empty
+        assert observed.snapshot.current.is_empty
+        cancelled = False
+        events.clear()
+        claims = manager.reserve_capacity_batch(
+            layout.case_id,
+            QuotaArea.TEMP,
+            _temp_batch(),
+            coordination_checkpoint=checkpoint,
+        )
+        try:
+            assert len(claims) == 3 and all(claim.is_active for claim in claims)
+            assert events == ["checkpoint", "checkpoint", "inventory"]
+        finally:
+            for claim in claims:
+                claim.release()
+
+
+def test_reserve_capacity_batch_holds_shared_coordination_through_all_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quota = _quota(case_bytes=10, cache_bytes=10, temp_bytes=10)
+    first_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    second_manager = CaseWorkspaceManager(profile_root=tmp_path, quota=quota)
+    layout = first_manager.provision()
+    first_claim_ready = Event()
+    release_first_claim = Event()
+    second_started = Event()
+    second_measured = Event()
+    reserve = QuotaReservationBook.reserve
+    measure = second_manager._measure_usage_and_identity
+
+    def pause_after_first_claim(
+        book: QuotaReservationBook,
+        usage: WorkspaceUsage,
+        area: QuotaArea,
+        *,
+        byte_count: int,
+        entry_count: int = 1,
+    ) -> QuotaReservation:
+        claim = reserve(book, usage, area, byte_count=byte_count, entry_count=entry_count)
+        if byte_count == 1 and not first_claim_ready.is_set():
+            first_claim_ready.set()
+            if not release_first_claim.wait(timeout=5):
+                claim.release()
+                raise TimeoutError("test did not release the first claim")
+        return claim
+
+    def observe_competing_inventory(
+        measured_layout: CaseWorkspacePaths,
+    ) -> tuple[WorkspaceUsage, FileIdentity]:
+        second_measured.set()
+        return measure(measured_layout)
+
+    def competing_claim() -> WorkspaceErrorCode | None:
+        try:
+            with second_manager.reserve_capacity(
+                layout.case_id,
+                QuotaArea.TEMP,
+                relative_path="temp/competing.tmp",
+                is_directory=False,
+                byte_count=8,
+                coordination_checkpoint=second_started.set,
+            ):
+                return None
+        except WorkspaceError as error:
+            return error.code
+
+    monkeypatch.setattr(QuotaReservationBook, "reserve", pause_after_first_claim)
+    monkeypatch.setattr(second_manager, "_measure_usage_and_identity", observe_competing_inventory)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
+            first_manager.reserve_capacity_batch, layout.case_id, QuotaArea.TEMP, _temp_batch()
+        )
+        try:
+            assert first_claim_ready.wait(timeout=5)
+            second = pool.submit(competing_claim)
+            assert second_started.wait(timeout=5)
+            assert not second_measured.wait(timeout=0.2)
+        finally:
+            release_first_claim.set()
+        claims = first.result(timeout=5)
+        try:
+            assert second.result(timeout=5) is WorkspaceErrorCode.QUOTA_EXCEEDED
+            assert second_measured.is_set()
+            assert all(claim.is_active for claim in claims)
+        finally:
+            for claim in claims:
+                claim.release()
+
+    with first_manager.observe_capacity_claims(layout.case_id) as observed:
+        assert observed.snapshot.current.is_empty
 
 
 def test_publication_checkpoint_preserves_reentrancy_and_never_yields_after_failure(

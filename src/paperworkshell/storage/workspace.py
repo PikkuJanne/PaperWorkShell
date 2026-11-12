@@ -49,6 +49,7 @@ MAX_CASE_ID_COLLISION_ATTEMPTS: Final = 16
 DEFAULT_MAXIMUM_CASE_CANDIDATES: Final = 4096
 MAX_AUTHORITATIVE_RECORD_BYTES: Final = 8 * 1024 * 1024
 _COORDINATION_LOCK_POLL_SECONDS: Final = 0.05
+_MAX_CAPACITY_CLAIMS_PER_BATCH: Final = 3
 
 _UUID4_RE: Final = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z"
@@ -360,6 +361,16 @@ class AuthenticatedCase(AbstractContextManager["AuthenticatedCase"]):
                     self._state.active_leases = max(0, self._state.active_leases - 1)
                 if self._deletion_claim:
                     self._state.deletion_in_progress = False
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceCapacityRequest:
+    """Capacity needed for one disposable case-relative object."""
+
+    relative_path: str
+    is_directory: bool
+    byte_count: int
+    entry_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -985,6 +996,24 @@ class CaseWorkspaceManager:
     ) -> WorkspaceCapacityReservation:
         """Reserve a bounded cache/temp write within this storage broker process."""
 
+        (reservation,) = self.reserve_capacity_batch(
+            case_id,
+            area,
+            (WorkspaceCapacityRequest(relative_path, is_directory, byte_count, entry_count),),
+            coordination_checkpoint=coordination_checkpoint,
+        )
+        return reservation
+
+    def reserve_capacity_batch(
+        self,
+        case_id: UUID | str,
+        area: QuotaArea,
+        requests: tuple[WorkspaceCapacityRequest, ...],
+        *,
+        coordination_checkpoint: Callable[[], None] | None = None,
+    ) -> tuple[WorkspaceCapacityReservation, ...]:
+        """Reserve a small group under one fresh inventory and case coordination."""
+
         parsed_id = validate_case_id(case_id)
         if type(area) is not QuotaArea:
             reject(
@@ -992,26 +1021,20 @@ class CaseWorkspaceManager:
                 "quota.area",
                 "Capacity may be reserved only for cache or temporary storage.",
             )
-        if type(is_directory) is not bool:
+        if type(requests) is not tuple or not 1 <= len(requests) <= _MAX_CAPACITY_CLAIMS_PER_BATCH:
             reject(
                 WorkspaceErrorCode.QUOTA_INVALID,
-                "quota.object_type",
-                "A capacity reservation requires an explicit storage-object type.",
+                "quota.request",
+                "A workspace capacity batch requires one to three claims.",
             )
-        validate_quota_request(byte_count=byte_count, entry_count=entry_count)
-        parts = validate_case_relative_path(relative_path)
-        if len(parts) < 2 or parts[0] != area.value:
+        parts_by_request = tuple(
+            self._capacity_request_parts(area, request) for request in requests
+        )
+        if len(set(parts_by_request)) != len(parts_by_request):
             reject(
                 WorkspaceErrorCode.QUOTA_INVALID,
                 "quota.path",
-                "Capacity may be reserved only inside its selected disposable area.",
-            )
-        intended_depth = len(parts) if is_directory else len(parts) - 1
-        if intended_depth > self._quota.maximum_depth:
-            reject(
-                WorkspaceErrorCode.QUOTA_EXCEEDED,
-                "quota.depth",
-                "The requested object would exceed the configured workspace depth.",
+                "Capacity claims in a batch must identify distinct case objects.",
             )
         layout = self.layout(parsed_id)
         with self._coordinated_reservation_state(
@@ -1028,26 +1051,64 @@ class CaseWorkspaceManager:
             self._bind_case_identity(state, identity)
             self._require_volume_capacity(
                 layout.case_root,
-                byte_count=byte_count + state.book.reserved_byte_count,
+                byte_count=sum(request.byte_count for request in requests)
+                + state.book.reserved_byte_count,
             )
-            reservation = state.book.reserve(
-                usage,
-                area,
-                byte_count=byte_count,
-                entry_count=entry_count,
+            reservations: list[WorkspaceCapacityReservation] = []
+            with ExitStack() as rollback:
+                for request, parts in zip(requests, parts_by_request, strict=True):
+                    claim = state.book.reserve(
+                        usage,
+                        area,
+                        byte_count=request.byte_count,
+                        entry_count=request.entry_count,
+                    )
+                    rollback.callback(claim.release)
+                    reservations.append(
+                        WorkspaceCapacityReservation(
+                            case_id=parsed_id,
+                            area=area,
+                            is_directory=request.is_directory,
+                            byte_count=request.byte_count,
+                            entry_count=request.entry_count,
+                            _case_identity=identity,
+                            _relative_parts=parts,
+                            _reservation=claim,
+                            _state=state,
+                        )
+                    )
+                self._reservation_states[key] = state
+                result = tuple(reservations)
+                rollback.pop_all()
+            return result
+
+    def _capacity_request_parts(
+        self,
+        area: QuotaArea,
+        request: WorkspaceCapacityRequest,
+    ) -> tuple[str, ...]:
+        if type(request) is not WorkspaceCapacityRequest or type(request.is_directory) is not bool:
+            reject(
+                WorkspaceErrorCode.QUOTA_INVALID,
+                "quota.object_type",
+                "A capacity reservation requires an explicit storage-object type.",
             )
-            self._reservation_states[key] = state
-        return WorkspaceCapacityReservation(
-            case_id=parsed_id,
-            area=area,
-            is_directory=is_directory,
-            byte_count=byte_count,
-            entry_count=entry_count,
-            _case_identity=identity,
-            _relative_parts=parts,
-            _reservation=reservation,
-            _state=state,
-        )
+        validate_quota_request(byte_count=request.byte_count, entry_count=request.entry_count)
+        parts = validate_case_relative_path(request.relative_path)
+        if len(parts) < 2 or parts[0] != area.value:
+            reject(
+                WorkspaceErrorCode.QUOTA_INVALID,
+                "quota.path",
+                "Capacity may be reserved only inside its selected disposable area.",
+            )
+        intended_depth = len(parts) if request.is_directory else len(parts) - 1
+        if intended_depth > self._quota.maximum_depth:
+            reject(
+                WorkspaceErrorCode.QUOTA_EXCEEDED,
+                "quota.depth",
+                "The requested object would exceed the configured workspace depth.",
+            )
+        return parts
 
     def _require_volume_capacity(self, case_root: Path, *, byte_count: int) -> None:
         if self._available_space_probe is None and self._minimum_free_space_reserve_bytes == 0:

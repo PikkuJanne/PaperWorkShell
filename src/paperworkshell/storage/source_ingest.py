@@ -114,6 +114,7 @@ from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.workspace import (
     AuthenticatedCase,
     CaseWorkspaceManager,
+    WorkspaceCapacityRequest,
     WorkspaceCapacityReservation,
 )
 
@@ -1711,28 +1712,22 @@ class WindowsSourceIngestStore:
                 source_stage_path = authority.layout.temp / f"{pending_id}.tmp"
                 manifest_stage_path = authority.layout.temp / f"{manifest_stage_id}.tmp"
                 journal_stage_path = authority.layout.temp / f"{journal_stage_id}.tmp"
-                source_reservation = self._manager.reserve_capacity(
+                (
+                    source_reservation,
+                    manifest_reservation,
+                    journal_reservation,
+                ) = self._manager.reserve_capacity_batch(
                     selected_case,
                     QuotaArea.TEMP,
-                    relative_path=f"temp/{pending_id}.tmp",
-                    is_directory=False,
-                    byte_count=result.byte_size,
-                    coordination_checkpoint=coordination_checkpoint,
-                )
-                manifest_reservation = self._manager.reserve_capacity(
-                    selected_case,
-                    QuotaArea.TEMP,
-                    relative_path=f"temp/{manifest_stage_id}.tmp",
-                    is_directory=False,
-                    byte_count=manifest_upper_bound,
-                    coordination_checkpoint=coordination_checkpoint,
-                )
-                journal_reservation = self._manager.reserve_capacity(
-                    selected_case,
-                    QuotaArea.TEMP,
-                    relative_path=f"temp/{journal_stage_id}.tmp",
-                    is_directory=False,
-                    byte_count=manifest_upper_bound,
+                    (
+                        WorkspaceCapacityRequest(f"temp/{pending_id}.tmp", False, result.byte_size),
+                        WorkspaceCapacityRequest(
+                            f"temp/{manifest_stage_id}.tmp", False, manifest_upper_bound
+                        ),
+                        WorkspaceCapacityRequest(
+                            f"temp/{journal_stage_id}.tmp", False, manifest_upper_bound
+                        ),
+                    ),
                     coordination_checkpoint=coordination_checkpoint,
                 )
                 with open_handle(authority.layout.temp) as temp_root:
