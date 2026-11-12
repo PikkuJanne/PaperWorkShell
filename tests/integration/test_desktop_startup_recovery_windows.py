@@ -139,6 +139,9 @@ class _UnusedWorkerPort:
     def inspect(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not inspect a source")
 
+    def inspect_with_preview(self, *_args: object, **_kwargs: object) -> object:
+        raise AssertionError("the startup-recovery test must not inspect and preview a source")
+
     def get_or_generate(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("the startup-recovery test must not generate a preview")
 

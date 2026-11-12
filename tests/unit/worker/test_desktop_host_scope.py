@@ -141,6 +141,8 @@ scope=WorkerOperationScope(sys.argv[2])
 registry=host._build_operation_registry(scope)
 assert Path(host.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve())
 blocked=('ocrmypdf','pydantic','fpdf','fontTools','uharfbuzz',
+         'paperworkshell.domain.pdf_export',
+         'paperworkshell.domain.searchable_pdf_export',
          'paperworkshell.worker.pdf_export_operation',
          'paperworkshell.worker.pdf_image_stage_operation',
          'paperworkshell.worker.flattened_pdf_export_operation',
