@@ -36,6 +36,7 @@ DESKTOP = (
     PDF_THUMBNAIL_CAPABILITY,
 )
 IMAGES = (NOOP_CAPABILITY, IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY)
+NORMALIZE = (NOOP_CAPABILITY, IMAGE_NORMALIZE_CAPABILITY)
 FACTORIES = (
     (
         "text_companion_operation",
@@ -90,6 +91,26 @@ def test_image_scope_rejects_unavailable_adapter_and_excludes_pdf(
         registry.handler_for(PDF_INSPECT_CAPABILITY)
 
 
+def test_normalize_scope_excludes_transform_and_omits_an_unavailable_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = host._build_operation_registry(WorkerOperationScope.IMAGE_NORMALIZE)
+
+    assert registry.capabilities == NORMALIZE
+    with pytest.raises(LookupError, match="not registered"):
+        registry.handler_for(IMAGE_TRANSFORM_CAPABILITY)
+
+    module = importlib.import_module("paperworkshell.worker.image_normalize_operation")
+
+    def unavailable() -> object:
+        raise RuntimeError("PRIVATE_ADAPTER_PATH_CANARY")
+
+    monkeypatch.setattr(module, "build_image_normalize_operation_handler", unavailable)
+    registry = host._build_operation_registry(WorkerOperationScope.IMAGE_NORMALIZE)
+
+    assert registry.capabilities == (NOOP_CAPABILITY,)
+
+
 @pytest.mark.parametrize("module_name,factory_name,descriptor", FACTORIES)
 def test_unavailable_desktop_adapter_is_not_advertised(
     monkeypatch: pytest.MonkeyPatch,
@@ -115,6 +136,8 @@ def test_desktop_scope_environment_is_closed_and_unknown_values_fail(
     assert host._read_operation_scope() is WorkerOperationScope.DESKTOP
     monkeypatch.setenv("PWS_WORKER_OPERATION_SCOPE", "image-pages-v1")
     assert host._read_operation_scope() is WorkerOperationScope.IMAGE_PAGES
+    monkeypatch.setenv("PWS_WORKER_OPERATION_SCOPE", "image-normalize-v1")
+    assert host._read_operation_scope() is WorkerOperationScope.IMAGE_NORMALIZE
     monkeypatch.setenv("PWS_WORKER_OPERATION_SCOPE", "desktop-v2")
     with pytest.raises(WorkerProcessCreationDenied):
         host._read_operation_scope()
@@ -124,7 +147,11 @@ def test_desktop_scope_environment_is_closed_and_unknown_values_fail(
 
 @pytest.mark.parametrize(
     ("scope", "descriptors"),
-    ((WorkerOperationScope.DESKTOP, DESKTOP), (WorkerOperationScope.IMAGE_PAGES, IMAGES)),
+    (
+        (WorkerOperationScope.DESKTOP, DESKTOP),
+        (WorkerOperationScope.IMAGE_PAGES, IMAGES),
+        (WorkerOperationScope.IMAGE_NORMALIZE, NORMALIZE),
+    ),
 )
 def test_scoped_registry_imports_no_unneeded_native_engine_in_a_fresh_interpreter(
     scope: WorkerOperationScope, descriptors: tuple[CapabilityDescriptor, ...]
@@ -149,7 +176,7 @@ blocked=('ocrmypdf','pydantic','fpdf','fontTools','uharfbuzz',
          'paperworkshell.worker.ocr_operation',
          'paperworkshell.worker.quality_ocr_review_operation',
          'paperworkshell.worker.searchable_pdf_export_operation')
-if scope is WorkerOperationScope.IMAGE_PAGES:
+if scope in (WorkerOperationScope.IMAGE_PAGES,WorkerOperationScope.IMAGE_NORMALIZE):
     blocked+=('pikepdf','pypdfium2','paperworkshell.worker.pdf_operation',
               'paperworkshell.domain.ocr',
               'paperworkshell.domain.pdf_inspection',
@@ -158,6 +185,10 @@ if scope is WorkerOperationScope.IMAGE_PAGES:
               'paperworkshell.worker.pdf_thumbnail_operation',
               'paperworkshell.worker.signature_image_raster_operation',
               'paperworkshell.worker.text_companion_operation')
+if scope is WorkerOperationScope.IMAGE_NORMALIZE:
+    blocked+=('paperworkshell.domain.image_transforms',
+              'paperworkshell.worker.image_transform_operation',
+              'paperworkshell.imaging.pillow_transformer')
 unexpected=sorted(name for name in sys.modules if any(name==p or name.startswith(p+'.') for p in blocked))
 assert not unexpected,unexpected
 print(json.dumps([[value.capability_id,value.capability_version] for value in registry.capabilities]))

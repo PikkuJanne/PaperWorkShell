@@ -265,6 +265,28 @@ def test_switching_exact_inventories_revokes_the_previous_profile(
     assert calls == ["create", "reset", "close", "create", "reset", "recreate", "reset", "close"]
 
 
+def test_normalize_then_transform_reuses_the_exact_case_inventory(
+    lifecycle: tuple[list[str], list[_Profile]],
+) -> None:
+    calls, profiles = lifecycle
+    access = windows._CaseRuntimeAccess(())
+    case_id = uuid4()
+    exact_files = (Path("C:/synthetic-runtime/image.py"),)
+    for scope in (WorkerOperationScope.IMAGE_NORMALIZE, WorkerOperationScope.IMAGE_PAGES):
+        config = cast(
+            windows.WindowsLaunchConfig,
+            SimpleNamespace(operation_scope=scope, exact_runtime_files=exact_files),
+        )
+        profile = access.acquire(case_id, exact_files=access.launch_inventory(config))
+        assert profile is _profile(profiles[0])
+        access.finish(profile, reusable=True)
+
+    assert len(profiles) == 1
+    access.release_case()
+    assert calls == ["create", "reset", "recreate", "reset", "close"]
+    assert access.snapshot == windows.RuntimeAccessSnapshot()
+
+
 def test_pdf_launch_uses_exact_files_unless_a_broad_case_profile_already_exists(
     lifecycle: tuple[list[str], list[_Profile]],
 ) -> None:

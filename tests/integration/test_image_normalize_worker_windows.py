@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+from contextlib import ExitStack
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -31,10 +34,17 @@ from paperworkshell.storage.quotas import WorkspaceQuota
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.workspace import CaseWorkspaceManager
-from paperworkshell.worker.client._windows import WindowsLaunchConfig, WindowsProcessLauncher
+from paperworkshell.worker.client import _windows as windows
+from paperworkshell.worker.client._acl_recovery import AclRecoveryJournal
+from paperworkshell.worker.client._windows import (
+    RuntimeAccessSnapshot,
+    WindowsLaunchConfig,
+    WindowsProcessLauncher,
+    WindowsWorkerProcess,
+)
 from paperworkshell.worker.client.client import WorkerClient
 from paperworkshell.worker.client.models import WorkerLifecyclePhase, WorkerTimeoutPolicy
-from paperworkshell.worker.client.process import WorkerResourcePolicy
+from paperworkshell.worker.client.process import WorkerLaunchRequest, WorkerResourcePolicy
 from paperworkshell.worker.heavy_operations import HeavyOperationCoordinator
 from paperworkshell.worker.image_page_broker import (
     BrokeredImagePageGenerator,
@@ -51,7 +61,8 @@ from paperworkshell.worker.protocol.models import (
     IMAGE_TRANSFORM_CAPABILITY,
     ResourceLimits,
 )
-from tests.worker_resources import WorkerTestResources
+from paperworkshell.worker.protocol.operation_scope import WorkerOperationScope
+from tests.worker_resources import WorkerTestResources, create_worker_test_recovery_path
 from tools.image_transform_goldens import (
     GOLDEN_DIRECTORY as IMAGE_TRANSFORM_GOLDEN_DIRECTORY,
 )
@@ -134,6 +145,8 @@ def _transform_policy() -> ImageTransformBrokerPolicy:
 def _live_system(
     tmp_path: Path,
     resources: WorkerTestResources,
+    *,
+    exact_image_files: tuple[Path, ...] = (),
 ) -> tuple[
     CaseWorkspaceManager,
     WindowsSourceIngestStore,
@@ -165,31 +178,50 @@ def _live_system(
         id_factory=_SequentialUuidFactory(0x30900000),
         temp_id_factory=_SequentialUuidFactory(0x40900000),
     )
-    worker = WorkerClient(
-        WindowsProcessLauncher(
-            WindowsLaunchConfig(
-                python_executable=resources.python_executable,
-                bootstrap_script=(
-                    resources.source_root / "paperworkshell" / "worker" / "host_bootstrap.py"
-                ),
-                runtime_roots=(resources.runtime_root,),
-                code_roots=(resources.source_root,),
-                working_directory=resources.source_root,
-            )
+    launch_config = WindowsLaunchConfig(
+        python_executable=resources.python_executable,
+        bootstrap_script=resources.source_root / "paperworkshell" / "worker" / "host_bootstrap.py",
+        runtime_roots=(resources.runtime_root,),
+        code_roots=(resources.source_root,),
+        working_directory=resources.source_root,
+        operation_scope=(
+            WorkerOperationScope.IMAGE_NORMALIZE if exact_image_files else WorkerOperationScope.ALL
         ),
-        WorkerResourcePolicy(
-            process_memory_bytes=256 * 1024 * 1024,
-            job_memory_bytes=384 * 1024 * 1024,
-            cpu_time_ms=30_000,
-            maximum_processes=1,
-        ),
-        WorkerTimeoutPolicy(
-            handshake_seconds=20.0,
-            cancellation_grace_seconds=5.0,
-            shutdown_grace_seconds=10.0,
-        ),
-        required_capabilities=(IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY),
+        exact_runtime_files=exact_image_files,
     )
+    launcher = WindowsProcessLauncher(launch_config, retain_runtime_access=bool(exact_image_files))
+    resource_policy = WorkerResourcePolicy(
+        process_memory_bytes=256 * 1024 * 1024,
+        job_memory_bytes=384 * 1024 * 1024,
+        cpu_time_ms=30_000,
+        maximum_processes=1,
+    )
+    timeout_policy = WorkerTimeoutPolicy(
+        handshake_seconds=20.0,
+        cancellation_grace_seconds=5.0,
+        shutdown_grace_seconds=10.0,
+    )
+    worker = WorkerClient(
+        launcher,
+        resource_policy,
+        timeout_policy,
+        required_capabilities=(IMAGE_NORMALIZE_CAPABILITY,)
+        if exact_image_files
+        else (IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY),
+    )
+    transform_worker = worker
+    if exact_image_files:
+        authority = launcher.runtime_access_authority
+        assert authority is not None
+        transform_worker = WorkerClient(
+            WindowsProcessLauncher(
+                replace(launch_config, operation_scope=WorkerOperationScope.IMAGE_PAGES),
+                runtime_access=authority,
+            ),
+            resource_policy,
+            timeout_policy,
+            required_capabilities=(IMAGE_NORMALIZE_CAPABILITY, IMAGE_TRANSFORM_CAPABILITY),
+        )
     heavy_operations = HeavyOperationCoordinator(1)
     inspector, generator = create_image_page_brokers(
         worker,
@@ -199,7 +231,7 @@ def _live_system(
         heavy_operations=heavy_operations,
     )
     transformer = BrokeredImagePageTransformer(
-        worker,
+        transform_worker,
         store,
         _transform_policy(),
         heavy_operations=heavy_operations,
@@ -295,14 +327,43 @@ def test_live_malformed_png_is_rejected_before_commit_without_private_diagnostic
     assert tuple(manager.layout(_CASE_ID).originals.iterdir()) == ()
 
 
-def test_live_transform_matches_reviewed_golden_without_mutating_source_bytes(
+def test_live_normalize_then_transform_matches_golden_and_reuses_exact_runtime(
     tmp_path: Path,
     worker_test_resources: WorkerTestResources,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    resources = worker_test_resources
+    exact_image_files = tuple(
+        sorted(
+            path
+            for root in (resources.runtime_root, resources.source_root)
+            for path in root.rglob("*")
+            if path.is_file()
+        )
+    )
+    journal_path = create_worker_test_recovery_path(resources, "normalize-transform")
+    monkeypatch.setattr(windows, "_acl_recovery_directory_path", lambda: journal_path)
+    journal = AclRecoveryJournal(journal_path)
+    launches: list[tuple[WorkerOperationScope, WorkerLaunchRequest, WindowsWorkerProcess]] = []
+    original_launch = WindowsProcessLauncher.launch
+
+    def capture_launch(
+        launcher: WindowsProcessLauncher, request: WorkerLaunchRequest
+    ) -> WindowsWorkerProcess:
+        assert launcher._config.exact_runtime_files == exact_image_files
+        process = original_launch(launcher, request)
+        launches.append((launcher._config.operation_scope, request, process))
+        return process
+
+    monkeypatch.setattr(WindowsProcessLauncher, "launch", capture_launch)
     manager, store, worker, inspector, _generator, transformer = _live_system(
         tmp_path,
-        worker_test_resources,
+        resources,
+        exact_image_files=exact_image_files,
     )
+    launcher = worker._launcher
+    assert isinstance(launcher, WindowsProcessLauncher)
+    transform_worker = cast(WorkerClient, transformer._worker)
     source = tmp_path / "transform-source.png"
     source.write_bytes(
         canonical_rgba_png(
@@ -311,28 +372,54 @@ def test_live_transform_matches_reviewed_golden_without_mutating_source_bytes(
         )
     )
     external_before = source.read_bytes()
-    imported = SourceIngestService(store, inspector).import_source(
-        _CASE_ID,
-        source,
-        _PRIVATE_DISPLAY_NAME,
-    )
-    case_copy = manager.layout(_CASE_ID).originals / f"{imported.source_id}.bin"
-    committed_before = case_copy.read_bytes()
     phases: list[ImagePagePreviewProgressPhase] = []
-
-    transformed = transformer.transform(
-        ImagePageTransformRequest(
-            case_id=_CASE_ID,
-            page_id=imported.page_ids[0],
-            intent=ImageTransformIntent(
-                crop=ImageNormalizedCrop(250_000, 250_000, 500_000, 500_000),
+    with ExitStack() as cleanup:
+        cleanup.callback(launcher.release_case_resources)
+        cleanup.callback(worker.terminate)
+        cleanup.callback(transform_worker.terminate)
+        imported = SourceIngestService(store, inspector).import_source(
+            _CASE_ID,
+            source,
+            _PRIVATE_DISPLAY_NAME,
+        )
+        case_copy = manager.layout(_CASE_ID).originals / f"{imported.source_id}.bin"
+        committed_before = case_copy.read_bytes()
+        (initial_entry,) = journal.inventory()
+        transformed = transformer.transform(
+            ImagePageTransformRequest(
+                case_id=_CASE_ID,
+                page_id=imported.page_ids[0],
+                intent=ImageTransformIntent(
+                    crop=ImageNormalizedCrop(250_000, 250_000, 500_000, 500_000),
+                ),
+                maximum_width_pixels=8,
+                maximum_height_pixels=6,
             ),
-            maximum_width_pixels=8,
-            maximum_height_pixels=6,
-        ),
-        deadline=lambda: False,
-        cancellation=lambda: False,
-        progress=phases.append,
+            deadline=lambda: False,
+            cancellation=lambda: False,
+            progress=phases.append,
+        )
+        (retained_entry,) = journal.inventory()
+        assert retained_entry.profile_id == initial_entry.profile_id
+        assert retained_entry.sid == initial_entry.sid
+        assert retained_entry.objects == initial_entry.objects
+
+    assert journal.inventory() == ()
+    assert launcher.runtime_access_snapshot == RuntimeAccessSnapshot()
+    assert [scope for scope, _, _ in launches] == [
+        WorkerOperationScope.IMAGE_NORMALIZE,
+        WorkerOperationScope.IMAGE_PAGES,
+    ]
+    (_, normalize_request, normalize_process), (_, transform_request, transform_process) = launches
+    assert normalize_request.case_id == transform_request.case_id == _CASE_ID
+    assert normalize_request.session_id != transform_request.session_id
+    assert normalize_request.worker_instance_id != transform_request.worker_instance_id
+    assert normalize_process._job is not transform_process._job
+    assert all(
+        process._tree_confirmed
+        and process._containment_closed
+        and not process._profile.local_app_data.exists()
+        for _, _, process in launches
     )
 
     expected = decode_canonical_rgba_png(
@@ -349,7 +436,8 @@ def test_live_transform_matches_reviewed_golden_without_mutating_source_bytes(
         ImagePagePreviewProgressPhase.VALIDATING,
     ]
     assert worker.query().phase is WorkerLifecyclePhase.STOPPED
-    assert worker.generation == 2
+    assert transform_worker.query().phase is WorkerLifecyclePhase.STOPPED
+    assert worker.generation == transform_worker.generation == 1
     assert source.read_bytes() == external_before
     assert case_copy.read_bytes() == committed_before
     assert hashlib.sha256(committed_before).hexdigest() == imported.sha256

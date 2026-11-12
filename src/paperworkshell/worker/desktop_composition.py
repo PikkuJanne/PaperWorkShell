@@ -311,6 +311,7 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         "_image_page_generator",
         "_image_source_inspector",
         "_image_page_transformer",
+        "_image_normalize_worker",
         "_image_worker",
         "_signature_image_rasterizer",
         "_owner_thread_id",
@@ -332,12 +333,14 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         heavy_operations: HeavyOperationCoordinator,
         *,
         launcher: WindowsProcessLauncher | None = None,
+        image_normalize_worker: WorkerClient | None = None,
         image_worker: WorkerClient | None = None,
         client_group: WorkerClientGroup | None = None,
     ) -> None:
         self._worker = worker
         self._client_group = client_group
         self._launcher = launcher
+        self._image_normalize_worker = image_normalize_worker
         self._image_worker = image_worker
         self._source_inspector = source_inspector
         self._thumbnail_generator = thumbnail_generator
@@ -455,14 +458,13 @@ class DesktopWorkerComposition(AbstractContextManager["DesktopWorkerComposition"
         self._closed = True
 
     def release_case_resources(self) -> None:
-        """Stop both parsers before retiring the one shared static lease."""
+        """Stop all parser clients before retiring the one shared static lease."""
 
         self._require_owner()
         pending: BaseException | None = None
-        workers = (
-            (self._worker,) if self._image_worker is None else (self._worker, self._image_worker)
-        )
-        for worker in workers:
+        for worker in (self._worker, self._image_normalize_worker, self._image_worker):
+            if worker is None:
+                continue
             try:
                 worker.terminate()
             except BaseException as error:
@@ -654,14 +656,27 @@ def create_desktop_worker_composition(
         required_capabilities=_REQUIRED_DESKTOP_CAPABILITIES,
         group=client_group,
     )
+    image_normalize_worker = None
     image_worker = None
     if runtime_access is not None:
+        image_launch_config = replace(
+            config._launch_config,
+            operation_scope=WorkerOperationScope.IMAGE_PAGES,
+            exact_runtime_files=config.image_runtime_files,
+        )
+        image_normalize_launcher = WindowsProcessLauncher(
+            replace(image_launch_config, operation_scope=WorkerOperationScope.IMAGE_NORMALIZE),
+            runtime_access=runtime_access,
+        )
+        image_normalize_worker = WorkerClient(
+            image_normalize_launcher,
+            config.resource_policy,
+            config.timeout_policy,
+            required_capabilities=(IMAGE_NORMALIZE_CAPABILITY,),
+            group=client_group,
+        )
         image_launcher = WindowsProcessLauncher(
-            replace(
-                config._launch_config,
-                operation_scope=WorkerOperationScope.IMAGE_PAGES,
-                exact_runtime_files=config.image_runtime_files,
-            ),
+            image_launch_config,
             runtime_access=runtime_access,
         )
         image_worker = WorkerClient(
@@ -671,7 +686,6 @@ def create_desktop_worker_composition(
             required_capabilities=_REQUIRED_IMAGE_PAGE_CAPABILITIES,
             group=client_group,
         )
-    image_page_client = worker if image_worker is None else image_worker
     inspector = BrokeredPdfSourceInspector(
         worker,
         prepared_sources,
@@ -687,14 +701,14 @@ def create_desktop_worker_composition(
         heavy_operations=heavy_operations,
     )
     image_inspector, image_generator = create_image_page_brokers(
-        image_page_client,
+        worker if image_normalize_worker is None else image_normalize_worker,
         prepared_sources,
         selected_image_pages,
         config.image_policy,
         heavy_operations=heavy_operations,
     )
     image_transformer = BrokeredImagePageTransformer(
-        image_page_client,
+        worker if image_worker is None else image_worker,
         selected_image_pages,
         config.image_transform_policy,
         heavy_operations=heavy_operations,
@@ -718,6 +732,7 @@ def create_desktop_worker_composition(
         signature_image_rasterizer,
         heavy_operations,
         launcher=launcher if config.retain_runtime_access else None,
+        image_normalize_worker=image_normalize_worker,
         image_worker=image_worker,
         client_group=client_group,
     )

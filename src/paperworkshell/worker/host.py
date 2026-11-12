@@ -82,6 +82,9 @@ def _build_operation_registry(
     if type(operation_scope) is not WorkerOperationScope:
         raise WorkerProcessCreationDenied from None
     handlers: list[OperationHandler] = [NoopOperationHandler()]
+    if operation_scope is WorkerOperationScope.IMAGE_NORMALIZE:
+        _append_image_normalize_handler(handlers)
+        return RuntimeOperationRegistry(tuple(handlers))
     if operation_scope is WorkerOperationScope.IMAGE_PAGES:
         _append_image_normalize_handler(handlers)
         _append_image_transform_handler(handlers)

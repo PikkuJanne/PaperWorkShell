@@ -264,13 +264,15 @@ def test_factory_builds_one_shared_capability_scoped_client_and_structural_ports
     composition.close()
 
 
-def test_retained_desktop_routes_image_work_to_a_closed_scope_with_the_same_authority(
+def test_retained_desktop_routes_normalization_and_transform_with_the_same_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
     prepared, committed, cache = _ports()
+    config = _config(tmp_path)
+    image_runtime_files = (config.python_executable, config.bootstrap_script)
     composition = create_desktop_worker_composition(
-        replace(_config(tmp_path), retain_runtime_access=True),
+        replace(config, retain_runtime_access=True, image_runtime_files=image_runtime_files),
         prepared_sources=prepared,
         committed_pages=committed,
         committed_signature_images=cast(CommittedSignatureImageAssetStore, committed),
@@ -278,24 +280,34 @@ def test_retained_desktop_routes_image_work_to_a_closed_scope_with_the_same_auth
         heavy_operations=HeavyOperationCoordinator(1),
     )
     worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
+    normalizer = cast(_FakeWorkerClient, cast(Any, composition)._image_normalize_worker)
     image_worker = cast(_FakeWorkerClient, cast(Any, composition)._image_worker)
-    assert image_worker is not worker
+    assert len({worker, normalizer, image_worker}) == 3
     assert isinstance(image_worker.launcher, WindowsProcessLauncher)
+    assert isinstance(normalizer.launcher, WindowsProcessLauncher)
     assert isinstance(worker.launcher, WindowsProcessLauncher)
     assert worker.launcher._config.operation_scope is WorkerOperationScope.DESKTOP
+    assert normalizer.launcher._config.operation_scope is WorkerOperationScope.IMAGE_NORMALIZE
     assert image_worker.launcher._config.operation_scope is WorkerOperationScope.IMAGE_PAGES
-    assert worker.group is not None and image_worker.group is worker.group
+    assert (
+        normalizer.launcher._config.exact_runtime_files
+        == image_worker.launcher._config.exact_runtime_files
+        == image_runtime_files
+    )
+    assert worker.group is not None and image_worker.group is normalizer.group is worker.group
     assert (
         image_worker.launcher.runtime_access_authority
+        is normalizer.launcher.runtime_access_authority
         is worker.launcher.runtime_access_authority
         is composition.runtime_access_authority
     )
+    assert normalizer.required_capabilities == (IMAGE_NORMALIZE_CAPABILITY,)
     assert image_worker.required_capabilities == (
         IMAGE_NORMALIZE_CAPABILITY,
         IMAGE_TRANSFORM_CAPABILITY,
     )
-    assert cast(Any, composition.image_source_inspector)._worker is image_worker
-    assert cast(Any, composition.image_page_generator)._worker is image_worker
+    assert cast(Any, composition.image_source_inspector)._worker is normalizer
+    assert cast(Any, composition.image_page_generator)._worker is normalizer
     assert cast(Any, composition.image_page_transformer)._worker is image_worker
     assert cast(Any, composition.source_inspector)._worker is worker
     assert cast(Any, composition.thumbnail_generator)._worker is worker
@@ -303,12 +315,16 @@ def test_retained_desktop_routes_image_work_to_a_closed_scope_with_the_same_auth
     releases: list[WindowsProcessLauncher] = []
 
     def release(launcher: WindowsProcessLauncher) -> None:
-        assert worker.terminate_calls == image_worker.terminate_calls == 1
+        assert worker.terminate_calls == normalizer.terminate_calls == image_worker.terminate_calls
         releases.append(launcher)
 
     monkeypatch.setattr(WindowsProcessLauncher, "release_case_resources", release)
+    composition.release_case_resources()
+    assert worker.terminate_calls == normalizer.terminate_calls == image_worker.terminate_calls == 1
     composition.close()
-    assert releases == [worker.launcher]
+    composition.close()
+    assert worker.terminate_calls == normalizer.terminate_calls == image_worker.terminate_calls == 2
+    assert releases == [worker.launcher, worker.launcher]
 
 
 def test_image_cache_is_one_optional_complete_typed_port() -> None:

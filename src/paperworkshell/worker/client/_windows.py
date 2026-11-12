@@ -1465,6 +1465,7 @@ class WindowsLaunchConfig:
                 or self.tesseract_executable is not None
                 or (self.operation_scope, self.qpdf_executable is not None)
                 not in {
+                    (WorkerOperationScope.IMAGE_NORMALIZE, False),
                     (WorkerOperationScope.IMAGE_PAGES, False),
                     (WorkerOperationScope.PDF_EXPORT, True),
                 }

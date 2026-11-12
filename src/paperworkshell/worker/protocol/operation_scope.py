@@ -15,6 +15,7 @@ class WorkerOperationScope(StrEnum):
     ALL = "all-v1"
     DESKTOP = "desktop-v1"
     IMAGE_PAGES = "image-pages-v1"
+    IMAGE_NORMALIZE = "image-normalize-v1"
     PDF_EXPORT = "pdf-export-v1"
     REDACTION_EXPORT = "redaction-export-private-v1"
     REDACTION_SANITIZATION = "redaction-sanitization-private-v1"

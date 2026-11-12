@@ -286,6 +286,22 @@ before acquiring new access. The image-stage and removal compositions use
 the existing base configuration. Updating the installed dependencies
 requires reviewing the fixed inventory and rerunning native verification.
 
+## Installed image normalization worker scope
+
+Installed image inspection and page normalization use a worker that admits
+the normalization adapter before reporting Ready. Image transforms retain the
+image-page worker. Both launchers use the same exact image runtime inventory,
+case authority and generation group. A normalization generation can hand off
+the fixed grant to a transform generation under the existing revalidation
+rules. Case close terminates all parser clients before retiring that grant.
+
+Private V10 comparisons used the same 487 files and 513 pinned objects.
+Normalization-only improved Ready by 68–376 ms in three untraced pairs.
+Separate traced pairs isolated 86–148 ms in eager transform admission.
+Each job denied access to the Qt canary, produced the same preview pixels
+and removed its process tree and profile. The actual installed paint
+comparison remains a separate acceptance check.
+
 ## Product and release effects
 
 No dependency, document-processing algorithm, case/template/RPC schema, application
