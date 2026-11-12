@@ -481,7 +481,7 @@
     {
       "path": "packaging/windows/product-v1.json",
       "bytes": 758,
-      "sha256": "85fd4619333e10911a44a06b0b9414c0c452f5480c77924e8ff135432d8fb3e6"
+      "sha256": "2c50fb41ae9bd412b329cb6e7887c2f188d50bfe4ebf95bdf6a9bf9d626c1ab9"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -610,8 +610,8 @@
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",
-      "bytes": 18349,
-      "sha256": "f9f04e1b97217be76076b6f77c61360eeaba6013312bd61a2f95f8c8f0994859"
+      "bytes": 19529,
+      "sha256": "4685235ba7d618e0b36736190b8e2def05b4f608e9e4ff39c9a05ba5d244a913"
     },
     {
       "path": "docs/schemas/case-manifest-v4.md",

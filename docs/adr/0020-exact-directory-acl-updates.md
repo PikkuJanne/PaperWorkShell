@@ -266,6 +266,26 @@ recorded separately from the code snapshot in JUnit. An R9 runtime with current
 source is diagnostic/source-integration evidence, not an R9 application result or
 an installed-success claim for the next candidate.
 
+## Exact installed structural PDF inventory
+
+Three cold broad/exact comparisons on one staged V8 runtime and the same
+cached mixed-source case verified and recorded identical PDFs. The exact
+export grant admitted 757 files and 810 pinned objects. All three exact
+cold backend times were 3.764–4.363 seconds. The median paired grant
+reduction was 2.012 seconds. These results measure the backend on the host.
+The installed application comparison measures native confirmation through
+visible verified completion.
+
+Use the reviewed fixed file inventory only for installed structural PDF
+export with its bundled qpdf and case-scoped runtime authority. Require the
+normal qpdf resource checks, startup checks, exact DACL verification and
+Job lifecycle. A retained broad lease for the same case already covers this
+composition and follows the existing revalidation path. Switching between
+different exact inventories retires the earlier profile and verifies cleanup
+before acquiring new access. The image-stage and removal compositions use
+the existing base configuration. Updating the installed dependencies
+requires reviewing the fixed inventory and rerunning native verification.
+
 ## Product and release effects
 
 No dependency, document-processing algorithm, case/template/RPC schema, application

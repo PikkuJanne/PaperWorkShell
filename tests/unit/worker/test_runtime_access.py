@@ -15,6 +15,7 @@ import pytest
 from paperworkshell.worker import _windows_broker
 from paperworkshell.worker.client import _windows as windows
 from paperworkshell.worker.client._windows import WindowsLaunchError
+from paperworkshell.worker.protocol.operation_scope import WorkerOperationScope
 
 
 @dataclass
@@ -225,6 +226,7 @@ def test_shared_authority_rejects_any_changed_fixed_runtime_or_recovery_identity
                 code_roots=(root / "code",),
                 venv_launcher=None,
                 approved_recovery_roots=(root / recovery,),
+                exact_runtime_files=(),
             ),
         )
 
@@ -235,3 +237,64 @@ def test_shared_authority_rejects_any_changed_fixed_runtime_or_recovery_identity
         with pytest.raises(WindowsLaunchError) as error:
             access.bind(changed)
         assert error.value.context == "runtime_access.identity"
+
+
+def test_switching_exact_inventories_revokes_the_previous_profile(
+    lifecycle: tuple[list[str], list[_Profile]],
+) -> None:
+    calls, _ = lifecycle
+    access = windows._CaseRuntimeAccess(())
+    case_id = uuid4()
+    image_files = (Path("C:/synthetic-runtime/image.py"),)
+    pdf_files = (Path("C:/synthetic-runtime/pdf.py"),)
+    image = access.acquire(case_id, exact_files=image_files)
+    access.finish(image, reusable=True)
+
+    with pytest.raises(WindowsLaunchError) as error:
+        access.acquire(case_id, exact_files=pdf_files)
+    assert error.value.context == "runtime_access.exact_inventory"
+
+    assert access.active_recovery_witness(case_id, exact_files=pdf_files) is None
+    assert not access.snapshot.retained
+    export = access.acquire(case_id, exact_files=pdf_files)
+    assert export is not image
+    access.finish(export, reusable=True)
+    assert access.acquire(case_id, exact_files=pdf_files) is export
+    access.finish(export, reusable=True)
+    access.release_case()
+    assert calls == ["create", "reset", "close", "create", "reset", "recreate", "reset", "close"]
+
+
+def test_pdf_launch_uses_exact_files_unless_a_broad_case_profile_already_exists(
+    lifecycle: tuple[list[str], list[_Profile]],
+) -> None:
+    calls, _ = lifecycle
+    access = windows._CaseRuntimeAccess(())
+    case_id = uuid4()
+    exact_files = (Path("C:/synthetic-runtime/engine.dll"),)
+    export = cast(
+        windows.WindowsLaunchConfig,
+        SimpleNamespace(
+            operation_scope=WorkerOperationScope.PDF_EXPORT,
+            exact_runtime_files=exact_files,
+        ),
+    )
+    image = cast(
+        windows.WindowsLaunchConfig,
+        SimpleNamespace(
+            operation_scope=WorkerOperationScope.IMAGE_PAGES,
+            exact_runtime_files=exact_files,
+        ),
+    )
+
+    assert access.launch_inventory(export) == exact_files
+    broad = access.acquire(case_id)
+    access.finish(broad, reusable=True)
+    assert access.launch_inventory(export) == ()
+    assert access.launch_inventory(image) == exact_files
+    with pytest.raises(WindowsLaunchError):
+        access.active_recovery_witness(uuid4(), exact_files=access.launch_inventory(export))
+    assert access.acquire(case_id, exact_files=access.launch_inventory(export)) is broad
+    access.finish(broad, reusable=True)
+    access.release_case()
+    assert calls == ["create", "reset", "recreate", "reset", "close"]

@@ -27,6 +27,7 @@ from paperworkshell.app.flattened_pdf_export import (
     VerifiedFlattenedPdfCandidate,
 )
 from paperworkshell.app.installed_image_runtime import installed_image_runtime_files
+from paperworkshell.app.installed_pdf_export_runtime import installed_pdf_export_runtime_files
 from paperworkshell.app.installed_runtime import (
     INSTALLED_APPLICATION_ID,
     InstalledRuntime,
@@ -1612,6 +1613,9 @@ def build_windows_pdf_export_worker_composition(
     """Compose export with the exact app-scoped policy and heavy-work gate."""
 
     selected_resources = _require_application_resource_context(resources, required=True)
+    installed = (
+        _installed_runtime() if runtime_access is not None and qpdf_executable is None else None
+    )
     return create_pdf_export_worker_composition(
         build_windows_pdf_export_worker_config(
             qpdf_executable,
@@ -1619,6 +1623,9 @@ def build_windows_pdf_export_worker_composition(
             profile=profile,
         ),
         heavy_operations=selected_resources.heavy_operations,
+        exact_runtime_files=(
+            () if installed is None else installed_pdf_export_runtime_files(installed.runtime_root)
+        ),
         **_runtime_access_options(runtime_access),
     )
 

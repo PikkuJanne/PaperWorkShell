@@ -1461,16 +1461,19 @@ class WindowsLaunchConfig:
         if type(self.exact_runtime_files) is not tuple or (
             self.exact_runtime_files
             and (
-                self.operation_scope is not WorkerOperationScope.IMAGE_PAGES
-                or self.venv_launcher is not None
-                or self.qpdf_executable is not None
+                self.venv_launcher is not None
                 or self.tesseract_executable is not None
+                or (self.operation_scope, self.qpdf_executable is not None)
+                not in {
+                    (WorkerOperationScope.IMAGE_PAGES, False),
+                    (WorkerOperationScope.PDF_EXPORT, True),
+                }
             )
         ):
             _reject(
                 WindowsLaunchErrorCode.CONFIGURATION_INVALID,
                 "config.exact_runtime_inventory",
-                "An exact runtime inventory requires the installed image worker scope.",
+                "An exact runtime inventory requires an installed image or PDF export scope.",
             )
         if (self.tesseract_executable is None) != (self.tessdata_root is None):
             _reject(
@@ -3067,7 +3070,7 @@ def _open_exact_runtime_inventory(
         _reject(
             WindowsLaunchErrorCode.CONFIGURATION_INVALID,
             "config.exact_runtime_inventory",
-            "The installed image worker inventory is incomplete or changed.",
+            "The installed worker inventory is incomplete or changed.",
         )
 
     if not 0 < len(files) <= _MAX_APPROVED_RESOURCE_ENTRIES:
@@ -4972,8 +4975,8 @@ class _CaseRuntimeAccess:
         self._active = False
         self._poisoned = False
         self._fixed_identity: tuple[object, ...] | None = None
-        self._image_inventory: tuple[Path, ...] = ()
-        self._using_image_inventory = False
+        self._exact_inventories: dict[WorkerOperationScope, tuple[Path, ...]] = {}
+        self._retained_inventory: tuple[Path, ...] = ()
 
     def bind(self, config: WindowsLaunchConfig) -> None:
         """Borrow only the same closed interpreter/code and recovery authority."""
@@ -4997,13 +5000,27 @@ class _CaseRuntimeAccess:
                 "Worker compositions do not share the same fixed runtime authority.",
             )
         if config.exact_runtime_files:
-            if self._image_inventory and self._image_inventory != config.exact_runtime_files:
+            bound = self._exact_inventories.setdefault(
+                config.operation_scope, config.exact_runtime_files
+            )
+            if bound != config.exact_runtime_files:
                 _reject(
                     WindowsLaunchErrorCode.CONFIGURATION_INVALID,
-                    "runtime_access.image_inventory",
-                    "Worker compositions do not share the same fixed image inventory.",
+                    "runtime_access.exact_inventory",
+                    "Worker compositions disagree on the fixed inventory for this scope.",
                 )
-            self._image_inventory = config.exact_runtime_files
+
+    def launch_inventory(self, config: WindowsLaunchConfig) -> tuple[Path, ...]:
+        """Keep an existing broad lease for structural export on this case."""
+
+        self._require_owner()
+        if (
+            config.operation_scope is WorkerOperationScope.PDF_EXPORT
+            and self._profile is not None
+            and not self._retained_inventory
+        ):
+            return ()
+        return config.exact_runtime_files
 
     @property
     def snapshot(self) -> RuntimeAccessSnapshot:
@@ -5020,7 +5037,7 @@ class _CaseRuntimeAccess:
             )
 
     def active_recovery_witness(
-        self, case_id: UUID, *, use_image_inventory: bool = False
+        self, case_id: UUID, *, exact_files: tuple[Path, ...] = ()
     ) -> _ActiveLeaseRecoveryWitness | None:
         self._require_owner()
         if self._active or self._case_id not in {None, case_id}:
@@ -5029,7 +5046,7 @@ class _CaseRuntimeAccess:
                 "runtime_access.case",
                 "Worker runtime access belongs to another active operation or case.",
             )
-        if self._profile is not None and self._using_image_inventory != use_image_inventory:
+        if self._profile is not None and self._retained_inventory != exact_files:
             # Revoke one exact inventory before creating a different profile and
             # grant. A failed release prevents any replacement or widening.
             self.retire()
@@ -5040,7 +5057,7 @@ class _CaseRuntimeAccess:
         if self._profile is not None:
             self._profile.access._last_published_entry = None
 
-    def acquire(self, case_id: UUID, *, use_image_inventory: bool = False) -> _AppContainerProfile:
+    def acquire(self, case_id: UUID, *, exact_files: tuple[Path, ...] = ()) -> _AppContainerProfile:
         self._require_owner()
         if self._active or self._case_id not in {None, case_id}:
             _reject(
@@ -5048,11 +5065,17 @@ class _CaseRuntimeAccess:
                 "runtime_access.case",
                 "Worker runtime access belongs to another active operation or case.",
             )
+        if self._profile is not None and self._retained_inventory != exact_files:
+            _reject(
+                WindowsLaunchErrorCode.CONFIGURATION_INVALID,
+                "runtime_access.exact_inventory",
+                "The retained worker runtime does not match the requested inventory.",
+            )
         self._case_id = case_id
         try:
             if self._profile is None:
                 self._profile = _AppContainerProfile.create(self._recovery_roots)
-                self._using_image_inventory = use_image_inventory
+                self._retained_inventory = exact_files
             elif self._profile._deleted:
                 _recreate_profile_storage(self._profile)
             self._active = True
@@ -5113,6 +5136,7 @@ class _CaseRuntimeAccess:
                     "Windows could not release retained worker runtime access.",
                 )
             self._profile = None
+            self._retained_inventory = ()
 
     def release_case(self) -> None:
         self.retire()
@@ -6796,8 +6820,11 @@ class WindowsProcessLauncher:
                 "A previous worker launch still requires deterministic cleanup.",
             )
         runtime_access = self._runtime_access
-        exact_files = self._config.exact_runtime_files
-        use_image_inventory = bool(exact_files)
+        exact_files = (
+            self._config.exact_runtime_files
+            if runtime_access is None
+            else runtime_access.launch_inventory(self._config)
+        )
         scope = phase_observer.current_scope()
         observe_retained = scope is not None and scope[1] is phase_observer.Role.PREVIEW
         if scope is not None and observe_retained:
@@ -6807,9 +6834,7 @@ class WindowsProcessLauncher:
         witness = (
             None
             if runtime_access is None
-            else runtime_access.active_recovery_witness(
-                request.case_id, use_image_inventory=use_image_inventory
-            )
+            else runtime_access.active_recovery_witness(request.case_id, exact_files=exact_files)
         )
         try:
             if witness is None:
@@ -6833,7 +6858,7 @@ class WindowsProcessLauncher:
         profile = (
             _AppContainerProfile.create(self._config.approved_recovery_roots)
             if runtime_access is None
-            else runtime_access.acquire(request.case_id, use_image_inventory=use_image_inventory)
+            else runtime_access.acquire(request.case_id, exact_files=exact_files)
         )
         job: _Job | None = None
         job_assigned = False
@@ -6849,9 +6874,13 @@ class WindowsProcessLauncher:
             if self._config.qpdf_executable is not None:
                 qpdf_executable = self._config.qpdf_executable
                 qpdf_resources = self._config.qpdf_access_resources
-                if runtime_access is None and not all(
-                    _has_effective_app_container_read_execute(path, profile.sid)
-                    for path in qpdf_resources
+                if (
+                    runtime_access is None
+                    and not exact_files
+                    and not all(
+                        _has_effective_app_container_read_execute(path, profile.sid)
+                        for path in qpdf_resources
+                    )
                 ):
                     grant_roots = (*grant_roots, qpdf_executable.parent)
             tesseract_resources: tuple[Path, ...] = ()
@@ -6905,7 +6934,7 @@ class WindowsProcessLauncher:
                     *qpdf_resources,
                     *tesseract_resources,
                 )
-                if runtime_access is not None
+                if runtime_access is not None or exact_files
                 else self._config.required_startup_resources
             )
             if scope is not None and observe_retained:
@@ -6916,7 +6945,11 @@ class WindowsProcessLauncher:
                     phase_observer.Event.RETAINED_INVENTORY_OK,
                     profile.access.inventory,
                 )
-            if runtime_access is None and self._config.qpdf_executable is not None:
+            if (
+                runtime_access is None
+                and not exact_files
+                and self._config.qpdf_executable is not None
+            ):
                 qpdf_executable = self._config.qpdf_executable
                 profile.ensure_read_execute(
                     (qpdf_executable.parent,),

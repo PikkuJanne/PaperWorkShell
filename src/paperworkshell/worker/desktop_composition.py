@@ -794,6 +794,7 @@ def create_pdf_export_worker_composition(
     *,
     heavy_operations: HeavyOperationCoordinator,
     runtime_access: RuntimeAccessAuthority | None = None,
+    exact_runtime_files: tuple[Path, ...] = (),
 ) -> PdfExportWorkerComposition:
     """Build a separate export-only client with explicit qpdf authority."""
 
@@ -803,7 +804,11 @@ def create_pdf_export_worker_composition(
             WorkerClientContext.CONFIGURATION,
         )
     _require_heavy_operations(heavy_operations, config.maximum_heavy_operation_concurrency)
-    launch_config = replace(config._launch_config, operation_scope=WorkerOperationScope.PDF_EXPORT)
+    launch_config = replace(
+        config._launch_config,
+        operation_scope=WorkerOperationScope.PDF_EXPORT,
+        exact_runtime_files=exact_runtime_files,
+    )
     launcher = (
         WindowsProcessLauncher(launch_config)
         if runtime_access is None

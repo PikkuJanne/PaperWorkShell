@@ -152,6 +152,24 @@ def _compose_with_fake_client(
     return composition, worker
 
 
+def test_exact_runtime_is_bound_only_to_the_pdf_export_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(composition_module, "WorkerClient", _FakeWorkerClient)
+    config = _config(tmp_path)
+    files = (config.python_executable, config.bootstrap_script, config.qpdf_executable)
+    composition = create_pdf_export_worker_composition(
+        config, heavy_operations=HeavyOperationCoordinator(1), exact_runtime_files=files
+    )
+    worker = cast(_FakeWorkerClient, cast(Any, composition)._worker)
+    launch = cast(Any, worker.launcher)._config
+    assert launch.operation_scope is WorkerOperationScope.PDF_EXPORT
+    assert launch.exact_runtime_files == files
+    assert launch.qpdf_executable == config.qpdf_executable
+    assert launch.tesseract_executable is None
+    assert config._launch_config.exact_runtime_files == ()
+
+
 def test_factory_builds_a_separate_export_only_client_and_broker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
