@@ -462,11 +462,15 @@ class _Thumbnails:
         timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
         cancellation: PreviewCancellationProbe | None = None,
         progress: PagePreviewProgressSink | None = None,
+        initial_image_preview: ImagePagePreviewResult | None = None,
     ) -> tuple[PagePreviewResult, ...]:
         self.requests = requests
         self.timeout_seen = timeout_seconds
         self.cancellation_seen = cancellation
         self.progress_seen = progress
+        if initial_image_preview is not None:
+            assert requests == (initial_image_preview.request,)
+            return (initial_image_preview,)
         return self.results
 
 

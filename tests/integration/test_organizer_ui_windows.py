@@ -119,8 +119,10 @@ class _EmptyPreviewService:
         timeout_seconds: float = DEFAULT_PAGE_PREVIEW_TIMEOUT_SECONDS,
         cancellation: PreviewCancellationProbe | None = None,
         progress: PagePreviewProgressSink | None = None,
+        initial_image_preview: ImagePagePreviewResult | None = None,
     ) -> tuple[PagePreviewResult, ...]:
         del requests, timeout_seconds, cancellation, progress
+        assert initial_image_preview is None
         return ()
 
 

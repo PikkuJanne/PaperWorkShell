@@ -3796,8 +3796,8 @@ class PaperWorkShellWindow(QMainWindow):
             self._announce("No synthetic phase receipt is ready.", assertive=True)
             return
         review = QMessageBox(self)
-        review.setWindowTitle("Review synthetic PNG phase receipt")
-        review.setText("Review the timing fields before saving this local engineering receipt.")
+        review.setWindowTitle(tr("Review synthetic PNG phase receipt"))
+        review.setText(tr("Review the timing fields before saving this local engineering receipt."))
         review.setDetailedText(receipt.decode("ascii"))
         review.setStandardButtons(
             QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel

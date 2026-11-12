@@ -73,7 +73,10 @@ def test_selection_after_close_request_cannot_restart_preview_queue() -> None:
         window._request_close_case()
         assert events == ["close"]
         window._page_view.setCurrentIndex(window._model.index(1, 0))
-        assert window._case_close_pending and not window._preview_refresh_timer.isActive()
+        assert (window._case_close_pending, window._preview_refresh_timer.isActive()) == (
+            True,
+            False,
+        )
         window._preview_refresh_timer.timeout.emit()
         assert events == ["close"]
         worker.state_changed.emit(OrganizerViewState.empty())
@@ -131,10 +134,13 @@ def test_close_acknowledgement_allows_recovery_after_backend_failure() -> None:
         window._preview_refresh_timer.stop()
         _application().processEvents()
         window._request_close_case()
-        assert not window._controls_enabled
+        assert (window._case_close_pending, window._controls_enabled) == (True, False)
         window._request_close_case()
         window._page_view.setCurrentIndex(window._model.index(1, 0))
-        assert window._case_close_pending and not window._preview_refresh_timer.isActive()
+        assert (window._case_close_pending, window._preview_refresh_timer.isActive()) == (
+            True,
+            False,
+        )
         window._preview_refresh_timer.timeout.emit()
         assert events == []
         worker.close_case()
