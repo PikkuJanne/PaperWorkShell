@@ -2713,28 +2713,6 @@ class PaperWorkShellWindow(QMainWindow):
                 tr("Page quality review status. {value1}", value1=quality_message)
             )
             self._quality_summary.setAccessibleDescription(quality_message)
-        self._progress.setVisible(True)
-        self._progress.setRange(0, progress.total)
-        self._progress.setValue(progress.completed)
-        self._progress.setFormat(
-            tr(
-                "{value1}: {value2} — %v of %m",
-                value1=tr(progress.operation),
-                value2=tr(progress.phase),
-            )
-        )
-        self._progress.setAccessibleDescription(
-            tr(
-                "{value1} {value2}, {value3} of {value4}.",
-                value1=tr(progress.operation),
-                value2=tr(progress.phase),
-                value3=progress.completed,
-                value4=progress.total,
-            )
-        )
-        cancelable = progress.cancelable and not active.cancellation.cancelled()
-        self._cancel_button.setVisible(progress.cancelable)
-        self._cancel_button.setEnabled(cancelable)
         message = tr(
             "{value1} {value2}: {value3} of {value4}.",
             value1=tr(progress.operation),
@@ -2743,11 +2721,34 @@ class PaperWorkShellWindow(QMainWindow):
             value4=progress.total,
         )
         if progress.total == 1 and progress.completed == 0:
-            set_static_busy(self._progress)
             message = tr(
                 "{value1}: {value2}…", value1=tr(progress.operation), value2=tr(progress.phase)
             )
             self._progress.setAccessibleDescription(message)
+            set_static_busy(self._progress)
+        else:
+            self._progress.setAccessibleDescription(
+                tr(
+                    "{value1} {value2}, {value3} of {value4}.",
+                    value1=tr(progress.operation),
+                    value2=tr(progress.phase),
+                    value3=progress.completed,
+                    value4=progress.total,
+                )
+            )
+            self._progress.setFormat(
+                tr(
+                    "{value1}: {value2} — %v of %m",
+                    value1=tr(progress.operation),
+                    value2=tr(progress.phase),
+                )
+            )
+            self._progress.setRange(0, progress.total)
+            self._progress.setValue(progress.completed)
+        self._progress.setVisible(True)
+        cancelable = progress.cancelable and not active.cancellation.cancelled()
+        self._cancel_button.setVisible(progress.cancelable)
+        self._cancel_button.setEnabled(cancelable)
         self._set_status_text(message)
         self._announcer.progress(
             message,
@@ -2791,7 +2792,7 @@ class PaperWorkShellWindow(QMainWindow):
             )
         ):
             return
-        if active.kind is _LongOperationKind.PREVIEW and self._pending_failure_focus == "preview":
+        if active.kind is _LongOperationKind.PREVIEW and not self._preview_batch_complete:
             return
         if active.kind is _LongOperationKind.QUALITY and self._pending_failure_focus == "quality":
             return
@@ -2864,9 +2865,11 @@ class PaperWorkShellWindow(QMainWindow):
         active = self._active_operation
         if active is None or active.operation_id != operation_id:
             return
-        self._progress.setVisible(True)
+        message = tr("{value1} starting", value1=tr(operation_name))
+        self._progress.setAccessibleDescription(message)
         set_static_busy(self._progress)
-        self._progress.setFormat(tr("{value1} starting", value1=tr(operation_name)))
+        self._progress.setFormat(message)
+        self._progress.setVisible(True)
 
     @Slot(int, str)
     def _operation_cancelled(self, operation_id: int, message: str) -> None:
@@ -7209,9 +7212,11 @@ class PaperWorkShellWindow(QMainWindow):
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.ACTIVE
             self._update_organizer_guidance()
-        self._progress.setVisible(True)
+        message = tr("{value1} queued", value1=kind.value)
+        self._progress.setAccessibleDescription(message)
         set_static_busy(self._progress)
-        self._progress.setFormat(tr("{value1} queued", value1=kind.value))
+        self._progress.setFormat(message)
+        self._progress.setVisible(True)
         self._cancel_button.setVisible(True)
         self._cancel_button.setEnabled(True)
         self._update_import_availability()

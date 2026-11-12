@@ -101,6 +101,22 @@ def test_static_unknown_progress_replaces_previous_percentage_without_a_marquee(
         progress.deleteLater()
 
 
+def test_static_progress_reset_clears_old_completion_before_value_changes() -> None:
+    _app()
+    progress = QProgressBar()
+    progress.setRange(0, 1)
+    progress.setValue(1)
+    progress.setFormat("Preview: complete — %v of %m")
+    observed: list[str] = []
+    progress.valueChanged.connect(lambda _value: observed.append(progress.text()))
+
+    try:
+        set_static_busy(progress)
+        assert observed == ["Working…"]
+    finally:
+        progress.deleteLater()
+
+
 def test_enlarged_footer_keeps_every_button_inside_its_allocated_space_after_resize() -> None:
     application = _app()
     dialog = QDialog()

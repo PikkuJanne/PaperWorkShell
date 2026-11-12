@@ -32,6 +32,7 @@ from paperworkshell.app.page_previews import (
     PagePreviewError,
     PagePreviewErrorCode,
     PagePreviewProgress,
+    PagePreviewProgressPhase,
 )
 from paperworkshell.app.portal_constraints import (
     ConstraintEditorError,
@@ -2709,6 +2710,9 @@ class OrganizerBackendWorker(QObject):
         )
 
     def _thumbnail_progress(self, operation_id: int, progress: PagePreviewProgress) -> None:
+        # The organizer announces completion after it accepts the current pixels.
+        if progress.phase is PagePreviewProgressPhase.COMPLETE:
+            return
         self.progress_changed.emit(
             UiProgress(
                 operation="Preview",

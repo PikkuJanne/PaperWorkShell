@@ -14,6 +14,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
+from paperworkshell.app.page_previews import PagePreviewProgress, PagePreviewProgressPhase
 from paperworkshell.domain.image_pages import (
     ImageAlphaNormalizationPolicy,
     ImageExifOrientation,
@@ -196,6 +197,28 @@ def test_window_rejects_a_mixed_result_sequence_not_matching_requested_page_orde
             "PWS_UI_PREVIEW_RESULT_INVALID: PaperWorkShell could not display the preview safely. "
             "Retry the selected preview."
         )
+
+
+def test_preview_completion_waits_for_accepted_pixels() -> None:
+    with _window() as window:
+        operation_id, generation = _start_mixed_preview(window)
+        window._worker._thumbnail_progress(
+            operation_id, PagePreviewProgress(CASE_ID, PagePreviewProgressPhase.VALIDATING, 1, 2)
+        )
+        window._worker._thumbnail_progress(
+            operation_id, PagePreviewProgress(CASE_ID, PagePreviewProgressPhase.COMPLETE, 2, 2)
+        )
+        assert window._progress.text() == "Preview: validating — 1 of 2"
+        assert window._model.preview_state(PDF_PAGE_ID) is PreviewState.LOADING
+
+        completion = "Preview update complete for 2 pages."
+        window._worker.operation_status_changed.emit(operation_id, completion)
+        assert window._status_label.text() != completion
+
+        window._thumbnails_ready(operation_id, generation, (_pdf_result(), _image_result()))
+        assert window._model.preview_state(PDF_PAGE_ID) is PreviewState.READY
+        window._worker.operation_status_changed.emit(operation_id, completion)
+        assert window._status_label.text() == completion
 
 
 def test_selected_rotation_queues_save_then_preview_without_debounce_delays() -> None:

@@ -396,9 +396,10 @@ class _FooterTextWrap(QObject):
 
 def set_static_busy(progress: QProgressBar) -> None:
     """Keep unknown-length work perceivable without an animated busy marquee."""
+    # A value change can repaint synchronously using the current format.
+    progress.setFormat(tr("Working…"))
     progress.setRange(0, 1)
     progress.setValue(0)
-    progress.setFormat(tr("Working…"))
 
 
 class WrappingActionLayout(QLayout):
