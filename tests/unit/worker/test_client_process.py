@@ -6,13 +6,16 @@ import io
 import threading
 import time
 from collections.abc import Buffer
+from types import SimpleNamespace
 
 import pytest
 
+from paperworkshell.worker.client import process as process_module
 from paperworkshell.worker.client.errors import WorkerClientError, WorkerClientErrorCode
 from paperworkshell.worker.client.process import (
     MAXIMUM_BUFFERED_TRANSPORT_PAYLOADS,
     MAXIMUM_BUFFERED_TRANSPORT_WRITES,
+    TransportReceive,
     TransportReceiveKind,
     create_worker_transport,
 )
@@ -29,6 +32,26 @@ class BlockingReader:
 
     def close(self) -> None:
         self._closed.set()
+
+
+class GatedFrameReader(BlockingReader):
+    def __init__(self, frame: bytes) -> None:
+        super().__init__()
+        self._frame = io.BytesIO(frame)
+        self.allow_frame = threading.Event()
+        self.waiting_for_close = threading.Event()
+
+    def read(self, size: int, /) -> bytes:
+        self.allow_frame.wait()
+        data = self._frame.read(size)
+        if data:
+            return data
+        self.waiting_for_close.set()
+        return super().read(size)
+
+    def close(self) -> None:
+        super().close()
+        self.allow_frame.set()
 
 
 class FailingWriter:
@@ -133,6 +156,64 @@ def test_default_transport_reads_one_frame_then_reports_clean_close() -> None:
     assert closed.kind is TransportReceiveKind.CLOSED
     assert received.payload not in repr(received).encode("utf-8")
     transport.close()
+
+
+def test_inbound_frame_wakes_receiver_behind_the_waiting_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writer_parked = threading.Event()
+    receiver_parked = threading.Event()
+    receiver_notified = threading.Event()
+
+    class ObservedCondition(threading.Condition):
+        def wait(self, timeout: float | None = None) -> bool:
+            (writer_parked if timeout is None else receiver_parked).set()
+            notified = super().wait(timeout)
+            if timeout is not None and notified:
+                receiver_notified.set()
+            return notified
+
+    condition = ObservedCondition()
+    monkeypatch.setattr(
+        process_module,
+        "threading",
+        SimpleNamespace(
+            Condition=lambda: condition,
+            Lock=threading.Lock,
+            Thread=threading.Thread,
+            current_thread=threading.current_thread,
+        ),
+    )
+    payload = b"incoming"
+    reader = GatedFrameReader(encode_frame(payload))
+    writer = io.BytesIO()
+    transport = create_worker_transport(reader, writer)
+    received: list[TransportReceive] = []
+    completed = threading.Event()
+
+    def receive() -> None:
+        received.append(transport.receive_payload(10.0))
+        completed.set()
+
+    receiver = threading.Thread(target=receive)
+    try:
+        assert writer_parked.wait(3.0)
+        receiver.start()
+        assert receiver_parked.wait(3.0)
+        with condition:
+            reader.allow_frame.set()
+        assert reader.waiting_for_close.wait(3.0)
+        assert completed.wait(3.0), "A queued frame left the receiver waiting"
+        assert receiver_notified.is_set()
+        assert received == [TransportReceive(TransportReceiveKind.PAYLOAD, payload)]
+        assert writer.getvalue() == b""
+    finally:
+        try:
+            transport.close()
+        finally:
+            if receiver.ident is not None:
+                receiver.join(3.0)
+                assert not receiver.is_alive()
 
 
 def test_default_transport_writes_canonical_frame_and_can_time_out() -> None:

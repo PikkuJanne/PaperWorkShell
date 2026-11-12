@@ -404,7 +404,8 @@ class _FramedWorkerTransport:
                     self._condition.notify_all()
                     return
                 self._payloads.append(payload)
-                self._condition.notify()
+                # The idle writer and receiver wait on different predicates.
+                self._condition.notify_all()
 
     def _write_loop(self) -> None:
         while True:

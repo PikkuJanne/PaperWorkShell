@@ -346,6 +346,11 @@ writes that make bounded forward progress and does not retry a zero/blocked writ
 Bounded inbound and outbound queues prevent an unconsumed peer from creating unbounded in-process
 storage; a queue or writer failure faults the transport and generation.
 
+The reader wakes both condition waiters after admitting an inbound frame.
+The receiver can consume the new frame immediately. The writer checks its
+outbound queue again and waits if it is empty. This preserves FIFO ordering
+and the existing transport deadlines and queue limits.
+
 Framing validity is not message validity. Every payload passes the strict protocol-v1 codec and
 `ProtocolPeer` before dispatch. Binding covers capability, session, worker instance, case,
 direction, sequence, message/request/operation IDs, negotiated capability, and conversation state.
