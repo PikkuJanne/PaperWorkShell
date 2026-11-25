@@ -1867,6 +1867,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_document_stack.setCurrentWidget(
             self._trace_arrangement if lens == "arrange" else self._trace_document
         )
+        self._selection_summary.setVisible(lens != "exported")
         self._trace_zoom.setVisible(lens not in {"arrange", "exported"})
         self._rotate_button.setVisible(lens in {"planned", "arrange"})
         for button in self._trace_arrangement_actions:

@@ -126,10 +126,12 @@ def test_saved_export_requires_explicit_reselection_and_rechecks_before_opening(
         exported = window._trace_lens_buttons["exported"]
         choose = window._trace_choose_pdf_button
         open_pdf = window._trace_open_pdf_button
+        assert window._selection_summary.isVisible()
         QTest.keyClick(exported, Qt.Key.Key_Space)
         initial = window._trace_document.accessibleDescription()
         assert "Saved PDF export" in initial
         assert "SHA-256" in initial
+        assert not window._selection_summary.isVisible()
         assert choose.isVisible() and not open_pdf.isVisible() and not checks
         pane = window._trace_recipe_pane
         assert "Saved export checks" in pane._result_status.text()
@@ -183,6 +185,8 @@ def test_saved_export_requires_explicit_reselection_and_rechecks_before_opening(
         assert opened == [chosen]
         assert window._trace_document.accessibleDescription() == initial
         assert choose.isVisible() and not open_pdf.isVisible()
+        QTest.keyClick(window._trace_lens_buttons["planned"], Qt.Key.Key_Space)
+        assert window._selection_summary.isVisible()
     finally:
         window._allow_close = True
         window.close()
