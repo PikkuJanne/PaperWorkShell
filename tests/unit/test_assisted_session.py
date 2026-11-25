@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout
@@ -311,7 +311,9 @@ def test_show_event_filter_hides_only_owned_content_not_the_unlock_prompt() -> N
 
 
 @pytest.mark.parametrize("surface", ("case_chooser", "active_assistance"))
-def test_assisted_actions_follow_the_visual_order_in_the_main_keyboard_chain(surface: str) -> None:
+def test_assisted_actions_follow_the_visual_order_in_the_main_keyboard_chain(
+    surface: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     with _window() as (window, commands, worker):
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         worker.initialized.emit()
@@ -323,7 +325,6 @@ def test_assisted_actions_follow_the_visual_order_in_the_main_keyboard_chain(sur
             chain = (
                 window._import_button,
                 window._pages_pdf_export_button,
-                window._rename_case_button,
                 window._assisted_lock_button,
                 window._close_case_button,
             )
@@ -339,6 +340,25 @@ def test_assisted_actions_follow_the_visual_order_in_the_main_keyboard_chain(sur
         for before, action in zip(chain, chain[1:], strict=False):
             QTest.keyClick(before, Qt.Key.Key_Tab)
             assert action.hasFocus()
+
+        if surface == "active_assistance":
+            add = window.findChild(QPushButton, "traceWorkflow-add")
+            assert add is not None and add.isVisible() and add.isEnabled()
+            menu = add.menu()
+            assert menu is not None
+            renamed: list[str] = []
+            commands.rename_case_requested.disconnect(worker.rename_case)
+            commands.rename_case_requested.connect(renamed.append)
+            monkeypatch.setattr(window, "_ask_case_name", lambda *_args: "Synthetic assisted case")
+            menu.popup(add.mapToGlobal(QPoint(0, add.height())))
+            _application().processEvents()
+            assert menu.isVisible()
+            rename = next(action for action in menu.actions() if action.text() == "Rename case…")
+            assert rename.isEnabled()
+            menu.setActiveAction(rename)
+            QTest.keyClick(menu, Qt.Key.Key_Return)
+            _application().processEvents()
+            assert renamed == ["Synthetic assisted case"]
 
 
 def test_periodic_locked_checkpoints_do_not_revoke_an_inflight_unlock(

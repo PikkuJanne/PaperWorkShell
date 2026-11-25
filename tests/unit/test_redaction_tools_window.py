@@ -147,7 +147,10 @@ def test_window_exposes_distinct_action_and_excludes_overlapping_mutations_until
         assert not button.isEnabled()
         worker.redaction_tools_cancelled.emit(cancellations[0][0])
         _application().processEvents()
-        assert button.isEnabled() and button.hasFocus()
+        assert button.isEnabled()
+        route = window.findChild(QPushButton, "traceWorkflow-protect")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
         assert "No information has been removed" in window._status_label.text()
 
 

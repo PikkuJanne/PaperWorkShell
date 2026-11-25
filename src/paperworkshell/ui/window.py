@@ -8710,18 +8710,12 @@ class PaperWorkShellWindow(QMainWindow):
             return
         elif target == "signature_image":
             self._update_page_actions()
-            if (
-                self._place_signature_image_button.isVisible()
-                and self._place_signature_image_button.isEnabled()
-            ):
+            if self._place_signature_image_button.isEnabled():
                 QTimer.singleShot(0, self._focus_signature_image_button_after_dialog)
                 return
         elif target == "signature_image_delete":
             self._update_page_actions()
-            if (
-                self._remove_signature_image_button.isVisible()
-                and self._remove_signature_image_button.isEnabled()
-            ):
+            if self._remove_signature_image_button.isEnabled():
                 QTimer.singleShot(0, self._focus_remove_signature_image_button_after_dialog)
                 return
         if self._error_label.isVisible():

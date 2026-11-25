@@ -149,5 +149,14 @@ focus, editor recoverability, RTL, review and export controls, and scaled layout
 also displays the actual PDF destination during export and distinguishes unsaved changes after
 a failed save from a save in progress.
 
+The first installer replaced V12 through the supported interactive Keep cases route in PWS-Test.
+All 840 retained entries and 3,210 installed payload members matched. The standard-account Start
+shortcut opened TRACE. The native chooser capture showed white text on a lime row despite the
+palette's requested dark selection text. The next candidate specifies the approved dark row and
+lime edge in the Qt item styling. Its native check will verify selected text legibility and focus.
+The source rehearsal also confirmed that two signature cancellation branches skipped focus
+restoration because the backing action was hidden. The successor targets the available Fill menu.
+The installer-focused verification proceeds with these narrow corrections together.
+
 The authorized origin is public. This local branch includes private candidate ancestry,
 so the private engineering work stays in the dedicated checkout.

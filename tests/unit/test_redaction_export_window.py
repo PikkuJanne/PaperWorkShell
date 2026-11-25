@@ -103,7 +103,9 @@ def test_normal_export_failure_waits_for_terminal_operation_then_opens_unknown_r
         _application().processEvents()
         assert cast(object, window._redaction_export_dialog) is None
         assert window._redaction_tools_button.isEnabled()
-        assert window._redaction_tools_button.hasFocus()
+        route = window.findChild(QPushButton, "traceWorkflow-protect")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_review_marks_selects_current_affected_page_and_never_exports() -> None:

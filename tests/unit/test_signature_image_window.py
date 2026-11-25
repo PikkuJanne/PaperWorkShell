@@ -330,7 +330,10 @@ def test_window_cancel_releases_draft_before_restoring_focus(monkeypatch: Monkey
         button = _button(window, "placeSignatureImageButton")
         assert window._signature_image_dialog is None
         assert window._signature_image_source_path is None
-        assert button.isEnabled() and button.hasFocus()
+        assert button.isEnabled()
+        route = window.findChild(QPushButton, "traceWorkflow-fill")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_cancelled_in_flight_placement_closes_disposed_draft_without_retry(
@@ -406,7 +409,10 @@ def test_cancelled_in_flight_placement_closes_disposed_draft_without_retry(
         worker.operation_finished.emit(place_id)
         _application().processEvents()
         place_button = _button(window, "placeSignatureImageButton")
-        assert place_button.isEnabled() and place_button.hasFocus()
+        assert place_button.isEnabled()
+        route = window.findChild(QPushButton, "traceWorkflow-fill")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_window_routes_explicit_remove_if_unused_policy() -> None:
@@ -583,7 +589,10 @@ def test_window_precommit_delete_cancellation_closes_without_retry() -> None:
         worker.operation_finished.emit(delete_id)
         _application().processEvents()
         remove = _button(window, "removeSignatureImageButton")
-        assert remove.isEnabled() and remove.hasFocus()
+        assert remove.isEnabled()
+        route = window.findChild(QPushButton, "traceWorkflow-fill")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_worker_bridge_correlates_prepare_commit_list_delete_and_cancel() -> None:

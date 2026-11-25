@@ -191,7 +191,9 @@ def test_window_keyboard_cancel_waits_for_backend_before_restoring_focus() -> No
         worker.portal_constraints_cancelled.emit(cancel_operation_id)
         _application().processEvents()
         assert button.isEnabled()
-        assert button.hasFocus()
+        route = window.findChild(QPushButton, "traceWorkflow-check")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_window_apply_closes_only_after_correlated_saved_state() -> None:
@@ -226,7 +228,10 @@ def test_window_apply_closes_only_after_correlated_saved_state() -> None:
 
         button = window.findChild(QPushButton, "portalConstraintsButton")
         assert window._portal_constraints_dialog is None
-        assert button is not None and button.isEnabled() and button.hasFocus()
+        assert button is not None and button.isEnabled()
+        route = window.findChild(QPushButton, "traceWorkflow-check")
+        assert route is not None and route.isVisible() and route.isEnabled()
+        assert route.hasFocus()
 
 
 def test_window_aborts_forged_constraint_announcement_without_rendering_it() -> None:

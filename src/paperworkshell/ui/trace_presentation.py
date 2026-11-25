@@ -15,6 +15,7 @@ PANEL = "#141A1E"
 RAISED = "#1C2529"
 STAGE = "#1A2225"
 RULE = "#354347"
+SELECTION = "#232D26"
 INPUT_BORDER = "#61706D"
 TEXT = "#EAF0E7"
 MUTED = "#A8B5B0"
@@ -34,6 +35,10 @@ QLabel[traceRole="brand"] {{ color: {LIME}; font-weight: 700; }}
 QLabel[traceRole="attention"] {{ color: {AMBER}; }}
 QLabel[traceRole="error"] {{ color: {ERROR}; }}
 #traceDocumentStage, #traceDocumentStage > QWidget > QWidget {{ background: {STAGE}; }}
+QAbstractItemView {{ selection-background-color: {SELECTION}; selection-color: {TEXT}; }}
+QAbstractItemView::item:selected {{
+  background-color: {SELECTION}; color: {TEXT}; border-left: 3px solid {LIME};
+}}
 QPushButton, QToolButton {{
   background: {PANEL}; color: {TEXT}; border: 2px solid {INPUT_BORDER};
   border-radius: 3px; padding: 2px 8px; min-height: 30px;
@@ -133,6 +138,10 @@ class _TracePresentation(QObject):
         native = app.style().standardPalette()
         if use_trace:
             app.setPalette(trace_palette(native))
+            font = app.font()
+            if 0 < font.pointSizeF() < 10.5:
+                font.setPointSizeF(10.5)
+                app.setFont(font)
         elif previous is not None and app.palette() == trace_palette(native):
             app.setPalette(native)
         app.setStyleSheet(base_style + (TRACE_STYLE if use_trace else ""))
