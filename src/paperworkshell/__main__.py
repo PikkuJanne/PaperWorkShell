@@ -1388,6 +1388,7 @@ def _build_backend(
             startup_recovery=startup_recovery,
             assisted_use=assisted_use,
             post_export_deletion=deletion,
+            trace_history=WindowsPdfExportHistoryRepository(manager),
             pages_pdf_export=_LazyPagesPdfExportService(
                 manager,
                 source_store,

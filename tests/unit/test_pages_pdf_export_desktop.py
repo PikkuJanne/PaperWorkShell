@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import sys
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Never
 from uuid import UUID
 
 import pytest
@@ -13,6 +16,7 @@ from PySide6.QtWidgets import QFileDialog, QPushButton
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPagesPdfExportOutcome
 from paperworkshell.app.pdf_export import PdfExportProgressSink
+from paperworkshell.app.trace_results import TraceSavedExportSelection
 from paperworkshell.domain.pdf_export import (
     IMAGE_PDF_EXPORT_PROFILE,
     PdfExportError,
@@ -25,9 +29,13 @@ from paperworkshell.domain.pdf_export import (
     build_pdf_export_plan,
 )
 from paperworkshell.domain.pdf_export_history import (
+    PdfExportHistoryDocument,
+    PdfExportHistorySnapshot,
     build_pdf_export_history_record_for_commit,
     build_pdf_export_history_retry_receipt,
+    canonical_pdf_export_history_bytes,
 )
+from paperworkshell.domain.trace_recipe import TraceOutputStatus
 from paperworkshell.ui.backend import (
     OperationCancellation,
     OrganizerBackendCommands,
@@ -127,6 +135,86 @@ def test_pages_pdf_export_flushes_rotation_and_reloads_history_before_more_edits
     assert exporter.repository.save_calls == 2
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows file identity verification")
+def test_reopened_trace_receipt_checks_the_selected_pdf_bytes(tmp_path: Path) -> None:
+    source = Path("tests/fixtures/synthetic/v1/pdf/born-digital.pdf")
+    original = source.read_bytes()
+    sha256 = hashlib.sha256(original).hexdigest()
+    plan = build_pdf_export_plan(_snapshot(_document(page_count=1)))
+    report = PdfExportVerificationReport.for_verified_plan(
+        plan, output_sha256=sha256, output_byte_size=len(original)
+    )
+    record = build_pdf_export_history_record_for_commit(
+        plan,
+        export_id=UUID("f0000000-0000-4000-8000-000000000002"),
+        report=report,
+        recorded_at=datetime(2026, 9, 30, tzinfo=UTC),
+    )
+    history_document = PdfExportHistoryDocument((record,))
+    history_payload = canonical_pdf_export_history_bytes(history_document)
+
+    class RetainedHistory:
+        def load(self, case_id: UUID) -> PdfExportHistorySnapshot:
+            assert case_id == CASE_ID
+            digest = hashlib.sha256(history_payload).hexdigest()
+            return PdfExportHistorySnapshot(history_document, digest, "d" * 64)
+
+        def append(self, case_id: UUID, record: object) -> Never:
+            pytest.fail("Reopening and inspecting must not modify history")
+
+    document = _document(page_count=2)
+    document["revision"] = 2
+    document["export_history"] = {
+        "storage_name": "export-history.json",
+        "entries": [record.manifest_reference],
+    }
+    repository = _Repository(document)
+    backend = OrganizerBackend(
+        _Lifecycle(repository),
+        repository,
+        _SourceIngest(repository),
+        _Thumbnails(),
+        trace_history=RetainedHistory(),
+    )
+    commands = OrganizerBackendCommands()
+    worker = OrganizerBackendWorker(lambda: backend)
+    commands.connect_worker(worker)
+    worker.initialize()
+    backend.open_case(CASE_ID)
+    backend.close_case()
+    reopened = backend.open_case(CASE_ID)
+    receipt = reopened.trace_saved_export
+    assert receipt is not None
+    assert len(reopened.pages) == 2
+    assert receipt.page_count == 1
+    assert backend.rotate_clockwise(PAGE_IDS[0]).trace_saved_export == receipt
+
+    observed: list[tuple[int, object, TraceOutputStatus]] = []
+    worker.trace_export_inspected.connect(lambda *result: observed.append(result))
+    selected_path = tmp_path / "Selected.PDF"
+    selection = TraceSavedExportSelection(receipt, selected_path)
+    commands.trace_export_inspect_requested.emit(30, selection, OperationCancellation())
+    assert observed[-1] == (30, selection, TraceOutputStatus.MISSING)
+
+    selected_path.write_bytes(b"!" + original[1:])
+    commands.trace_export_inspect_requested.emit(31, selection, OperationCancellation())
+    assert observed[-1] == (31, selection, TraceOutputStatus.CHANGED)
+
+    selected_path.write_bytes(original)
+    commands.trace_export_inspect_requested.emit(32, selection, OperationCancellation())
+    assert observed[-1] == (32, selection, TraceOutputStatus.PRESENT)
+
+    unsafe_name = selected_path.with_suffix(".exe")
+    unsafe_name.write_bytes(original)
+    unsupported = TraceSavedExportSelection(receipt, unsafe_name)
+    commands.trace_export_inspect_requested.emit(33, unsupported, OperationCancellation())
+    assert observed[-1] == (33, unsupported, TraceOutputStatus.CHANGED)
+
+    backend.close_case()
+    commands.trace_export_inspect_requested.emit(34, selection, OperationCancellation())
+    assert observed[-1] == (34, selection, TraceOutputStatus.UNAVAILABLE)
+
+
 def test_saved_pdf_refresh_failure_requires_reopen_without_retrying_the_export() -> None:
     backend, exporter = _backend()
     exporter.fail_refresh = True
@@ -219,7 +307,7 @@ def test_pages_pdf_export_button_is_keyboard_reachable_cancelable_and_retryable(
         )
         button = window.findChild(QPushButton, "pagesPdfExportButton")
         assert button is not None and button.isEnabled()
-        assert button.accessibleName() == "Export PDF…"
+        assert button.accessibleName() == "Export 1-page PDF…"
         _press(button)
         assert len(requests) == 1
         assert not window._import_button.isEnabled()

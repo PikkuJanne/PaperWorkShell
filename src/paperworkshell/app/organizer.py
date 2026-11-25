@@ -99,6 +99,7 @@ from paperworkshell.app.source_ingest import (
 from paperworkshell.app.source_ingest import (
     ProgressSink as SourceProgressSink,
 )
+from paperworkshell.app.trace_results import TraceSavedExportEvidence, latest_trace_saved_export
 from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import AssistedUseErrorCode, reject_assisted_use
 from paperworkshell.domain.case_lifecycle import (
@@ -160,6 +161,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcome,
     reject_pdf_export,
 )
+from paperworkshell.domain.pdf_export_history import PdfExportHistoryRepository
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest, PdfThumbnailResult
 from paperworkshell.domain.post_export_deletion import (
@@ -414,6 +416,7 @@ class OrganizerViewState:
     removal_page_ids: tuple[UUID, ...] = ()
     case_name: str = field(default="", repr=False)
     trace_plan: TracePlan | None = field(default=None, repr=False, compare=False)
+    trace_saved_export: TraceSavedExportEvidence | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if require_case_name(self.case_name, allow_empty=True) != self.case_name:
@@ -440,11 +443,17 @@ class OrganizerViewState:
                 or self.removal_page_ids
                 or any(flags)
                 or self.trace_plan is not None
+                or self.trace_saved_export is not None
             ):
                 reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.empty_state")
             return
         if self.trace_plan is not None and type(self.trace_plan) is not TracePlan:
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.trace_plan")
+        if self.trace_saved_export is not None and (
+            type(self.trace_saved_export) is not TraceSavedExportEvidence
+            or self.trace_saved_export.case_id != self.case_id
+        ):
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.trace_export")
         if type(self.case_id) is not UUID or self.case_id.version != 4:
             reject_page_operation(PageOperationErrorCode.IDENTIFIER_INVALID, "organizer.case_id")
         if (
@@ -670,6 +679,7 @@ class _OrganizerSession:
     history: PageCommandHistory
     autosave: ManifestAutosaveService
     load_status: ManifestLoadStatus
+    trace_saved_export: TraceSavedExportEvidence | None = field(default=None, repr=False)
     pending_case_name: str | None = field(default=None, repr=False)
     initial_image_preview: _InitialImagePreview | None = field(default=None, repr=False)
 
@@ -743,6 +753,7 @@ class OrganizerBackend:
         "_source_ingest",
         "_startup_recovery",
         "_thumbnails",
+        "_trace_history",
         "_utc_now",
     )
 
@@ -766,6 +777,7 @@ class OrganizerBackend:
         removal_pdf_export: _RemovalPdfExportPort | None = None,
         assisted_use: AssistedUseService | None = None,
         post_export_deletion: PostExportDeletionService | None = None,
+        trace_history: PdfExportHistoryRepository | None = None,
     ) -> None:
         if not callable(close_resources) or not callable(release_case_resources):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.resources")
@@ -845,6 +857,7 @@ class OrganizerBackend:
         self._package_workflow = package_workflow
         self._post_export_deletion = post_export_deletion
         self._pages_pdf_export = pages_pdf_export
+        self._trace_history = trace_history
         self._removal_pdf_export = removal_pdf_export
         self._export_reopen_required = False
         self._utc_now = checklist.utc_now if checklist is not None else lambda: datetime.now(UTC)
@@ -1007,7 +1020,7 @@ class OrganizerBackend:
             self._repository.load(session.snapshot.case_id),
             session.snapshot.case_id,
         )
-        replacement = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
+        replacement = self._session_from_loaded(loaded)
         session.autosave.close()
         self._session = replacement
         return self.state
@@ -1157,10 +1170,8 @@ class OrganizerBackend:
                 review.signature_review,
                 SignedSourceConfirmationChoice.CREATE_UNSIGNED_DERIVATIVE,
             )
-            replacement = _session_from_load(
-                self._repository,
+            replacement = self._session_from_loaded(
                 ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
-                utc_now=self._utc_now,
             )
             session.autosave.close()
             self._session = replacement
@@ -1213,7 +1224,7 @@ class OrganizerBackend:
             )
             if loaded.snapshot.revision < session.snapshot.revision:
                 reject_pdf_export(PdfExportErrorCode.OUTCOME_INVALID, "export.organizer_revision")
-            replacement = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
+            replacement = self._session_from_loaded(loaded)
             state = _view_state(replacement)
         except BaseException:
             return OrganizerPagesPdfExportOutcome(outcome, _view_state(session), True, report)
@@ -1500,10 +1511,8 @@ class OrganizerBackend:
             # Rebuild autosave as well as history: the old coordinator may hold
             # the previous saved revision. This occurs before any output writes,
             # so a refresh failure cannot hide a committed package outcome.
-            replacement = _session_from_load(
-                self._repository,
+            replacement = self._session_from_loaded(
                 ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
-                utc_now=self._utc_now,
             )
             session.autosave.close()
             self._session = replacement
@@ -1598,10 +1607,8 @@ class OrganizerBackend:
         require_redaction_export_allowed(session.snapshot.document)
 
         def consent_saved(snapshot: ManifestSnapshot) -> None:
-            replacement = _session_from_load(
-                self._repository,
+            replacement = self._session_from_loaded(
                 ManifestLoadResult(ManifestLoadStatus.CURRENT, snapshot),
-                utc_now=self._utc_now,
             )
             session.autosave.close()
             self._session = replacement
@@ -2493,11 +2500,7 @@ class OrganizerBackend:
                 session.snapshot.case_id,
             )
             _require_committed_import(loaded.snapshot, result)
-            replacement = _session_from_load(
-                self._repository,
-                loaded,
-                utc_now=self._utc_now,
-            )
+            replacement = self._session_from_loaded(loaded)
             refreshed_state = _view_state(replacement)
             if (
                 initial_preview is not None
@@ -2541,11 +2544,7 @@ class OrganizerBackend:
                 session.snapshot.case_id,
             )
             _require_committed_signature_image(loaded.snapshot, result)
-            replacement = _session_from_load(
-                self._repository,
-                loaded,
-                utc_now=self._utc_now,
-            )
+            replacement = self._session_from_loaded(loaded)
             refreshed_state = _view_state(replacement)
         except BaseException:
             return OrganizerSignatureImagePlacementOutcome(
@@ -2604,7 +2603,19 @@ class OrganizerBackend:
 
     def _load_session(self, case_id: UUID) -> _OrganizerSession:
         loaded = _require_load_result(self._repository.load(case_id), case_id)
-        return _session_from_load(self._repository, loaded, utc_now=self._utc_now)
+        return self._session_from_loaded(loaded)
+
+    def _session_from_loaded(self, loaded: ManifestLoadResult) -> _OrganizerSession:
+        session = _session_from_load(self._repository, loaded, utc_now=self._utc_now)
+        previous = self._session
+        if previous is not None:
+            # Preserve opening evidence through ordinary editor and import refreshes.
+            session.trace_saved_export = previous.trace_saved_export
+        elif self._trace_history is not None:
+            session.trace_saved_export = latest_trace_saved_export(
+                loaded.snapshot, self._trace_history
+            )
+        return session
 
     def _require_session(self, *, allow_locked: bool = False) -> _OrganizerSession:
         if self._export_reopen_required:
@@ -2918,6 +2929,7 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
             page_id for page_id in projection.page_sequence if page_id in removal_counts
         ),
         trace_plan=build_trace_plan(document, projection),
+        trace_saved_export=session.trace_saved_export,
     )
 
 

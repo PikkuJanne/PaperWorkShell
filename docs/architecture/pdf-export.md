@@ -240,6 +240,13 @@ by [Startup recovery and sanitized diagnostics](startup-recovery-and-diagnostics
 destination path and filename are deliberately absent from the record and receipt; see [Export
 history v1](../schemas/export-history-v1.md).
 
+When a saved case opens, TRACE reads the latest manifest-linked history entry. The Exported
+view presents its saved page count and recorded checks once the record version and canonical
+digest match the manifest reference. The user selects a local PDF before TRACE checks its exact
+byte size and SHA-256. A match enables Open exported PDF, which repeats the check before handing
+the file to the desktop viewer. The selected path lives in memory for the open case. Page mapping,
+recipe status, and OCR findings require evidence beyond history v1.
+
 Searchable output reuses this publication/retry lifecycle without changing released manifest v2 or
 export-history v1 meaning. Searchable eligibility and per-page outcomes remain in the separately
 versioned transient verification report; they are not smuggled into an existing history field or

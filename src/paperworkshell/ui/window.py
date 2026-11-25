@@ -103,7 +103,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementRequest,
 )
 from paperworkshell.app.trace_automation import TraceAutomationError
-from paperworkshell.app.trace_results import TraceExportEvidence
+from paperworkshell.app.trace_results import TraceExportEvidence, TraceSavedExportSelection
 from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import AssistedUseError, AssistedUseErrorCode
 from paperworkshell.domain.case_lifecycle import CaseDeletionResult, CaseDeletionStatus, CaseIndex
@@ -870,8 +870,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_canvas_failed: _TraceCanvasTarget | None = None
         self._trace_ocr_language_set_id: str | None = None
         self._trace_evidence: TraceExportEvidence | None = None
+        self._trace_saved_selection: TraceSavedExportSelection | None = None
         self._trace_output_status: TraceOutputStatus | None = None
-        self._trace_output_request: tuple[int, OperationCancellation, bool] | None = None
+        self._trace_output_request: (
+            tuple[int, OperationCancellation, bool, TraceExportEvidence | TraceSavedExportSelection]
+            | None
+        ) = None
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.timeout.connect(self._refresh_visible_previews)
@@ -1730,7 +1734,23 @@ class PaperWorkShellWindow(QMainWindow):
             lambda: self._request_trace_output_check(open_when_verified=True)
         )
         self._trace_open_pdf_button.hide()
+        self._trace_choose_pdf_button = self._action_button(
+            tr("Select exported PDF…"),
+            "traceChooseExport",
+            tr("Choose the saved PDF to verify its exact size and SHA-256."),
+        )
+        self._trace_choose_pdf_button.clicked.connect(self._choose_trace_export)
+        self._trace_choose_pdf_button.hide()
+        navigation.addWidget(self._trace_choose_pdf_button)
         navigation.addWidget(self._trace_open_pdf_button)
+        self._trace_cancel_check_button = self._action_button(
+            tr("Cancel file check"),
+            "traceCancelExportCheck",
+            tr("Stop verifying the PDF file."),
+        )
+        self._trace_cancel_check_button.clicked.connect(self._cancel_trace_file_check)
+        self._trace_cancel_check_button.hide()
+        navigation.addWidget(self._trace_cancel_check_button)
         layout.addLayout(navigation)
         return content
 
@@ -1739,12 +1759,25 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_recipe_pane.page_requested.connect(self._select_recipe_page)
         return self._trace_recipe_pane
 
-    def _sync_trace_plan(self, state: OrganizerViewState) -> None:
+    def _sync_trace_plan(
+        self, state: OrganizerViewState, prior_state: OrganizerViewState | None
+    ) -> None:
         if self._trace_evidence is not None and self._trace_evidence.case_id != state.case_id:
-            self._cancel_trace_output_check()
             self._trace_evidence = None
+        if (
+            prior_state is None
+            or prior_state.case_id != state.case_id
+            or (
+                self._trace_evidence is None
+                and prior_state.trace_saved_export != state.trace_saved_export
+            )
+        ):
+            self._cancel_trace_output_check()
+            self._trace_saved_selection = None
             self._trace_output_status = None
-            self._trace_recipe_pane.set_export_evidence(None)
+        self._trace_recipe_pane.set_export_evidence(
+            self._trace_evidence or state.trace_saved_export
+        )
         self._trace_recipe_pane.set_plan(state.trace_plan)
         groups: dict[int, list[OrganizerPageView]] = {}
         for page in state.pages:
@@ -1838,9 +1871,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._rotate_button.setVisible(lens in {"planned", "arrange"})
         for button in self._trace_arrangement_actions:
             button.setVisible(lens == "arrange")
-        self._trace_open_pdf_button.setVisible(
-            lens == "exported" and self._trace_evidence is not None
-        )
+        if lens != "exported":
+            self._trace_choose_pdf_button.hide()
+            self._trace_open_pdf_button.hide()
+            self._trace_cancel_check_button.hide()
         self._refresh_trace_document()
         self._schedule_preview_refresh()
 
@@ -2016,11 +2050,33 @@ class PaperWorkShellWindow(QMainWindow):
 
     def _refresh_trace_exported(self, page_id: UUID | None) -> None:
         evidence = self._trace_evidence
-        self._trace_open_pdf_button.setVisible(evidence is not None)
-        if evidence is None:
-            self._trace_document.display(None, tr("No PDF exported in this case session."))
-            return
         state = self._state
+        saved = state.trace_saved_export if state is not None else None
+        checking = self._trace_output_request is not None
+        self._trace_choose_pdf_button.setVisible(evidence is None and saved is not None)
+        self._trace_cancel_check_button.setVisible(checking)
+        self._trace_open_pdf_button.setVisible(
+            evidence is not None or self._trace_saved_selection is not None
+        )
+        self._trace_open_pdf_button.setEnabled(evidence is not None or not checking)
+        if evidence is None:
+            if saved is None:
+                message = tr("No verified PDF export record is available for this case.")
+            else:
+                selection = self._trace_saved_selection
+                message = "\n".join(
+                    part
+                    for part in (
+                        tr("Saved PDF export · {value1} pages", value1=saved.page_count),
+                        selection.destination.name if selection is not None else "",
+                        tr("Checking the exported file…")
+                        if checking
+                        else self._trace_saved_output_message(),
+                    )
+                    if part
+                )
+            self._trace_document.display(None, message)
+            return
         plan = state.trace_plan if state is not None else None
         current = (
             state is not None
@@ -2029,7 +2085,7 @@ class PaperWorkShellWindow(QMainWindow):
                 state.case_id, plan.fingerprint, ocr_language_set_id=self._trace_ocr_language_set_id
             )
         )
-        if self._trace_output_request is not None:
+        if checking:
             status = tr("Checking the exported file…")
         elif self._trace_output_status is TraceOutputStatus.PRESENT:
             status = tr("Exported file matches the verified output.")
@@ -2064,6 +2120,46 @@ class PaperWorkShellWindow(QMainWindow):
             ),
         )
 
+    def _trace_saved_output_message(self) -> str:
+        status = self._trace_output_status
+        if status is TraceOutputStatus.PRESENT:
+            return tr("Selected PDF matches the saved export by size and SHA-256.")
+        if status is TraceOutputStatus.MISSING:
+            return tr("The selected PDF could not be found. Select another copy.")
+        if status is TraceOutputStatus.CHANGED:
+            return tr("The selected PDF does not match the saved export. Select another copy.")
+        if status is TraceOutputStatus.UNAVAILABLE:
+            return tr("PaperWorkShell could not verify the selected PDF. Select another copy.")
+        return tr("Select the exported PDF to verify its size and SHA-256.")
+
+    def _choose_trace_export(self) -> None:
+        state = self._state
+        saved = state.trace_saved_export if state is not None else None
+        if (
+            saved is None
+            or self._trace_evidence is not None
+            or self._assisted_session.locked
+            or self._closing_requested
+            or self._case_close_pending
+        ):
+            return
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("Select exported PDF…"),
+            "",
+            tr("PDF files (*.pdf)"),
+            options=self._file_dialog_options(),
+        )
+        if (
+            selected
+            and self._state is not None
+            and self._state.trace_saved_export == saved
+            and self._trace_lens == "exported"
+        ):
+            self._request_trace_output_check(
+                open_when_verified=False, selection=TraceSavedExportSelection(saved, Path(selected))
+            )
+
     @Slot(int, object)
     def _trace_pdf_export_ready(self, operation_id: int, evidence: object) -> None:
         active = self._active_operation
@@ -2078,6 +2174,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._cancel_trace_output_check()
         self._trace_evidence = evidence
+        self._trace_saved_selection = None
         self._trace_output_status = TraceOutputStatus.PRESENT
         self._trace_recipe_pane.set_export_evidence(evidence)
         self._refresh_trace_document()
@@ -2087,38 +2184,68 @@ class PaperWorkShellWindow(QMainWindow):
             self._trace_output_request[1].cancel()
             self._trace_output_request = None
 
-    def _request_trace_output_check(self, *, open_when_verified: bool) -> None:
-        evidence = self._trace_evidence
-        if evidence is None or self._assisted_session.locked:
+    def _cancel_trace_file_check(self) -> None:
+        self._cancel_trace_output_check()
+        self._refresh_trace_document()
+        recovery = (
+            self._trace_choose_pdf_button
+            if self._trace_evidence is None
+            else self._trace_open_pdf_button
+        )
+        recovery.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._announce(tr("PDF verification cancelled."))
+
+    def _request_trace_output_check(
+        self, *, open_when_verified: bool, selection: TraceSavedExportSelection | None = None
+    ) -> None:
+        target = self._trace_evidence or selection or self._trace_saved_selection
+        if (
+            target is None
+            or self._assisted_session.locked
+            or self._closing_requested
+            or self._case_close_pending
+        ):
             return
         self._cancel_trace_output_check()
+        if selection is not None:
+            self._trace_saved_selection = None
+            self._trace_output_status = None
         token = OperationCancellation()
         operation_id = self._allocate_operation_id()
-        self._trace_output_request = operation_id, token, open_when_verified
-        self._commands.trace_export_inspect_requested.emit(operation_id, evidence, token)
+        self._trace_output_request = operation_id, token, open_when_verified, target
+        if self._trace_lens == "exported":
+            self._refresh_trace_document()
+        self._commands.trace_export_inspect_requested.emit(operation_id, target, token)
 
     @Slot(int, object, object)
     def _trace_export_inspected(self, operation_id: int, evidence: object, status: object) -> None:
         request = self._trace_output_request
-        if (
-            request is None
-            or request[0] != operation_id
-            or not isinstance(evidence, TraceExportEvidence)
-            or evidence != self._trace_evidence
-        ):
+        if request is None or request[0] != operation_id or request[3] != evidence:
             return
         self._trace_output_request = None
         if self._assisted_session.locked or self._closing_requested or self._case_close_pending:
             return
         if not isinstance(status, TraceOutputStatus):
             return
+        target = request[3]
         self._trace_output_status = status
         self._trace_recipe_pane.set_output_status(status)
+        focus_was_on_cancel = self._trace_cancel_check_button.hasFocus()
+        if isinstance(target, TraceSavedExportSelection):
+            self._trace_saved_selection = target if status is TraceOutputStatus.PRESENT else None
+            self._announce(self._trace_saved_output_message())
         self._refresh_trace_document()
+        if focus_was_on_cancel:
+            recovery = (
+                self._trace_choose_pdf_button
+                if isinstance(target, TraceSavedExportSelection)
+                else self._trace_open_pdf_button
+            )
+            recovery.setFocus(Qt.FocusReason.OtherFocusReason)
         if request[2]:
             if status is TraceOutputStatus.PRESENT:
-                self._open_export_path(evidence.destination)
-            else:
+                self._open_export_path(target.destination)
+            elif isinstance(target, TraceExportEvidence):
                 message = tr("The exported PDF could not be verified. Export again to a new file.")
                 self._set_error_text(message)
                 self._error_label.show()
@@ -3036,7 +3163,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.IDLE
         self._state = state
-        self._sync_trace_plan(state)
+        self._sync_trace_plan(state, prior_state)
         self._saved_label.setText(
             tr("No case open.")
             if state.case_id is None
@@ -4966,6 +5093,7 @@ class PaperWorkShellWindow(QMainWindow):
         ):
             return
         self._case_close_pending = True
+        self._cancel_trace_output_check()
         self._preview_refresh_timer.stop()
         self._autosave_timer.stop()
         self._deferred_import = None
@@ -8253,7 +8381,8 @@ class PaperWorkShellWindow(QMainWindow):
         operation_id = self._allocate_operation_id()
         operation = _LongOperation(operation_id, kind, OperationCancellation())
         self._cancel_trace_canvas()
-        self._cancel_trace_output_check()
+        if kind is not _LongOperationKind.PREVIEW:
+            self._cancel_trace_output_check()
         self._active_operation = operation
         self._announcer.reset_progress()
         if kind is _LongOperationKind.IMPORT:

@@ -14,7 +14,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from paperworkshell.app.trace_results import TRACE_CHECK_LABELS, TraceExportEvidence
+from paperworkshell.app.trace_results import (
+    TRACE_CHECK_LABELS,
+    TraceExportEvidence,
+    TraceSavedExportEvidence,
+)
 from paperworkshell.domain.trace_recipe import (
     TRACE_OPERATION_LABELS,
     TraceOperation,
@@ -36,7 +40,7 @@ class TraceRecipePane(QWidget):
         self.setAccessibleName(tr("Recipe and results"))
         self._plan: TracePlan | None = None
         self._page_id: UUID | None = None
-        self._evidence: TraceExportEvidence | None = None
+        self._evidence: TraceExportEvidence | TraceSavedExportEvidence | None = None
         self._output_status: TraceOutputStatus | None = None
         self._ocr_language_set_id: str | None = None
 
@@ -130,15 +134,18 @@ class TraceRecipePane(QWidget):
         else:
             self._selection_text.setText(tr("The selected page follows the assembled order."))
 
-    def set_export_evidence(self, evidence: TraceExportEvidence | None) -> None:
-        if self._evidence is evidence:
+    def set_export_evidence(
+        self, evidence: TraceExportEvidence | TraceSavedExportEvidence | None
+    ) -> None:
+        if self._evidence == evidence:
             return
         self._evidence = evidence
         self._output_status = None
         self._checks.clear()
         if evidence is not None:
-            for detail in evidence.execution_details:
-                QListWidgetItem(detail, self._checks)
+            if isinstance(evidence, TraceExportEvidence):
+                for detail in evidence.execution_details:
+                    QListWidgetItem(detail, self._checks)
             for check in evidence.checks:
                 finding = tr(
                     "{value1} · {value2}",
@@ -184,6 +191,14 @@ class TraceRecipePane(QWidget):
         if evidence is None:
             self._checks_button.setChecked(False)
             self._result_status.setText(tr("Export checks · Not checked"))
+        elif isinstance(evidence, TraceSavedExportEvidence):
+            self._result_status.setText(
+                tr(
+                    "Saved export checks · {value1} pages · Case revision {value2}",
+                    value1=evidence.page_count,
+                    value2=evidence.plan_revision,
+                )
+            )
         elif self._output_status in {TraceOutputStatus.MISSING, TraceOutputStatus.CHANGED}:
             self._result_status.setText(
                 tr("Out of date · Exported file is missing.")

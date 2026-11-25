@@ -14,6 +14,7 @@ import jsonschema
 import pytest
 
 from paperworkshell.app.export_history import PdfExportHistoryService
+from paperworkshell.app.trace_results import TraceCheckStatus, latest_trace_saved_export
 from paperworkshell.domain.manifest_repository import (
     ManifestLoadResult,
     ManifestLoadStatus,
@@ -204,6 +205,57 @@ class _MemoryHistory:
             record.sha256,
             len(candidate.records),
         )
+
+
+def test_saved_trace_export_requires_the_latest_manifest_link() -> None:
+    history = _MemoryHistory([])
+    oldest = replace(_record(), export_id=UUID("60000000-0000-4000-8000-000000000711"))
+    linked = _record(signed=True)
+    unlinked = replace(linked, export_id=UUID("70000000-0000-4000-8000-000000000711"))
+    payload = canonical_pdf_export_history_bytes(
+        PdfExportHistoryDocument((oldest, linked, unlinked))
+    )
+    history.document = decode_pdf_export_history(payload)
+    manifest = _manifest_document(revision=10)
+    manifest["export_history"] = {
+        "storage_name": "export-history.json",
+        "entries": [oldest.manifest_reference, linked.manifest_reference],
+    }
+
+    evidence = latest_trace_saved_export(_manifest_snapshot(manifest), history)
+
+    assert evidence is not None
+    assert evidence.export_id == linked.export_id
+    assert evidence.plan_revision == linked.manifest_revision
+    assert evidence.sha256 == linked.output_sha256
+    assert evidence.page_count == linked.page_count
+    assert evidence.byte_size == linked.output_byte_size
+    assert tuple(check.name for check in evidence.checks) == linked.check_codes
+    assert [
+        check.name for check in evidence.checks if check.status is TraceCheckStatus.WARNING
+    ] == ["UNSIGNED_DERIVATIVE"]
+
+
+@pytest.mark.parametrize("breakage", ("missing", "changed", "version", "unlinked"))
+def test_saved_trace_export_does_not_fill_in_an_unproven_latest_record(breakage: str) -> None:
+    history = _MemoryHistory([])
+    record = _record()
+    reference = record.manifest_reference
+    manifest = _manifest_document(revision=8)
+    manifest["export_history"] = {
+        "storage_name": "export-history.json",
+        "entries": [] if breakage == "unlinked" else [reference],
+    }
+    if breakage != "missing":
+        history.document = PdfExportHistoryDocument((record,))
+    if breakage == "changed":
+        history.document = PdfExportHistoryDocument((replace(record, output_byte_size=1235),))
+    if breakage == "version":
+        reference["record_version"] = 2
+
+    assert latest_trace_saved_export(_manifest_snapshot(manifest), history) is None
+    if breakage == "unlinked":
+        assert not history.events
 
 
 class _MemoryManifests:

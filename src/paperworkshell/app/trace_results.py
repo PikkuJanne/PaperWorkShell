@@ -1,21 +1,26 @@
-"""TRACE evidence from completed, verified export operations."""
+"""TRACE evidence from current and saved verified PDF exports."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
-from paperworkshell.app.organizer import OrganizerPagesPdfExportOutcome
-from paperworkshell.domain.pdf_export import PdfExportCheckCode
+from paperworkshell.domain.manifest_repository import ManifestSnapshot
+from paperworkshell.domain.pdf_export import PdfExportCheck, PdfExportCheckCode
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
+    PdfExportHistoryRepository,
+    PdfExportHistorySnapshot,
     decode_pdf_export_history_record,
 )
 from paperworkshell.domain.trace_recipe import TraceOutputStatus as TraceOutputStatus
 from paperworkshell.localization.catalog import mark, tr
+
+if TYPE_CHECKING:
+    from paperworkshell.app.organizer import OrganizerPagesPdfExportOutcome
 
 
 class TraceCheckStatus(StrEnum):
@@ -82,6 +87,84 @@ class TraceExportEvidence:
                 or self.ocr_language_set_id == ocr_language_set_id
             )
         )
+
+
+@dataclass(frozen=True, slots=True)
+class TraceSavedExportEvidence:
+    """Path-free structural evidence from the latest manifest-linked PDF receipt."""
+
+    case_id: UUID
+    export_id: UUID
+    plan_revision: int
+    sha256: str = field(repr=False)
+    byte_size: int
+    page_count: int
+    checks: tuple[TraceCheck, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TraceSavedExportSelection:
+    """User-selected file to compare with a saved receipt during this session."""
+
+    evidence: TraceSavedExportEvidence
+    destination: Path = field(repr=False)
+
+
+def latest_trace_saved_export(
+    manifest: ManifestSnapshot, history: PdfExportHistoryRepository
+) -> TraceSavedExportEvidence | None:
+    """Load the active manifest's latest reference and require an exact v1 record match."""
+
+    link = manifest.document.get("export_history")
+    if type(link) is not dict or link.get("storage_name") != "export-history.json":
+        return None
+    entries = link.get("entries")
+    if type(entries) is not list or not entries:
+        return None
+    reference = entries[-1]
+    if type(reference) is not dict:
+        return None
+    export_id = reference.get("export_id")
+    version = reference.get("record_version")
+    record_digest = reference.get("sha256")
+    if type(export_id) is not str or type(version) is not int or type(record_digest) is not str:
+        return None
+    try:
+        selected_id = UUID(export_id)
+        snapshot = history.load(manifest.case_id)
+        if type(snapshot) is not PdfExportHistorySnapshot:
+            return None
+        record = snapshot.document.find(selected_id, record_digest)
+    except ValueError:
+        # History is optional during case open. A missing or invalid receipt provides no evidence.
+        return None
+    if reference != record.manifest_reference:
+        return None
+
+    counted = {
+        PdfExportCheckCode.PAGE_COUNT_MATCHED,
+        PdfExportCheckCode.ALL_PAGES_RENDERED,
+        PdfExportCheckCode.ORDER_ROTATION_MATCHED,
+    }
+    checks = tuple(
+        TraceCheck(
+            code.value,
+            TraceCheckStatus.WARNING
+            if code is PdfExportCheckCode.UNSIGNED_DERIVATIVE
+            else TraceCheckStatus.PASSED,
+            PdfExportCheck(code, record.page_count if code in counted else None).claim,
+        )
+        for code in record.check_codes
+    )
+    return TraceSavedExportEvidence(
+        manifest.case_id,
+        record.export_id,
+        record.manifest_revision,
+        record.output_sha256,
+        record.output_byte_size,
+        record.page_count,
+        checks,
+    )
 
 
 def trace_export_evidence(

@@ -58,7 +58,12 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
-from paperworkshell.app.trace_results import TraceExportEvidence, trace_export_evidence
+from paperworkshell.app.trace_results import (
+    TraceExportEvidence,
+    TraceSavedExportEvidence,
+    TraceSavedExportSelection,
+    trace_export_evidence,
+)
 from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import (
     AssistedUseError,
@@ -894,17 +899,53 @@ class OrganizerBackendWorker(QObject):
 
         backend = self._backend
         if (
-            type(evidence) is not TraceExportEvidence
+            type(evidence)
+            not in (
+                TraceExportEvidence,
+                TraceSavedExportSelection,
+            )
             or type(cancellation) is not OperationCancellation
         ):
             return
-        if backend is None or backend.state.case_id != evidence.case_id:
-            status = TraceOutputStatus.UNAVAILABLE
-        else:
+        status = TraceOutputStatus.UNAVAILABLE
+        if type(evidence) is TraceSavedExportSelection:
+            if backend is not None:
+                status = self._inspect_trace_saved_export(backend, evidence, cancellation)
+        elif (
+            type(evidence) is TraceExportEvidence
+            and backend is not None
+            and backend.state.case_id == evidence.case_id
+        ):
             status = inspect_trace_output(
                 evidence.destination, evidence.byte_size, evidence.sha256, cancellation.cancelled
             )
         self.trace_export_inspected.emit(operation_id, evidence, status)
+
+    @staticmethod
+    def _inspect_trace_saved_export(
+        backend: OrganizerBackend,
+        selection: TraceSavedExportSelection,
+        cancellation: OperationCancellation,
+    ) -> TraceOutputStatus:
+        receipt = selection.evidence
+        if (
+            type(receipt) is not TraceSavedExportEvidence
+            or backend.state.trace_saved_export != receipt
+        ):
+            return TraceOutputStatus.UNAVAILABLE
+        if not isinstance(selection.destination, Path) or (
+            selection.destination.suffix.lower() != ".pdf"
+        ):
+            return TraceOutputStatus.CHANGED
+        service = backend.assisted_use
+        if service is not None:
+            try:
+                service.require_access(receipt.case_id)
+            except AssistedUseError:
+                return TraceOutputStatus.UNAVAILABLE
+        return inspect_trace_output(
+            selection.destination, receipt.byte_size, receipt.sha256, cancellation.cancelled
+        )
 
     @Slot(int, object, str, object)
     def save_trace_recipe_file(
