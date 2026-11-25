@@ -443,11 +443,62 @@ the same Windows symlink skip, and all 360 native accessibility checks passed ag
 the one private successor built in this bounded step.
 Installed verification of the label correction remains open.
 
-### Next bounded step
+## B7 completion verification
 
-Build the committed Exported view label correction as one private successor with a fresh B7
-candidate identity. Use the authorized offline standard-user replacement and the retained
-rehearsal case to verify that Exported shows its saved structural checks, requires explicit
-PDF selection, and omits the current plan's `output page` summary. Verify that Planned still
-shows its page summary. Preserve B5, B6, retained cases and exports, and R16/R18. Record the
-exact candidate and observations here, then stop.
+B7 contains the Exported label correction and the remaining comparison and inspection changes.
+Planned and the organizer thumbnails apply a saved PDF crop to the bounded worker raster using
+the saved quarter-turn coordinate transform. Source shows the unedited raster. The overlay and
+removal editors use the same crop for preview geometry. Planned paints saved core visual marks
+using the existing editor painter. The paint step bounds text and the aggregate clipped area
+before drawing. Text sizing may be approximate. The page editors remain the review surface for
+other marks and for cases where the preview cannot safely paint the saved marks.
+
+The recipe inspector shows the selected operation's saved configuration. This includes overlay
+placement and layer, unapplied removal intent, package limits and allowed output modes, and
+configured PDF engine and profile requirements. Optional OCR requirements describe the processing
+profile. Historical export checks continue to use history v1, and portable automation retains its
+page selection, order, rotation and ordinary PDF scope.
+
+The exact B7 source passed 242 focused unit, integration and security tests with one Windows
+symlink capability skip. The registered native accessibility lane passed 360 tests. The
+constrained thumbnail checks passed with the real Windows worker for rotated pixels, cache
+behavior and dimension limits. Ruff, strict typing, localization, schemas, documentation,
+task graph and both boundary checks passed.
+
+The broader host sweeps started from the B6 baseline before B7 source changes. Inherited Git
+configuration in the test process was corrupted when a Windows test restored an empty environment
+value. The unmodified secret-scanning and synthetic-fixture modules passed with those inherited
+overrides cleared for the test process. They supplied 55 and 20 passes, with two directory-link
+capability skips. The renderer benchmark shared setup initially rejected a host CPython file
+during guarded staging. The staging check passed on retry, along with all 58 nonlive cases in a
+separate run. PWS-0207's frozen implementation-index comparison continued to fail on descendant
+source; the divergence predates TRACE. The existing PWS-0207 evidence retains its exact scope.
+
+The offline B7 installer uses commit `d8c4b8e261984e776e4bb7328f01aedc13b30908`. The read-only
+unsigned delivery file is
+`output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b7-win-x64-UNSIGNED.exe` in
+the primary checkout. It is 512,967,046 bytes, with SHA-256
+`ec3eab1ca59dcd11603222f46dc9544846293d490c44a3c441f38218fb106bbd`. All 336 application
+files bound to the Git source and all 3,210 payload members verified. The receipts are in
+`output/pws0813/build-pws0813-trace-engineering-b7`.
+
+### Installed acceptance plan
+
+Replace B6 through Windows Settings with Keep cases. Verify the new payload and normal Start
+shortcut in the offline standard desktop. Reopen the retained mark and export rehearsal. Compare
+Source and Planned, inspect mark and engine configuration, and verify the saved Exported checks,
+explicit file selection and label correction. Run a fresh synthetic template and combined package
+journey through incomplete and ready review, then inspect the saved output and its summary. Check
+the changed inspector at native 200 percent if the approved route is available. Restore display
+settings, inventory the retained B6 data and preserve the older candidates and checkpoints.
+
+The installed B7 payload and both Start shortcuts verified. The standard-user app reopened the
+retained two-page case and displayed the history v1 checks with explicit PDF selection. The
+current-plan output-page label was absent in Exported. The exact retained PDF enabled Open
+exported PDF and its verification stayed visible after switching views. Planned retained the
+current-plan page summary and painted the saved text and checkmark on the rotated page. Source
+showed the unmarked original. The recipe inspector took keyboard focus and displayed the saved
+mark geometry and configured export requirements. Long engine and profile rows clipped at the
+right edge at 96 DPI. The capture `output/pws0813/desktop-evidence-b7/capture-pdf-export-configuration.png`
+records that failing layout. The successor's inspection check requires the complete long identifiers
+to wrap at the narrow width, including the native 192-DPI layout.

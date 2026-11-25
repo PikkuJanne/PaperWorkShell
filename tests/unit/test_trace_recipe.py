@@ -9,15 +9,22 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
-from PySide6.QtWidgets import QListWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetricsF
+from PySide6.QtWidgets import QListWidget, QPlainTextEdit
 
 from paperworkshell.domain.import_precheck import DetectedMediaType
 from paperworkshell.domain.manifest_repository import ManifestSnapshot
 from paperworkshell.domain.page_operations import PageCommandHistory
-from paperworkshell.domain.pdf_export import DEFAULT_PDF_EXPORT_ENGINE_PROFILE
+from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_ENGINE_PROFILE,
+    IMAGE_PDF_EXPORT_PROFILE,
+)
 from paperworkshell.domain.trace_recipe import (
+    TraceOperation,
     TraceOperationKind,
     TraceOutputStatus,
+    TracePlan,
     TraceRecipe,
     TraceRecipeError,
     TraceRecipeErrorCode,
@@ -78,11 +85,9 @@ def test_recipe_inspector_uses_saved_mark_geometry_and_package_limits() -> None:
     pane = TraceRecipePane()
     pane.set_plan(plan)
     steps = pane.findChild(QListWidget, "traceRecipeSteps")
-    configuration = pane.findChild(QListWidget, "traceOperationConfiguration")
+    configuration = pane.findChild(QPlainTextEdit, "traceOperationConfiguration")
     assert steps is not None and configuration is not None
-
-    def details() -> str:
-        return "\n".join(configuration.item(row).text() for row in range(configuration.count()))
+    details = configuration.toPlainText
 
     try:
         first_page = UUID(document["pages"][0]["page_id"])
@@ -112,6 +117,47 @@ def test_recipe_inspector_uses_saved_mark_geometry_and_package_limits() -> None:
         assert "Optional searchable text profile" in details()
         assert b'"marks"' not in encode_trace_recipe(plan.recipe)
         assert b'"package"' not in encode_trace_recipe(plan.recipe)
+    finally:
+        pane.close()
+
+
+def test_recipe_export_configuration_wraps_profile_tokens_at_enlarged_text_size() -> None:
+    application = _application()
+    pane = TraceRecipePane()
+    font = pane.font()
+    font.setPointSize(20)
+    pane.setFont(font)
+    pane.resize(260, 520)
+    pane.set_plan(
+        TracePlan(_recipe(), (), (TraceOperation(TraceOperationKind.EXPORT, (), ()),), "a" * 64)
+    )
+    pane.show()
+    application.processEvents()
+    try:
+        configuration = pane.findChild(QPlainTextEdit, "traceOperationConfiguration")
+        assert configuration is not None and configuration.isVisible()
+        assert configuration.accessibleName() == "Selected operation configuration"
+        assert configuration.isReadOnly() and configuration.tabChangesFocus()
+        assert configuration.horizontalScrollBarPolicy() is Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+
+        token = IMAGE_PDF_EXPORT_PROFILE.render.value
+        token_width = QFontMetricsF(configuration.font()).horizontalAdvance(token)
+        assert token_width > configuration.viewport().width()
+
+        cursor = configuration.document().find(token)
+        assert not cursor.isNull()
+        configuration.setTextCursor(cursor)
+        configuration.ensureCursorVisible()
+        application.processEvents()
+        block = cursor.block()
+        assert block.layout().lineCount() > 1
+        first_character = cursor.selectionStart() - block.position()
+        last_character = cursor.selectionEnd() - block.position() - 1
+        first_line = block.layout().lineForTextPosition(first_character)
+        last_line = block.layout().lineForTextPosition(last_character)
+        assert first_line.isValid() and last_line.isValid()
+        assert last_line.lineNumber() > first_line.lineNumber()
+        assert configuration.horizontalScrollBar().maximum() == 0
     finally:
         pane.close()
 

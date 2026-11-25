@@ -6,10 +6,12 @@ from typing import Final
 from uuid import UUID
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -105,10 +107,14 @@ class TraceRecipePane(QWidget):
         )
         self._details.setAccessibleName(tr("Operation parameters and dependencies"))
         layout.addWidget(self._details)
-        self._configuration = QListWidget(self)
+        self._configuration = QPlainTextEdit(self)
         self._configuration.setObjectName("traceOperationConfiguration")
         self._configuration.setAccessibleName(tr("Selected operation configuration"))
-        self._configuration.setWordWrap(True)
+        self._configuration.setReadOnly(True)
+        self._configuration.setTabChangesFocus(True)
+        self._configuration.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._configuration.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self._configuration.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self._configuration, 2)
         self._configuration.hide()
 
@@ -245,9 +251,7 @@ class TraceRecipePane(QWidget):
                 rows = _package_description(operation.package)
             elif operation.kind is TraceOperationKind.EXPORT:
                 rows = _export_configuration()
-        self._configuration.clear()
-        for text in rows:
-            QListWidgetItem(text, self._configuration)
+        self._configuration.setPlainText("\n".join(rows))
         self._configuration.setVisible(bool(rows))
 
     def _toggle_checks(self, enabled: bool) -> None:
