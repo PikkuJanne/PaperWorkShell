@@ -208,5 +208,131 @@ own path to the viewer and ignores completion after case closure starts. A regre
 distinct report and footer destinations. A pass establishes that the view opens the artifact it
 actually checked even after a separate export changes the footer.
 
+## B4 delivery
+
+The unsigned Windows x64 installer was built offline from
+`cba562af164305ca1de7384727ad781d81a7138e`. Use `output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b4-win-x64-UNSIGNED.exe`
+in the primary checkout. It is 512,950,039 bytes, with SHA-256
+`dba22c0c902b148744bcd99ba35e84a0471058fff16ca5f19beaf8b0d72cfc7d`. The delivery copy matched
+the compiler receipt, and Authenticode reported NotSigned. The build bound all 336 application
+members to the exact source. The private build receipt is in
+`output/pws0813/build-pws0813-trace-engineering-b4`.
+
+B4 passed all 359 accessibility tests and 180 focused unit, worker-boundary, privacy and lifecycle
+tests. The exact preview and export regression checks were part of these runs. Format check, Ruff,
+strict typing, localization, documentation, schemas, task graph and both import and portfolio
+boundaries passed. Of 2,454 B1 and B4 runtime members, only the window, presentation, three locale
+catalogs and installed marker differ. This preserves the exact batch, recipe, worker, importer,
+exporter and engine files exercised earlier.
+
+B1's installed F1 guide, Generic application packet checklist, and verified offline English
+settings were exercised. The standard-user editor saved a text mark and a checkmark on the chosen
+PDF page. The four-page searchable derivative was 26,461 bytes with SHA-256
+`d5df18fce4db1f85bf67ae7562ad6d21094e88b1efe9b2a640f022d36f463db0`. Independent rendering and
+extraction verified retention of born-digital text and a searchable scan. The scan still reads
+`SCAM PAGE 206` in extraction. The source files remained byte-identical.
+
+B4 Setup completed as the limited `PWSTest` account in the existing offline guest. The B1 removal
+review used Keep cases, and all 860 inventoried pre-install entries matched after B4 installation.
+All 3,210 installed payload members matched. Both Start shortcuts point to the installed launcher
+under the standard user's local `Programs/PaperWorkShell/runtime` directory. The regular shortcut
+has no arguments. The notices shortcut has `--notices`. The initial B4 marker SHA-256 was
+`9e854c18232c362ccc135511fd03f49a6fee28831ba6c39bfaf0189a162fe0c4`. The owned Setup task exited
+and was removed. Evidence is in `output/pws0813/installed-trace-b4` in the primary checkout.
+
+The standard-user Start launch reopened an older saved case and the retained four-page rehearsal
+case. The latter opened at revision 11 with existing page identity, rotations, marks, real canvas
+and linked recipe. The native chooser and selected page row measured 12.28:1 selection contrast
+at 96 DPI, correcting the first build's observed 1.11:1. Ctrl+K opened the named search edit with
+focus. The combined image and PDF case with saved marks produced the existing
+`ORDINARY_PDF_COMBINATION_UNSUPPORTED` error and kept the edits. The independent PDF-only marks
+and stale-result check uses a reversible selection change on this synthetic case.
+
+B4 wrote the supported two-page marked PDF. The 4,315-byte artifact has SHA-256
+`b4d73aabb483b8d1ea11ee14f2b6d758130a55aa8a4d1e9ba3a5e64bd067f008`. The saved history and original
+fixture hashes matched. Independent Poppler rendering and extraction confirmed `TRACE tested mark`
+and the checkmark on the rotated first page and the unmarked original form on page two. The
+Exported view checked the actual bytes and identified the selected page as output page 1 of 2.
+The same-name retry reported `PDF_EXPORT_DESTINATION_EXISTS` and the file hash stayed identical.
+A 90° to 180° semantic rotation changed the result to Out of date while retaining the exact
+artifact identity. Undo did not restore removals made before the successful export. The existing
+ordinary export service reopens the saved case into a new history baseline after publication.
+
+At native 96 DPI a compact page row can visually join its filename and packet position. The
+accessible row still exposes distinct source and assembled positions. Keep that row wrapping
+visible as a presentation refinement.
+
+The native Display settings at 1024×768 exposed 100% and 125%. A larger resolution offered by
+Windows could expose a regular 200% mode. Such an observation would establish native 192-DPI
+coverage. If the regular route cannot provide that mode, an installed application-scale reflow
+check can support layout evidence within its own scope. The original guest display settings are
+the state to restore after any temporary inspection.
+
+At 1920×1080 the regular picker stopped at 175%. At confirmed 1600×1200 it offered 200%.
+The exact installed B4 window reported native 192 DPI as the standard user. The workbench
+wrapped its action bar and exposed the labelled Export, Pages, Document and Inspection
+controls. At that width the three panes remain visible and some tab labels are elided. Ctrl+K
+opened a readable native palette with the named search field and visible keyboard focus.
+Inspection collapsed and the document canvas expanded at native 200%. The 200% evidence covers
+this screen, controls and tested width. Windows was restored to 1024×768 at 100%, with the B4
+window reporting 96 DPI. Undo from Planned restored the post-export action from 180° to 90°.
+
+Automated palette-transition tests verified the contrast fallback. One temporary native Windows
+contrast-theme selection through the ordinary Accessibility settings tests whether that fallback
+also responds in the installed process. A readable result with visible focus would supply the
+native observation. The original contrast setting is the state to restore afterward.
+
+Windows' actual Aquatic contrast theme changed the installed controls to native styling, including
+the cyan selected document view. The workbench and command palette remained legible with visible
+focus. Some list and focus highlights retained TRACE colors, so full native color delegation
+remains open. The original contrast setting, None, was restored. The first Start-menu notices
+launch while the main app was active showed `NOTICES_APPLICATION_BUSY`. The wrapper then showed
+its generic failed-exit warning. The existing application guard requires the main app to be
+closed. A single retry under that condition tests the actual catalog and exit path.
+After normal main-app shutdown, the actual notices shortcut opened the readable installed
+catalog. Its normal close returned to Windows without the wrapper warning. The normal Start
+shortcut then launched B4 again in the same standard user session.
+The fresh process reopened `TRACE Installer Rehearsal` at revision 16 with saved marks, four
+source pages and two assembled PDF pages. All three prior export digests matched. The offline
+guest finished at the B4 workbench, 1024×768 at 100% scaling, with contrast theme None. The final
+state receipt confirms cleanup of the owned scheduled tasks and helpers.
+
+The normal launcher resolves to the single native TRACE window. The shipped file-picker and
+desktop viewer integrations retain their Windows ownership. The case data model and existing
+worker, parser, export and review authority remain the same. The private runtime comparison
+and installed workflow evidence above are scoped to the named candidates. PaperWorkShell
+continues to operate offline and independently of the ThirdLife portfolio.
+
+### Contract scope still open
+
+TRACE's Exported view and comparison checks cover the latest ordinary or searchable PDF in the
+active case session. Package and removal reports are available in their own workflows. Restoring
+receipt context across application restarts remains open. The central Planned preview identifies
+marks that need the existing editor and does not composite every saved PDF crop or mark. The
+recipe describes active execution order, resolved page transforms, stable targets and supported
+PDF replacement actions. Full engine-version and API-configuration inspection, and detailed
+overlay, removal and package configuration in the recipe, remain open.
+
+Portable recipes and PowerShell cover page selection, order, quarter-turn rotation and ordinary
+PDF export. Supported processing passed in the installed guest under the standard user with an
+existing sign-in. The guest script policy and S4U registration denial leave direct `.ps1`
+execution and a logged-out batch run unverified there. The staged PowerShell 7 run preserved its
+scope and evidence. The primary checkout and prior protected snapshots remain in place.
+
+### Changed files and task state
+
+- `src/paperworkshell/ui/window.py`, `ui/backend.py`, `ui/trace_*.py`, `ui/keyboard_help.py`,
+  `ui/notices.py` and `ui/uninstall_review.py` implement the native presentation and action routes.
+- `src/paperworkshell/app/organizer.py`, `app/trace_*.py`, `domain/trace_recipe.py`,
+  `storage/trace_files.py` and `__main__.py` provide derived recipe intent, verified result
+  binding, local recipe storage and bounded console execution.
+- The three localization catalogs, `packaging/windows/product-v1.json`, `README.md`,
+  `AGENTS.md`, `ROADMAP.md`, `TASKS.yaml` and `BUNDLE_MANIFEST.json` record presentation,
+  engineering build identity and scoped task evidence. The PWS-0811 evidence remains separate.
+- The focused TRACE unit/integration tests and affected keyboard, dialog and recovery tests
+  verify current native routes and exact artifact binding.
+
+PWS-0813 stays in progress for the remaining contract scope. PWS-0808 remains dependency-gated.
+
 The authorized origin is public. This local branch includes private candidate ancestry,
 so the private engineering work stays in the dedicated checkout.
