@@ -23,6 +23,7 @@ KEYBOARD_REFERENCE = mark(
     "Enter: activate a focused button or the default dialog action. In text/mark fields, Enter updates the local draft; use Save changes to save it.\n"
     "Escape: close a dialog or request cancellation when allowed. In a draft editor, Cancel discards unsaved changes.\n"
     "Alt+F4: close the current window. Use Save changes first when editing a draft.\n"
+    "Ctrl+K: search and run commands for the current case or page. Escape returns to your previous control.\n"
     "F1: open this keyboard guide from the main window (also Help > Keyboard guide).\n\n"
     "Cases and files\n"
     "Ctrl+N: open New case, enter a Case name, then choose Create case. Cancel creates no case.\n"

@@ -14,7 +14,7 @@ Read these files in order before making changes:
    interoperability work, `THIRDLIFE_ALIGNMENT.md`
 6. The code, tests, schemas, and ADRs relevant to the selected task
 
-Identify the selected task IDs in the work log or completion report. Do not start from a broad milestone description when a task exists.
+Then identify one task ID and state it in the work log or completion report. Do not start from a broad milestone description when a task exists.
 
 ## 2. Authority and conflict handling
 
@@ -73,35 +73,66 @@ Unless the maintainer names a task:
 5. Within that milestone, prefer `P0`, then `P1`, then `P2`.
 6. Prefer `critical_path: true`.
 7. Break ties by ascending task ID.
-8. Apply this order when selecting the next task in an authorized work package.
+8. Work on one task at a time.
 
 Do not begin a later milestone because it appears easier. Gate tasks are evidence and integration tasks, not substitutes for incomplete implementation tasks.
 
-### 3.1 Continuous work packages
+### 3.1 Thread workflow
 
-Group related, dependency-ready tasks, fixes, checks, evidence updates, commits, and already
-authorized synchronization into coherent work packages. When substantial work remains, size a
-package for roughly 60–120 minutes of active work. Use that range for planning and continue as
-capacity permits. A completed task or check is a progress point. Work remains subject to the
-authorized scope, dependencies, and existing approval requirements.
+**PWS-0813 TRACE replacement (maintainer instruction, 2026-11-25).** Follow the
+[TRACE continuation](docs/development/pws0813-trace.md). The approved design replaces
+the normal native presentation. Continue across implementation, private build,
+installed verification and delivery in the dedicated checkout. The internal stages
+and old-interface human session are not prerequisites or handoff points. Keep earlier
+PWS-0811 evidence and unresolved results under their own candidate and criteria.
+Use the established authorized offline Windows VM and prepare only subjective review
+that would change a product decision.
 
-At the start of a continuation, reconcile the actual current branch, candidate, task records,
-and evidence. Reuse verified results within their proven scope. Functional correctness and
-reliable processing take priority. Keep deferred UI polish visible in the backlog.
+**PWS-0811 installed work (maintainer instruction, 2026-11-12).** Start from the
+[current installed continuation](docs/development/pws0811-repairs-20261106.md#current-continuation--installed-application)
+and continue through related installed checks, diagnosis, narrow repairs, focused tests, private
+builds and affected installed verification while useful context remains. Normal standard-user
+application interaction in the existing offline PWS-Test VM is authorized. Use the candidate,
+session and foreground identity checks that apply to the action. Sampler qualification applies
+to claims made from that sampler. Ordinary application interaction and correctness testing can
+continue while a timing result remains inconclusive.
 
-Before starting another substantial unit, assess whether its implementation, verification, and
-handover fit the remaining context. When a reliable meter is available, reserve roughly 20–25%
-for finishing the current unit and preparing the handover. End the session when the authorized
-objective is complete, context is insufficient for another coherent unit, or a genuine external
-blocker prevents further useful authorized work. State the actual reason.
+Preserve immutable artifacts, R16 and R18 checkpoints, and earlier evidence. Retain evidence
+outside the VM before a restore. Restore for a concrete baseline or recovery need and record the
+chosen active state. Record actual application results and remaining product work in the current
+continuation. End at substantive completion, when context is insufficient for another coherent
+unit, or when an external limitation prevents useful progress. Supply a complete next-thread
+prompt when a handoff is needed. This PWS-0811 workflow governs the remaining work in place of
+the bounded thread procedure below.
 
-Before ending, update the current continuation record with outcomes, verification, limits,
-and current branch, commit, and candidate. For partial work, include the unfinished action,
-reproduction, changed files, verification results, and the first concrete action to resume.
-Account for all edits and stop owned background jobs. If work remains, print the complete
-ready-to-paste next-thread prompt in the final reply, with actual task IDs, paths, candidate
-identity, branch and commit, the next substantive outcome, and this continuous batching rule.
-If the authorized objective is complete, deliver the result.
+Before a diagnostic experiment, record the product question, the materially changed condition or
+hypothesis, and which decision each result would change in the active continuation. Use existing
+evidence when it answers the question. Count consecutive cycles on the same question across threads
+and renamed experiments. New timestamps, seals, directories, builds, or observer variants alone do
+not count as progress. A predeclared finite repeatability series counts as one experiment. After two
+consecutive cycles that close no required check and materially narrow no product decision, record
+“Investigation stalled; repeated approach stopped.” Continue other authorized work or pursue a
+different evidence-supported repair. Verification after a relevant fix remains allowed. Keep failed
+checks failing and keep investigation, fixes, focused tests, installation and verification together
+while useful work remains.
+
+For other tasks, use the bounded thread workflow:
+
+Each Codex thread handles one bounded step, including its necessary checks. Work autonomously
+within that step and keep parallel work inside it. Record the result and the exact next step
+in the current continuation record, then stop. Janne opens a fresh thread for the next step.
+Functional correctness and reliable processing take priority. Keep deferred UI polish visible in
+the backlog. A completed step supplies evidence only for its own scope.
+
+Every completed or partial step must end with a plain-language final reply that prints the complete
+ready-to-paste next-thread prompt. Saving that prompt only in a file, or saying that the file
+contains it, is insufficient. Include actual task IDs, paths, candidate identity, and branch/commit
+state. Each prompt authorizes exactly one bounded step and ends with a STOP instruction.
+
+If the step cannot be completed, save a compact partial checkpoint with the unfinished action,
+reproduction, changed files, verification commands and results, and the next exact action.
+The next thread resumes that step. Account for all edits and stop any owned background jobs
+before handing over.
 
 ## 4. Required work loop
 

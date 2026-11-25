@@ -1,0 +1,245 @@
+"""Native linked TRACE recipe and verified result inspection."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtWidgets import (
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from paperworkshell.app.trace_results import TRACE_CHECK_LABELS, TraceExportEvidence
+from paperworkshell.domain.trace_recipe import (
+    TRACE_OPERATION_LABELS,
+    TraceOperation,
+    TraceOperationKind,
+    TraceOutputStatus,
+    TracePlan,
+)
+from paperworkshell.localization.catalog import tr
+
+
+class TraceRecipePane(QWidget):
+    """Present derived operations and navigate back to their stable page targets."""
+
+    page_requested = Signal(object)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("traceRecipePane")
+        self.setAccessibleName(tr("Recipe and results"))
+        self._plan: TracePlan | None = None
+        self._page_id: UUID | None = None
+        self._evidence: TraceExportEvidence | None = None
+        self._output_status: TraceOutputStatus | None = None
+        self._ocr_language_set_id: str | None = None
+
+        layout = QVBoxLayout(self)
+        title = QLabel(tr("Recipe"), self)
+        title.setProperty("traceRole", "panelTitle")
+        layout.addWidget(title)
+        self._list = QListWidget(self)
+        self._list.setObjectName("traceRecipeSteps")
+        self._list.setAccessibleName(tr("Effective recipe operations"))
+        self._list.setAccessibleDescription(
+            tr("Select a step to inspect its parameters. Activate it to move to an affected page.")
+        )
+        self._list.currentRowChanged.connect(self._show_operation)
+        self._list.itemActivated.connect(self._activate_step)
+        self._list.itemClicked.connect(self._activate_step)
+        layout.addWidget(self._list, 2)
+
+        self._selection_text = QLabel(self)
+        self._selection_text.setTextFormat(Qt.TextFormat.PlainText)
+        self._selection_text.setWordWrap(True)
+        layout.addWidget(self._selection_text)
+        self._details = QLabel(self)
+        self._details.setTextFormat(Qt.TextFormat.PlainText)
+        self._details.setWordWrap(True)
+        self._details.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self._details.setAccessibleName(tr("Operation parameters and dependencies"))
+        layout.addWidget(self._details)
+
+        self._result_status = QLabel(self)
+        self._result_status.setWordWrap(True)
+        self._result_status.setTextFormat(Qt.TextFormat.PlainText)
+        self._result_status.setAccessibleName(tr("Export result status"))
+        layout.addWidget(self._result_status)
+        self._checks_button = QPushButton(tr("Show export checks"), self)
+        self._checks_button.setCheckable(True)
+        self._checks_button.toggled.connect(self._toggle_checks)
+        layout.addWidget(self._checks_button)
+        self._checks = QListWidget(self)
+        self._checks.setObjectName("traceExportChecks")
+        self._checks.setAccessibleName(tr("Export verification findings"))
+        self._checks.setWordWrap(True)
+        self._checks.hide()
+        layout.addWidget(self._checks, 2)
+        self._show_result()
+
+    def set_plan(self, plan: TracePlan | None) -> None:
+        if self._plan == plan:
+            return
+        previous_row = self._list.currentRow()
+        self._plan = plan
+        with QSignalBlocker(self._list):
+            self._list.clear()
+            if plan is not None:
+                for operation in plan.operations:
+                    item = QListWidgetItem(tr(TRACE_OPERATION_LABELS[operation.kind]), self._list)
+                    item.setData(
+                        Qt.ItemDataRole.AccessibleDescriptionRole, _operation_description(operation)
+                    )
+                if plan.operations:
+                    self._list.setCurrentRow(max(0, min(previous_row, len(plan.operations) - 1)))
+        self.select_page(self._page_id)
+        self._show_operation(self._list.currentRow())
+        self._show_result()
+
+    def select_page(self, page_id: UUID | None) -> None:
+        self._page_id = page_id
+        if self._plan is None or page_id is None:
+            self._selection_text.setText(tr("Select a page to inspect its recipe operations."))
+            return
+        baseline = {
+            TraceOperationKind.INPUT,
+            TraceOperationKind.SELECTION,
+            TraceOperationKind.ORDER,
+            TraceOperationKind.EXPORT,
+        }
+        matching = [
+            row
+            for row, operation in enumerate(self._plan.operations)
+            if page_id in operation.page_ids and operation.kind not in baseline
+        ]
+        if matching:
+            self._selection_text.setText(
+                tr("Selected page has {value1} additional recipe steps.", value1=len(matching))
+            )
+            if self._list.currentRow() not in matching and not self._list.hasFocus():
+                self._list.setCurrentRow(matching[0])
+        else:
+            self._selection_text.setText(tr("The selected page follows the assembled order."))
+
+    def set_export_evidence(self, evidence: TraceExportEvidence | None) -> None:
+        if self._evidence is evidence:
+            return
+        self._evidence = evidence
+        self._output_status = None
+        self._checks.clear()
+        if evidence is not None:
+            for detail in evidence.execution_details:
+                QListWidgetItem(detail, self._checks)
+            for check in evidence.checks:
+                finding = tr(
+                    "{value1} · {value2}",
+                    value1=tr(TRACE_CHECK_LABELS[check.status]),
+                    value2=check.finding,
+                )
+                QListWidgetItem(finding, self._checks)
+        self._show_result()
+
+    def set_output_status(self, status: TraceOutputStatus | None) -> None:
+        """Refresh live artifact availability while retaining the historical findings."""
+
+        self._output_status = status
+        self._show_result()
+
+    def set_ocr_language_set(self, language_set_id: str | None) -> None:
+        self._ocr_language_set_id = language_set_id
+        self._show_result()
+
+    def _activate_step(self, item: QListWidgetItem) -> None:
+        row = self._list.row(item)
+        if self._plan is None or not 0 <= row < len(self._plan.operations):
+            return
+        operation = self._plan.operations[row]
+        if operation.page_ids and self._page_id not in operation.page_ids:
+            self.page_requested.emit(operation.page_ids[0])
+
+    def _show_operation(self, row: int) -> None:
+        if self._plan is not None and 0 <= row < len(self._plan.operations):
+            self._details.setText(_operation_description(self._plan.operations[row]))
+        else:
+            self._details.clear()
+
+    def _toggle_checks(self, enabled: bool) -> None:
+        self._checks_button.setText(
+            tr("Hide export checks") if enabled else tr("Show export checks")
+        )
+        self._checks.setVisible(enabled and self._evidence is not None)
+
+    def _show_result(self) -> None:
+        evidence = self._evidence
+        self._checks_button.setEnabled(evidence is not None)
+        if evidence is None:
+            self._checks_button.setChecked(False)
+            self._result_status.setText(tr("Export checks · Not checked"))
+        elif self._output_status in {TraceOutputStatus.MISSING, TraceOutputStatus.CHANGED}:
+            self._result_status.setText(
+                tr("Out of date · Exported file is missing.")
+                if self._output_status is TraceOutputStatus.MISSING
+                else tr("Out of date · Exported file has changed.")
+            )
+        elif self._plan is None or not evidence.applies_to(
+            evidence.case_id, self._plan.fingerprint, ocr_language_set_id=self._ocr_language_set_id
+        ):
+            self._result_status.setText(
+                tr(
+                    "Out of date · Prior result is from plan revision {value1}.",
+                    value1=evidence.plan_revision,
+                )
+            )
+        else:
+            self._result_status.setText(
+                tr(
+                    "Verified PDF · {value1} pages · Plan revision {value2}",
+                    value1=evidence.page_count,
+                    value2=evidence.plan_revision,
+                )
+            )
+
+
+def _operation_description(operation: TraceOperation) -> str:
+    facts = [
+        tr("Affected pages: {value1}", value1=len(operation.page_ids)),
+    ]
+    kind = operation.kind
+    values = operation.parameters
+    if kind is TraceOperationKind.INPUT:
+        facts.append(tr("Source files: {value1}", value1=values[0]))
+    elif kind is TraceOperationKind.SELECTION:
+        facts.append(tr("Retained pages: {value1} of {value2}", value1=values[0], value2=values[1]))
+    elif kind is TraceOperationKind.ROTATION:
+        facts.append(tr("Rotation: {value1}° clockwise", value1=values[0]))
+    elif kind is TraceOperationKind.CROP:
+        facts.append(
+            tr(
+                "Crop x {value1}%, y {value2}%, width {value3}%, height {value4}%.",
+                value1=values[0] / 10_000,
+                value2=values[1] / 10_000,
+                value3=values[2] / 10_000,
+                value4=values[3] / 10_000,
+            )
+        )
+    elif kind is TraceOperationKind.DESKEW:
+        facts.append(tr("Deskew: {value1}°", value1=values[0] / 1_000))
+    elif kind in {TraceOperationKind.CONTRAST, TraceOperationKind.BACKGROUND}:
+        facts.append(tr("Level: {value1}%", value1=values[0] / 10_000))
+    elif kind in {TraceOperationKind.OVERLAY, TraceOperationKind.REMOVAL}:
+        facts.append(tr("Saved marks: {value1}", value1=values[0]))
+    if operation.depends_on:
+        dependencies = ", ".join(
+            tr(TRACE_OPERATION_LABELS[value]) for value in operation.depends_on
+        )
+        facts.append(tr("Depends on: {value1}", value1=dependencies))
+    return "\n".join(facts)

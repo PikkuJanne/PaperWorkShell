@@ -6381,6 +6381,7 @@ tasks:
   - PWS-0810
   - PWS-0811
   - PWS-0812
+  - PWS-0813
   decision_refs:
   - PWS-D003
   - PWS-D022
@@ -7159,3 +7160,54 @@ tasks:
     - docs/development/pws0811-repairs-20261106.md holds the handover. Full run evidence is under
       output/pws0811/installed-r16/functional-step-1/hyper-v-20261108. PWS-0811 stays in review
       and PWS-0808 keeps its prerequisites and criteria.
+
+- id: PWS-0813
+  milestone: M8
+  title: Replace the native application presentation with TRACE
+  kind: implementation
+  priority: P0
+  effort: L
+  status: in_progress
+  critical_path: false
+  depends_on:
+  - PWS-0810
+  decision_refs:
+  - PWS-D005
+  - PWS-D009
+  - PWS-D010
+  - PWS-D011
+  - PWS-D012
+  - PWS-D013
+  - PWS-D014
+  - PWS-D029
+  - PWS-D030
+  - PWS-D037
+  - PWS-D038
+  - PWS-D042
+  - PWS-D043
+  objective: Ship the approved TRACE presentation as PaperWorkShell's normal native interface.
+  deliverables:
+  - Native TRACE chooser, workbench, arrangement, editor, progress, help and export surfaces.
+  - Shared commands, page and recipe links, scoped results, portable recipes and bounded local PowerShell execution.
+  - Private Windows installer and exact installed, standard-user acceptance evidence.
+  acceptance_criteria:
+  - Every existing supported route works through TRACE and normal launch has one active shell.
+  - Semantic edits invalidate applicable results while view changes preserve them.
+  - Saved cases, worker isolation, verified output, collision handling and source preservation retain their guarantees.
+  - The bounded headless path uses existing validated operations, offline runtime and fail-closed recipe admission.
+  verification:
+  - Exercise focused native, worker, accessibility and failure-path checks.
+  - Build offline, install through the authorized test guest, rehearse representative workflows and inspect outputs.
+  - Verify supported launcher routes, keyboard and 200 percent scaling.
+  risk_tags:
+  - desktop-presentation
+  - accessibility
+  - offline-processing
+  - installed-runtime
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes:
+    - Maintainer approved the replacement on 2026-11-25. Implementation and verification are recorded in docs/development/pws0813-trace.md.

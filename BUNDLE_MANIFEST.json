@@ -20,8 +20,8 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 43452,
-      "sha256": "6062aa113006843f5202bfff1090c543b5989482d796497e3e27961c2f5ca95f"
+      "bytes": 43782,
+      "sha256": "d19b375d5dbf3042aa4b9ae4aaeddbd6d956140001c6565dcfbb9e4398385118"
     },
     {
       "path": "DECISIONS.md",
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 513466,
-      "sha256": "900b2bc0f2a2181013217cc7ea95a61f30f193d67600a827dd6a7c128d05ffe1"
+      "bytes": 515348,
+      "sha256": "91bd1bd8e10a3713e4d55b53ca0ec81d763f0b2855be1d4d7b0d0d61e2d61798"
     },
     {
       "path": "TASKS.schema.json",
@@ -40,8 +40,8 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 23636,
-      "sha256": "b0c7d784f70c6960b247283e8c05f1bc36bd17368878dc7a33dc268db84c1703"
+      "bytes": 25862,
+      "sha256": "5fa3db967fbc3910ae2eb9d6fa083b9d46b80a8ce7c5b9c0d7529f000b9d7bf3"
     },
     {
       "path": "CODEX_START_PROMPT.md",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 39719,
-      "sha256": "56bc3da183155b808aa1c5f4ade6eee3767f79376efaac6410589155443f9c73"
+      "bytes": 40713,
+      "sha256": "190a59512a5ea07d1a72bc17b142afa0af597b50fd621da5af49b6d0bb4594e9"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -480,8 +480,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 759,
-      "sha256": "a00d47b24d6ae3e7fd9508f27245e7a761a8da6a1cdfe8b03697804c8ce1768f"
+      "bytes": 747,
+      "sha256": "3c7840dc20f54e38d328fe2e6390c21ce21e39b0047192d6db0f7db24758ba31"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 162448,
-      "sha256": "d42bc17974505a78c172ae9027e273e2436a00c07642fbd4bcaf9432de78d3ed"
+      "bytes": 167305,
+      "sha256": "12a5a4686347c2433be08078b29020a6317e1e1425152e6a01c02c2f0fc0ef03"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",
@@ -627,8 +627,8 @@
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 85,
-    "dependency_edge_count": 252,
+    "task_count": 86,
+    "dependency_edge_count": 254,
     "milestone_count": 9,
     "gate_task_count": 9,
     "initial_ready_tasks": [],

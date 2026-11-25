@@ -129,6 +129,13 @@ from paperworkshell.domain.signature_images import (
     SignatureImageProgress,
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
+from paperworkshell.domain.trace_recipe import (
+    TraceOperationKind,
+    TraceRecipe,
+    TraceRecipeError,
+    TraceRecipeErrorCode,
+    TraceRecipePage,
+)
 from paperworkshell.overlays.commands import CreateCoreOverlayCommand
 from paperworkshell.overlays.models import (
     OverlayAssetKind,
@@ -1377,6 +1384,86 @@ def test_preview_requests_cover_pdf_and_image_pages_in_order_and_forward_control
     assert thumbnails.timeout_seen == 4.5
     assert thumbnails.cancellation_seen is cancellation
     assert thumbnails.progress_seen is progress
+
+
+def test_trace_recipe_tracks_effective_rotation_reopen_and_stable_source_identity() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=2, include_image=True))
+    initial = backend.open_case(CASE_ID).trace_plan
+    assert initial is not None
+    assert tuple(source.source_id for source in initial.sources) == (PDF_SOURCE_ID, IMAGE_SOURCE_ID)
+    for _ in range(4):
+        backend.rotate_clockwise(PAGE_IDS[0])
+    neutral = backend.state
+    assert neutral.can_undo and neutral.trace_plan == initial
+    assert backend.undo().trace_plan != initial
+    assert backend.redo().trace_plan == initial
+
+    target = TraceRecipe(
+        initial.recipe.sources, (TraceRecipePage(2, 1, 270), TraceRecipePage(1, 2, 90))
+    )
+    pending = backend.apply_trace_recipe(target)
+    assert pending.autosave_pending and pending.trace_plan is not None
+    assert pending.trace_plan.recipe == target
+    assert tuple(page.page_id for page in pending.pages) == (IMAGE_PAGE_ID, PAGE_IDS[1])
+    assert {step.kind for step in pending.trace_plan.operations} >= {
+        TraceOperationKind.SELECTION,
+        TraceOperationKind.ORDER,
+        TraceOperationKind.ROTATION,
+    }
+    backend.close_case()
+    reopened = backend.open_case(CASE_ID)
+    assert not reopened.can_undo and not reopened.autosave_pending
+    assert reopened.trace_plan == pending.trace_plan
+    assert repository.save_calls == 1
+
+
+def test_trace_recipe_rejects_mismatched_or_unsupported_targets_before_mutation() -> None:
+    backend, repository, _, _, _ = _backend(_document(page_count=2, include_image=True))
+    opening = backend.open_case(CASE_ID)
+    assert opening.trace_plan is not None
+    first_source = opening.trace_plan.recipe.sources[0]
+    missing = TraceRecipe((first_source,), (TraceRecipePage(1, 1, 90),))
+    unsupported = TraceRecipe(
+        opening.trace_plan.recipe.sources,
+        (TraceRecipePage(1, 1, 90),),
+        (TraceOperationKind.OCR,),
+    )
+    with pytest.raises(TraceRecipeError) as wrong_input:
+        backend.apply_trace_recipe(missing)
+    assert wrong_input.value.code is TraceRecipeErrorCode.INPUT_MISMATCH
+    with pytest.raises(TraceRecipeError) as unsupported_input:
+        backend.apply_trace_recipe(unsupported)
+    assert unsupported_input.value.code is TraceRecipeErrorCode.UNSUPPORTED
+    assert backend.state == opening
+    assert backend.state.trace_plan == opening.trace_plan
+    assert repository.save_calls == 0
+
+
+def test_trace_source_preview_uses_original_and_rejects_foreign_case() -> None:
+    backend, _, _, _, thumbnails = _backend(_document(page_count=1, include_image=True))
+    backend.open_case(CASE_ID)
+    backend.rotate_clockwise(IMAGE_PAGE_ID)
+    original = ImagePagePreviewRequest(
+        case_id=CASE_ID,
+        page_id=IMAGE_PAGE_ID,
+        maximum_width_pixels=320,
+        maximum_height_pixels=240,
+        additional_rotation=ImageQuarterTurn.DEGREES_0,
+    )
+    result = _review_original_result(original)
+    thumbnails.results = (result,)
+    assert (
+        backend.get_trace_source_preview(
+            CASE_ID, IMAGE_PAGE_ID, 320, 240, cancellation=lambda: False
+        )
+        is result
+    )
+    assert thumbnails.requests == (original,)
+    with pytest.raises(TraceRecipeError) as wrong_case:
+        backend.get_trace_source_preview(
+            PDF_SOURCE_ID, IMAGE_PAGE_ID, 320, 240, cancellation=lambda: False
+        )
+    assert wrong_case.value.code is TraceRecipeErrorCode.TARGET_CHANGED
 
 
 def test_image_preview_request_binds_the_complete_persisted_transform_intent() -> None:

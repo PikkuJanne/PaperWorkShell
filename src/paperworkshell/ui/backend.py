@@ -58,6 +58,7 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
+from paperworkshell.app.trace_results import TraceExportEvidence, trace_export_evidence
 from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import (
     AssistedUseError,
@@ -113,6 +114,11 @@ from paperworkshell.domain.source_ingest import (
 )
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.domain.text_companion import TextCompanionError
+from paperworkshell.domain.trace_recipe import (
+    TraceOutputStatus,
+    TraceRecipeError,
+    TraceRecipeErrorCode,
+)
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.overlays.exporting import (
     FlattenedPdfExportError,
@@ -122,6 +128,11 @@ from paperworkshell.overlays.models import OverlayError, OverlayErrorCode
 from paperworkshell.overlays.signature_commands import SignatureAssetDeletePolicy
 from paperworkshell.preflight.models import PreflightError
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
+from paperworkshell.storage.trace_files import (
+    inspect_trace_output,
+    load_trace_recipe,
+    save_trace_recipe,
+)
 from paperworkshell.templates.models import TemplateLoadError
 
 
@@ -223,6 +234,9 @@ def sanitize_ui_failure(
 ) -> UiFailure:
     """Map only known typed failures; never stringify an unknown exception."""
 
+    if type(error) is TraceRecipeError:
+        rebuilt_recipe = TraceRecipeError(error.code, error.unsupported_operations)
+        return UiFailure(error.code.value, rebuilt_recipe.safe_message, True, operation_id)
     if type(error) is OrdinaryPdfExportError:
         rebuilt_ordinary = OrdinaryPdfExportError(error.code)
         return UiFailure(error.code.value, rebuilt_ordinary.safe_message, True, operation_id)
@@ -488,6 +502,10 @@ class OrganizerBackendWorker(QObject):
     operation_cancelled = Signal(int, str)
     operation_finished = Signal(int)
     pages_pdf_export_saved = Signal(int, int)
+    trace_pdf_export_ready = Signal(int, object)
+    trace_export_inspected = Signal(int, object, object)
+    source_preview_ready = Signal(int, object, object, object, bool)
+    source_preview_failed = Signal(int, object, object, object, bool)
     failed = Signal(object)
     shutdown_complete = Signal()
     shutdown_refused = Signal(object)
@@ -854,6 +872,9 @@ class OrganizerBackendWorker(QObject):
                 progress=lambda value: self._pdf_export_progress(operation_id, value),
                 **({"make_searchable": True} if make_searchable else {}),
             )
+            evidence = trace_export_evidence(outcome, destination, make_searchable=make_searchable)
+            if evidence is not None:
+                self.trace_pdf_export_ready.emit(operation_id, evidence)
             self.pages_pdf_export_saved.emit(
                 operation_id, outcome.committed_export.report.page_count
             )
@@ -864,6 +885,63 @@ class OrganizerBackendWorker(QObject):
                 self.operation_status_changed.emit(operation_id, outcome.safe_message)
 
         self._run_long(operation_id, tr("PDF export"), action)
+
+    @Slot(int, object, object)
+    def inspect_trace_export(
+        self, operation_id: int, evidence: object, cancellation: object
+    ) -> None:
+        """Independently authenticate the selected result before the desktop opens it."""
+
+        backend = self._backend
+        if (
+            type(evidence) is not TraceExportEvidence
+            or type(cancellation) is not OperationCancellation
+        ):
+            return
+        if backend is None or backend.state.case_id != evidence.case_id:
+            status = TraceOutputStatus.UNAVAILABLE
+        else:
+            status = inspect_trace_output(
+                evidence.destination, evidence.byte_size, evidence.sha256, cancellation.cancelled
+            )
+        self.trace_export_inspected.emit(operation_id, evidence, status)
+
+    @Slot(int, object, str, object)
+    def save_trace_recipe_file(
+        self, operation_id: int, case_id: object, fingerprint: str, path: object
+    ) -> None:
+        """Save an exact plan after verifying the queued action is still current."""
+
+        def action(backend: OrganizerBackend) -> None:
+            state = backend.state
+            plan = state.trace_plan
+            if not isinstance(path, Path):
+                raise TypeError
+            if plan is None or state.case_id != case_id or plan.fingerprint != fingerprint:
+                raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+            save_trace_recipe(path, plan.recipe)
+            self.operation_status_changed.emit(operation_id, tr("Recipe saved."))
+
+        self._run_long(operation_id, tr("Save recipe"), action)
+
+    @Slot(int, object, str, object)
+    def apply_trace_recipe_file(
+        self, operation_id: int, case_id: object, fingerprint: str, path: object
+    ) -> None:
+        """Read and atomically apply supported metadata to the bound case."""
+
+        def action(backend: OrganizerBackend) -> None:
+            state = backend.state
+            plan = state.trace_plan
+            if not isinstance(path, Path):
+                raise TypeError
+            if plan is None or state.case_id != case_id or plan.fingerprint != fingerprint:
+                raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+            state = backend.apply_trace_recipe(load_trace_recipe(path))
+            self.state_changed.emit(state)
+            self.operation_status_changed.emit(operation_id, tr("Recipe applied."))
+
+        self._run_long(operation_id, tr("Apply recipe"), action)
 
     @Slot(int)
     def begin_removal_export(self, operation_id: int) -> None:
@@ -981,6 +1059,49 @@ class OrganizerBackendWorker(QObject):
                 self._run_long(operation_id, "Preview", action)
         else:
             self._run_long(operation_id, "Preview", action)
+
+    @Slot(int, object, object, int, int, object, bool)
+    def get_trace_canvas_preview(
+        self,
+        operation_id: int,
+        case_id: object,
+        page_id: object,
+        width: int,
+        height: int,
+        cancellation: object,
+        source: bool,
+    ) -> None:
+        """Return one lens preview tied to the exact case, page, and request."""
+
+        backend = self._backend
+        if backend is None or type(case_id) is not UUID or type(page_id) is not UUID:
+            return
+        if type(cancellation) is not OperationCancellation or cancellation.cancelled():
+            return
+        try:
+            if backend.state.case_id != case_id:
+                raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+            if source:
+                result = backend.get_trace_source_preview(
+                    case_id, page_id, width, height, cancellation=cancellation.cancelled
+                )
+            else:
+                (result,) = backend.get_thumbnails(
+                    width,
+                    height,
+                    page_ids=(page_id,),
+                    cancellation=cancellation.cancelled,
+                )
+        except Exception as error:
+            self.source_preview_failed.emit(
+                operation_id,
+                case_id,
+                page_id,
+                sanitize_ui_failure(error, operation_id=operation_id),
+                source,
+            )
+            return
+        self.source_preview_ready.emit(operation_id, case_id, page_id, result, source)
 
     @Slot(int, int, object, int, object)
     def analyze_quality(
@@ -2994,6 +3115,10 @@ class OrganizerBackendCommands(QObject):
     close_case_requested = Signal()
     import_requested = Signal(int, object, str, object)
     thumbnails_requested = Signal(int, int, object, int, int, object)
+    source_preview_requested = Signal(int, object, object, int, int, object, bool)
+    trace_export_inspect_requested = Signal(int, object, object)
+    trace_recipe_save_requested = Signal(int, object, str, object)
+    trace_recipe_apply_requested = Signal(int, object, str, object)
     quality_review_requested = Signal(int, int, object, int, object)
     scan_review_begin_requested = Signal(int, object, object)
     scan_review_preview_requested = Signal(int, int, object, object, int, int, object)
@@ -3070,6 +3195,10 @@ class OrganizerBackendCommands(QObject):
         self.removal_export_review_requested.connect(worker.begin_removal_export)
         self.removal_pdf_export_requested.connect(worker.export_removal_pdf)
         self.thumbnails_requested.connect(worker.get_thumbnails)
+        self.source_preview_requested.connect(worker.get_trace_canvas_preview)
+        self.trace_export_inspect_requested.connect(worker.inspect_trace_export)
+        self.trace_recipe_save_requested.connect(worker.save_trace_recipe_file)
+        self.trace_recipe_apply_requested.connect(worker.apply_trace_recipe_file)
         self.quality_review_requested.connect(worker.analyze_quality)
         self.scan_review_begin_requested.connect(worker.begin_scan_review)
         self.scan_review_preview_requested.connect(worker.get_scan_review_preview)

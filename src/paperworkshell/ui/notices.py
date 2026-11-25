@@ -37,6 +37,7 @@ from paperworkshell.storage.uninstall_review import uninstall_application_guard
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.application import configure_ui_locale
 from paperworkshell.ui.localization_layout import adapt_localized_content
+from paperworkshell.ui.trace_presentation import install_trace_presentation
 
 
 class NoticesDialog(QDialog):
@@ -263,6 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         with uninstall_application_guard():
             application = QApplication(["PaperWorkShell"])
+            install_trace_presentation(application)
             configure_ui_locale(application)
             application.setApplicationName("PaperWorkShell")
             try:
@@ -274,6 +276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             if application is None:
                 application = QApplication(["PaperWorkShell"])
+                install_trace_presentation(application)
                 configure_ui_locale(application)
                 application.setApplicationName("PaperWorkShell")
             return _show(

@@ -12,6 +12,21 @@ remain historical evidence within their original scope. R9 and existing cases ar
 preserved. Public signing, provider contact/publication and remaining release-only
 qualification remain deferred; an internal build is not a qualified public release.
 
+## TRACE workbench
+
+Open a case and use **Add file** to bring in PDFs, JPEGs or PNGs. Use **Pages** for the
+assembled order and **Sources** to see where each page came from. **Arrange** exposes
+keyboard page movement, while **Source**, **Planned** and **Exported** show the original,
+the current preview, and the identity of the verified PDF from this session. **Ctrl+K**
+finds the same commands available in the workbench groups.
+
+**Save recipe** records source slots, page selection, order and rotation. Import the matching
+files in slot order before choosing **Apply recipe**. **Export PowerShell script** uses the
+installed offline runtime to make a new ordinary PDF. Give the script one literal input path
+per source slot and a fresh output path. Use a PowerShell host that permits the local script
+under your existing execution policy. The script rejects unsupported steps such as OCR,
+scan cleanup and overlays. See the [TRACE implementation record](docs/development/pws0813-trace.md).
+
 PaperWorkShell targets **Windows 11 x64 only**. Publisher and maintainer: **Janne Vuorela**. Official
 distribution is free for everyone, including commercial users. Project-owned material uses
 the [MIT licence](LICENSE); [licensing scope](LICENSING.md) preserves third-party rights.

@@ -161,7 +161,7 @@ from paperworkshell.domain.pdf_export import (
     reject_pdf_export,
 )
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
-from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest
+from paperworkshell.domain.pdf_thumbnails import PdfThumbnailRequest, PdfThumbnailResult
 from paperworkshell.domain.post_export_deletion import (
     PostExportDeletionConfirmation,
     PostExportDeletionErrorCode,
@@ -199,6 +199,15 @@ from paperworkshell.domain.signed_source_policy import (
 )
 from paperworkshell.domain.source_ingest import SourceImportResult
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
+from paperworkshell.domain.trace_recipe import (
+    TracePlan,
+    TraceRecipe,
+    TraceRecipeError,
+    TraceRecipeErrorCode,
+    build_trace_plan,
+    trace_recipe_sequence_commands,
+    trace_source_identities,
+)
 from paperworkshell.localization.catalog import tr
 from paperworkshell.overlays.commands import OverlayCommandHistory
 from paperworkshell.overlays.exporting import FlattenedPdfExportOutcome
@@ -404,6 +413,7 @@ class OrganizerViewState:
     recovery_review_required: bool = False
     removal_page_ids: tuple[UUID, ...] = ()
     case_name: str = field(default="", repr=False)
+    trace_plan: TracePlan | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if require_case_name(self.case_name, allow_empty=True) != self.case_name:
@@ -424,9 +434,17 @@ class OrganizerViewState:
         if any(type(page) is not OrganizerPageView for page in self.pages):
             reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.pages")
         if self.case_id is None:
-            if self.revision is not None or self.pages or self.removal_page_ids or any(flags):
+            if (
+                self.revision is not None
+                or self.pages
+                or self.removal_page_ids
+                or any(flags)
+                or self.trace_plan is not None
+            ):
                 reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.empty_state")
             return
+        if self.trace_plan is not None and type(self.trace_plan) is not TracePlan:
+            reject_page_operation(PageOperationErrorCode.MODEL_INVALID, "organizer.trace_plan")
         if type(self.case_id) is not UUID or self.case_id.version != 4:
             reject_page_operation(PageOperationErrorCode.IDENTIFIER_INVALID, "organizer.case_id")
         if (
@@ -1256,6 +1274,42 @@ class OrganizerBackend:
         history = session.history.execute(
             SequenceChangeCommand(SequenceChangeReason.REORDER, page_ids)
         )
+        return self._queue_history(session, history)
+
+    def apply_trace_recipe(self, recipe: TraceRecipe) -> OrganizerViewState:
+        """Map portable bindings and validate all commands before committing any edit."""
+
+        if type(recipe) is not TraceRecipe:
+            raise TraceRecipeError(TraceRecipeErrorCode.INVALID)
+        recipe.require_automation_supported()
+        session = self._require_session()
+        history = session.history
+        projection = history.projection
+        document = session.snapshot.document
+        sources = trace_source_identities(document)
+        if recipe.sources != tuple(source.binding for source in sources):
+            raise TraceRecipeError(TraceRecipeErrorCode.INPUT_MISMATCH)
+        by_origin = {
+            (page.reference.source_id, page.reference.source_page_index + 1): page
+            for page in projection.pages
+        }
+        try:
+            target_pages = tuple(
+                by_origin[(sources[binding.source - 1].source_id, binding.page)]
+                for binding in recipe.pages
+            )
+        except KeyError:
+            raise TraceRecipeError(TraceRecipeErrorCode.INPUT_MISMATCH) from None
+        target_ids = tuple(page.page_id for page in target_pages)
+        for command in trace_recipe_sequence_commands(projection.page_sequence, target_ids):
+            history = history.execute(command)
+        for target, binding in zip(target_pages, recipe.pages, strict=True):
+            delta = (binding.rotation // 90 - target.quarter_turns_clockwise) % 4
+            if delta:
+                history = history.execute(RotatePageCommand(target.page_id, delta))
+        build_trace_plan(document, history.projection).recipe.require_automation_supported()
+        if history is session.history:
+            return self.state
         return self._queue_history(session, history)
 
     def begin_redaction_tools(self, page_id: UUID) -> RedactionToolsState:
@@ -2100,6 +2154,56 @@ class OrganizerBackend:
             progress=progress,
         )
 
+    def get_trace_source_preview(
+        self,
+        case_id: UUID,
+        page_id: UUID,
+        maximum_width_pixels: int,
+        maximum_height_pixels: int,
+        *,
+        cancellation: PreviewCancellationProbe,
+    ) -> PagePreviewResult:
+        """Render the selected page's original import without current case edits."""
+
+        session = self._require_session()
+        if case_id != session.snapshot.case_id:
+            raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+        _require_thumbnail_dimension(maximum_width_pixels, "preview.source_width")
+        _require_thumbnail_dimension(maximum_height_pixels, "preview.source_height")
+        projection = session.history.projection
+        _require_active_page(projection, page_id)
+        page = projection.state_for(page_id)
+        media = _preview_media_by_source(session.snapshot)[page.reference.source_id]
+        request: PagePreviewRequest
+        if media is DetectedMediaType.PDF:
+            request = PdfThumbnailRequest(
+                case_id=case_id,
+                page_id=page_id,
+                maximum_width_pixels=maximum_width_pixels,
+                maximum_height_pixels=maximum_height_pixels,
+            )
+        else:
+            request = ImagePagePreviewRequest(
+                case_id=case_id,
+                page_id=page_id,
+                maximum_width_pixels=maximum_width_pixels,
+                maximum_height_pixels=maximum_height_pixels,
+                additional_rotation=ImageQuarterTurn.DEGREES_0,
+            )
+        results = self._thumbnails.get_previews(
+            (request,),
+            timeout_seconds=MAX_PAGE_PREVIEW_TIMEOUT_SECONDS,
+            cancellation=cancellation,
+        )
+        if (
+            type(results) is not tuple
+            or len(results) != 1
+            or type(results[0]) not in {PdfThumbnailResult, ImagePagePreviewResult}
+            or results[0].snapshot.page_id != page_id
+        ):
+            reject_page_preview(PagePreviewErrorCode.RESULT_INVALID, "preview.source_result")
+        return results[0]
+
     def analyze_quality(
         self,
         *,
@@ -2813,6 +2917,7 @@ def _view_state(session: _OrganizerSession) -> OrganizerViewState:
         removal_page_ids=tuple(
             page_id for page_id in projection.page_sequence if page_id in removal_counts
         ),
+        trace_plan=build_trace_plan(document, projection),
     )
 
 

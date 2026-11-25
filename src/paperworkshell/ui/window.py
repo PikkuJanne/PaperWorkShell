@@ -50,12 +50,17 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QStackedWidget,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -98,6 +103,8 @@ from paperworkshell.app.signature_images import (
     SignatureImagePlacementDraft,
     SignatureImagePlacementRequest,
 )
+from paperworkshell.app.trace_automation import TraceAutomationError
+from paperworkshell.app.trace_results import TraceExportEvidence
 from paperworkshell.diagnostics import phase_observer
 from paperworkshell.domain.assisted_use import AssistedUseError, AssistedUseErrorCode
 from paperworkshell.domain.case_lifecycle import CaseDeletionResult, CaseDeletionStatus, CaseIndex
@@ -148,6 +155,7 @@ from paperworkshell.domain.resource_policy import (
 from paperworkshell.domain.signature_images import SignatureImageErrorCode
 from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.domain.text_companion import TextCompanionError, TextCompanionErrorCode
+from paperworkshell.domain.trace_recipe import TraceOutputStatus, TraceRecipeError
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
@@ -194,6 +202,16 @@ from paperworkshell.ui.scan_review import ScanReviewDialog
 from paperworkshell.ui.signature_images import (
     SignatureImageDeleteDialog,
     SignatureImagePlacementDialog,
+)
+from paperworkshell.ui.trace_presentation import install_trace_presentation
+from paperworkshell.ui.trace_recipe import TraceRecipePane
+from paperworkshell.ui.trace_script import export_trace_powershell
+from paperworkshell.ui.trace_workbench import (
+    TraceCommand,
+    TraceCommandPalette,
+    TraceDocumentCanvas,
+    TracePageRailDelegate,
+    TraceWorkbenchSplit,
 )
 
 _AUTOSAVE_DEBOUNCE_MS: Final = 400
@@ -249,6 +267,7 @@ class _LongOperationKind(StrEnum):
     REMOVAL_REVIEW = mark("Removal review")
     REMOVAL_EXPORT = mark("Removal export")
     PACKAGE_REVIEW = mark("Package inspection")
+    TRACE_RECIPE = mark("Recipe")
 
 
 class _ImportPresentationState(StrEnum):
@@ -274,6 +293,14 @@ class _LongOperation:
     operation_id: int
     kind: _LongOperationKind
     cancellation: OperationCancellation
+
+
+@dataclass(frozen=True, slots=True)
+class _TraceCanvasTarget:
+    case_id: UUID
+    page_id: UUID
+    plan: str
+    source: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -707,6 +734,7 @@ class PaperWorkShellWindow(QMainWindow):
             current_style = application.styleSheet()
             if _FOCUS_VISIBLE_WORKFLOW_STYLE not in current_style:
                 application.setStyleSheet(current_style + "\n" + _FOCUS_VISIBLE_WORKFLOW_STYLE)
+            install_trace_presentation(application)
         self.setAccessibleName(tr("PaperWorkShell guided packet builder"))
         self._commands = commands
         self._worker = worker
@@ -831,6 +859,20 @@ class PaperWorkShellWindow(QMainWindow):
         self._diagnostic_bundle_service = session_bundle_service(selected_policy)
         self._diagnostic_bundle_shutdown_requested = False
 
+        self._trace_last_selection: tuple[UUID, UUID] | None = None
+        self._trace_canvas_timer = QTimer(self)
+        self._trace_canvas_timer.setSingleShot(True)
+        self._trace_canvas_timer.setInterval(160)
+        self._trace_canvas_timer.timeout.connect(self._request_trace_canvas)
+        self._trace_canvas_request: tuple[int, _TraceCanvasTarget, OperationCancellation] | None = (
+            None
+        )
+        self._trace_canvas_image: tuple[_TraceCanvasTarget, QPixmap] | None = None
+        self._trace_canvas_failed: _TraceCanvasTarget | None = None
+        self._trace_ocr_language_set_id: str | None = None
+        self._trace_evidence: TraceExportEvidence | None = None
+        self._trace_output_status: TraceOutputStatus | None = None
+        self._trace_output_request: tuple[int, OperationCancellation, bool] | None = None
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.timeout.connect(self._refresh_visible_previews)
@@ -845,17 +887,18 @@ class PaperWorkShellWindow(QMainWindow):
         self._status_surface = self._build_status_surface()
         adapt_localized_content(self._status_surface)
         self._announcer = ScreenReaderAnnouncer(self._status_label)
-        self._ocr_language_surface = self._build_ocr_language_surface()
+        self._trace_app_bar = self._build_trace_app_bar()
         self._welcome_page = self._build_welcome_page()
         self._organizer_page = self._build_organizer_page()
         self._stack.addWidget(self._welcome_page)
         self._stack.addWidget(self._organizer_page)
         central = QWidget()
         central.setObjectName("applicationSurface")
+        central.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
-        central_layout.addWidget(self._ocr_language_surface)
+        central_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        central_layout.addWidget(self._trace_app_bar)
         central_layout.addWidget(self._stack, 1)
         self._application_scroll = QScrollArea()
         self._application_scroll.setObjectName("applicationScrollArea")
@@ -863,6 +906,7 @@ class PaperWorkShellWindow(QMainWindow):
             tr("PaperWorkShell workflow and operation status")
         )
         self._application_scroll.setWidgetResizable(True)
+        self._application_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._application_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._application_scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._application_scroll.setWidget(central)
@@ -881,7 +925,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._package_export_action.setStatusTip(
             tr("Review and export the current package. Ctrl+E.")
         )
-        self._package_export_action.triggered.connect(self._request_package_export)
+        self._package_export_action.triggered.connect(self._package_export_button.click)
         file_menu.addAction(self._package_export_action)
         self._pages_pdf_export_action = QAction(tr("Export &PDF…"), self)
         self._pages_pdf_export_action.setObjectName("pagesPdfExportMenuAction")
@@ -889,7 +933,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._pages_pdf_export_action.setStatusTip(
             tr("Export the saved pages as PDF. Ctrl+Shift+E.")
         )
-        self._pages_pdf_export_action.triggered.connect(self._choose_pages_pdf_export)
+        self._pages_pdf_export_action.triggered.connect(self._pages_pdf_export_button.click)
         file_menu.addAction(self._pages_pdf_export_action)
         self._removal_export_action = QAction(tr("Export removal &derivative…"), self)
         self._removal_export_action.setObjectName("removalExportMenuAction")
@@ -897,7 +941,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._removal_export_action.setStatusTip(
             tr("Review saved marks and export a verified removal derivative. Ctrl+Alt+E.")
         )
-        self._removal_export_action.triggered.connect(self._request_removal_export)
+        self._removal_export_action.triggered.connect(self._removal_export_button.click)
         file_menu.addAction(self._removal_export_action)
         help_menu = self.menuBar().addMenu(tr("&Help"))
         self._keyboard_help_action = QAction(tr("&Keyboard guide"), self)
@@ -922,6 +966,7 @@ class PaperWorkShellWindow(QMainWindow):
             save_phase.setObjectName("saveSyntheticPngPhaseReceipt")
             save_phase.triggered.connect(self._save_phase_observation)
             help_menu.addAction(save_phase)
+        self._build_trace_commands()
         self._build_shortcuts()
         self._connect_backend()
 
@@ -936,8 +981,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._assisted_session = AssistedSessionController(self)
         available = self.screen().availableGeometry()
         self.resize(
-            min(1000, max(1, available.width() - 48)),
-            min(720, max(1, available.height() - 48)),
+            min(1270, max(1, available.width() - 48)),
+            min(820, max(1, available.height() - 48)),
         )
 
     def _show_workflow_page(self, page: QWidget) -> None:
@@ -1055,6 +1100,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._import_file_label.hide()
         self._error_label = QLabel()
         self._error_label.setObjectName("errorLabel")
+        self._error_label.setProperty("traceRole", "error")
         self._error_label.setAccessibleName(tr("Action error"))
         self._error_label.setAccessibleDescription(
             tr("The latest safe error code and recovery message.")
@@ -1105,6 +1151,7 @@ class PaperWorkShellWindow(QMainWindow):
         status_actions.addWidget(self._retry_close_button)
         self._saved_label = QLabel(tr("No case open."))
         self._saved_label.setObjectName("caseSavedState")
+        self._saved_label.setProperty("traceRole", "muted")
         self._saved_label.setTextFormat(Qt.TextFormat.PlainText)
         self._saved_label.setWordWrap(True)
         self._last_result_label = QLabel()
@@ -1112,7 +1159,6 @@ class PaperWorkShellWindow(QMainWindow):
         self._last_result_label.setTextFormat(Qt.TextFormat.PlainText)
         self._last_result_label.setWordWrap(True)
         self._last_result_label.hide()
-        status_layout.addWidget(self._saved_label)
         status_layout.addWidget(self._import_file_label)
         status_layout.addWidget(self._status_label)
         status_layout.addWidget(self._last_result_label)
@@ -1141,40 +1187,47 @@ class PaperWorkShellWindow(QMainWindow):
         status_layout.addLayout(status_actions)
         return status_group
 
-    def _build_ocr_language_surface(self) -> QGroupBox:
-        surface = QGroupBox(tr("OCR language settings"))
-        surface.setObjectName("ocrLanguageSettingsGroup")
-        surface.setAccessibleName(tr("OCR language settings"))
-        surface.setAccessibleDescription(
-            tr("Manage verified local OCR language packs from the case chooser or organizer.")
+    def _build_trace_app_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("traceApplicationBar")
+        bar.setProperty("tracePanel", True)
+        frame_layout = QVBoxLayout(bar)
+        frame_layout.setContentsMargins(12, 6, 12, 6)
+        frame_layout.setSpacing(4)
+        layout = WrappingActionLayout()
+        brand = QLabel(tr("PaperWorkShell"))
+        brand.setProperty("traceRole", "brand")
+        font = brand.font()
+        font.setPointSizeF(font.pointSizeF() * 1.35)
+        brand.setFont(font)
+        frame_layout.addWidget(brand)
+        frame_layout.addLayout(layout)
+        self._command_button = self._action_button(
+            "Commands",
+            "traceCommandsButton",
+            "Find an action for the current case or page. Ctrl+K.",
         )
-        layout = QVBoxLayout(surface)
-        guidance = QLabel(
-            tr(
-                "Choose the verified local languages PaperWorkShell may use for OCR. No language data is downloaded."
-            )
+        self._command_button.clicked.connect(self._show_command_palette)
+        layout.addWidget(self._command_button)
+        self._ocr_language_button = self._action_button(
+            "OCR languages…",
+            "ocrLanguageSettingsButton",
+            "Review installed and verified offline OCR languages. Shortcut Ctrl+Shift+L. No language data is downloaded.",
         )
-        guidance.setObjectName("ocrLanguageSettingsGuidance")
-        guidance.setAccessibleName(tr("OCR language settings guidance"))
-        guidance.setTextFormat(Qt.TextFormat.PlainText)
-        guidance.setWordWrap(True)
-        self._ocr_language_button = QPushButton(tr("OCR languages…"))
-        self._ocr_language_button.setObjectName("ocrLanguageSettingsButton")
         self._ocr_language_button.setAccessibleName(tr("OCR languages"))
-        self._ocr_language_button.setAccessibleDescription(
-            tr(
-                "Review installed and verified offline OCR languages. Shortcut Ctrl+Shift+L. No language data is downloaded."
-            )
-        )
         self._ocr_language_button.clicked.connect(self._open_ocr_languages)
-        layout.addWidget(guidance)
         layout.addWidget(self._ocr_language_button)
-        return surface
+        self._settings_button = QPushButton(tr("Settings"))
+        self._settings_button.setObjectName("traceSettingsButton")
+        layout.addWidget(self._settings_button)
+        return bar
 
     def _build_welcome_page(self) -> QWidget:
         page = QWidget()
         page.setObjectName("caseChooserPage")
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
         heading = QLabel(tr("Choose a case"))
         heading.setObjectName("caseChooserHeading")
         heading.setAccessibleName(tr("Choose a case"))
@@ -1202,6 +1255,7 @@ class PaperWorkShellWindow(QMainWindow):
 
         self._create_case_button = QPushButton(tr("New case…"))
         self._create_case_button.setObjectName("createCaseButton")
+        self._create_case_button.setProperty("tracePrimary", True)
         self._create_case_button.setAccessibleDescription(
             tr(
                 "Enter a case name, then create the case. Cancel leaves your cases unchanged. Shortcut Ctrl+N."
@@ -1210,6 +1264,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._create_case_button.clicked.connect(self._request_create_case)
         self._open_case_button = QPushButton(tr("Open case"))
         self._open_case_button.setObjectName("openCaseButton")
+        self._case_list.setAlternatingRowColors(True)
         self._open_case_button.setAccessibleDescription(
             tr("Open the selected case. Shortcut Ctrl+O.")
         )
@@ -1242,6 +1297,8 @@ class PaperWorkShellWindow(QMainWindow):
         content = QWidget()
         content.setObjectName("organizerPage")
         layout = QVBoxLayout(content)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(8)
 
         header = WrappingActionLayout()
         self._case_heading = QLabel(tr("Page organizer"))
@@ -1282,9 +1339,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._rename_case_button.clicked.connect(self._request_rename_case)
         self._case_heading.setMinimumWidth(0)
         layout.addWidget(self._case_heading)
+        layout.addWidget(self._saved_label)
         layout.addLayout(header)
 
-        organizer_group = QGroupBox(tr("Pages"))
+        organizer_group = QFrame()
+        organizer_group.setProperty("tracePanel", True)
+        organizer_group.setAccessibleName(tr("Pages"))
         organizer_group.setObjectName("activePagesGroup")
         organizer_group.setAccessibleDescription(
             tr("Keyboard-selectable active pages. Reordering never requires drag-and-drop.")
@@ -1316,7 +1376,8 @@ class PaperWorkShellWindow(QMainWindow):
         )
         self._page_view.setModel(self._model)
         self._page_view.setViewMode(QListView.ViewMode.ListMode)
-        self._page_view.setItemDelegate(OrganizerPageDelegate(self._page_view))
+        self._trace_rail_delegate = TracePageRailDelegate(self._page_view)
+        self._page_view.setItemDelegate(self._trace_rail_delegate)
         self._page_view.setUniformItemSizes(True)
         self._page_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._page_view.setResizeMode(QListView.ResizeMode.Adjust)
@@ -1338,15 +1399,29 @@ class PaperWorkShellWindow(QMainWindow):
         self._page_view.verticalScrollBar().valueChanged.connect(self._schedule_preview_refresh)
         self._page_view.horizontalScrollBar().valueChanged.connect(self._schedule_preview_refresh)
         self._page_view.viewport().installEventFilter(self)
-        organizer_layout.addWidget(self._page_view, 1)
+        self._trace_source_tree = QTreeWidget()
+        self._trace_source_tree.setObjectName("traceSourceGroups")
+        self._trace_source_tree.setAccessibleName(tr("Source documents"))
+        self._trace_source_tree.setHeaderHidden(True)
+        self._trace_source_tree.setColumnCount(1)
+        self._trace_source_tree.setUniformRowHeights(True)
+        self._trace_source_tree.itemActivated.connect(self._select_source_tree_page)
+        self._trace_sources_identity: object = None
+        self._trace_left_tabs = QTabWidget()
+        self._trace_left_tabs.setAccessibleName(tr("Pages and source documents"))
+        self._trace_left_tabs.addTab(self._page_view, tr("Pages"))
+        self._trace_left_tabs.addTab(self._trace_source_tree, tr("Sources"))
+        self._trace_left_tabs.currentChanged.connect(self._schedule_preview_refresh)
+        organizer_layout.addWidget(self._trace_left_tabs, 1)
         self._selection_summary = QLabel(tr("Select a page to arrange or edit it."))
         self._selection_summary.setObjectName("selectedPageSummary")
         self._selection_summary.setAccessibleName(tr("Selected page"))
         self._selection_summary.setTextFormat(Qt.TextFormat.PlainText)
         self._selection_summary.setWordWrap(True)
-        organizer_layout.addWidget(self._selection_summary)
+        self._selection_summary.setProperty("traceRole", "muted")
 
-        action_layout = WrappingActionLayout()
+        self._trace_workflow_actions = WrappingActionLayout()
+        layout.addLayout(self._trace_workflow_actions)
         self._move_earlier_button = self._action_button(
             tr("Move up"),
             "moveEarlierButton",
@@ -1434,7 +1509,7 @@ class PaperWorkShellWindow(QMainWindow):
             ),
         )
         self._portal_constraints_button.setAccessibleName(tr("Review package constraints"))
-        self._package_export_button = self._action_button(
+        self._package_export_button: QPushButton = self._action_button(
             tr("Export checklist package…"),
             "packageExportButton",
             tr(
@@ -1442,7 +1517,7 @@ class PaperWorkShellWindow(QMainWindow):
             ),
         )
         self._package_export_button.clicked.connect(self._request_package_export)
-        self._pages_pdf_export_button = self._action_button(
+        self._pages_pdf_export_button: QPushButton = self._action_button(
             tr("Export PDF…"),
             "pagesPdfExportButton",
             tr(
@@ -1450,7 +1525,7 @@ class PaperWorkShellWindow(QMainWindow):
             ),
         )
         self._pages_pdf_export_button.clicked.connect(self._choose_pages_pdf_export)
-        self._removal_export_button = self._action_button(
+        self._removal_export_button: QPushButton = self._action_button(
             tr("Export removal derivative…"),
             "removalExportButton",
             tr(
@@ -1482,29 +1557,11 @@ class PaperWorkShellWindow(QMainWindow):
         self._portal_constraints_button.clicked.connect(self._request_portal_constraints)
         self._undo_button.clicked.connect(self._request_undo)
         self._redo_button.clicked.connect(self._request_redo)
-        action_layout.addWidget(self._move_earlier_button)
-        action_layout.addWidget(self._move_later_button)
-        action_layout.addWidget(self._rotate_button)
-        action_layout.addWidget(self._remove_button)
-        action_layout.addWidget(self._scan_review_button)
-        action_layout.addWidget(self._change_order_button)
-        action_layout.addWidget(self._undo_button)
-        action_layout.addWidget(self._redo_button)
-        action_layout.addWidget(self._core_overlay_tools_button)
-        action_layout.addWidget(self._place_signature_image_button)
-        action_layout.addWidget(self._remove_signature_image_button)
-        action_layout.addWidget(self._checklist_button)
-        action_layout.addWidget(self._redaction_tools_button)
-        action_layout.addWidget(self._portal_constraints_button)
-        action_layout.addWidget(self._package_export_button)
         header.addWidget(self._import_button)
+        self._pages_pdf_export_button.setProperty("tracePrimary", True)
         header.addWidget(self._pages_pdf_export_button)
-        header.addWidget(self._rename_case_button)
         header.addWidget(self._assisted_lock_button)
         header.addWidget(self._close_case_button)
-        action_layout.addWidget(self._removal_export_button)
-        organizer_layout.addLayout(action_layout)
-        layout.addWidget(organizer_group, 1)
 
         quality_group = QGroupBox(tr("Page quality review"))
         quality_group.setObjectName("qualityReviewGroup")
@@ -1571,8 +1628,953 @@ class PaperWorkShellWindow(QMainWindow):
         quality_layout.addWidget(self._quality_summary)
         quality_layout.addWidget(self._quality_findings_view)
         quality_layout.addLayout(quality_actions)
-        layout.addWidget(quality_group)
+        self._trace_lens = "planned"
+        center = self._build_trace_document()
+        self._trace_inspector_tabs = QTabWidget()
+        self._trace_inspector_tabs.setAccessibleName(tr("Recipe and inspection"))
+        self._trace_inspector_tabs.addTab(self._build_trace_recipe_pane(), tr("Recipe"))
+        self._trace_inspector_tabs.addTab(quality_group, tr("Checks"))
+        self._trace_split = TraceWorkbenchSplit(organizer_group, center, self._trace_inspector_tabs)
+        layout.addWidget(self._trace_split, 1)
+        self._model.dataChanged.connect(self._refresh_trace_document)
+        self._page_view.selectionModel().currentChanged.connect(self._refresh_trace_document)
         return content
+
+    def _build_trace_document(self) -> QWidget:
+        content = QWidget()
+        content.setObjectName("traceDocumentPanel")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        lens_row = WrappingActionLayout()
+        self._trace_lens_buttons: dict[str, QPushButton] = {}
+        for key, title in (
+            ("source", tr("Source")),
+            ("planned", tr("Planned")),
+            ("exported", tr("Exported")),
+            ("arrange", tr("Arrange")),
+        ):
+            button = QPushButton(title)
+            button.setObjectName(f"traceView-{key}")
+            button.setCheckable(True)
+            button.setChecked(key == self._trace_lens)
+            button.clicked.connect(lambda _checked=False, lens=key: self._set_trace_lens(lens))
+            self._trace_lens_buttons[key] = button
+            lens_row.addWidget(button)
+        layout.addLayout(lens_row)
+        self._trace_document = TraceDocumentCanvas()
+        self._trace_document_stack = QStackedWidget()
+        self._trace_document_stack.addWidget(self._trace_document)
+        self._trace_arrangement = QListView()
+        self._trace_arrangement.setObjectName("traceArrangement")
+        self._trace_arrangement.setAccessibleName(tr("Assembled page order"))
+        self._trace_arrangement.setModel(self._model)
+        self._trace_arrangement.setSelectionModel(self._page_view.selectionModel())
+        self._trace_arrangement.setItemDelegate(OrganizerPageDelegate(self._trace_arrangement))
+        self._trace_arrangement.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._trace_arrangement.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._trace_arrangement.setUniformItemSizes(True)
+        self._trace_arrangement.setResizeMode(QListView.ResizeMode.Adjust)
+        self._trace_arrangement.verticalScrollBar().valueChanged.connect(
+            self._schedule_preview_refresh
+        )
+        self._trace_document_stack.addWidget(self._trace_arrangement)
+        layout.addWidget(self._trace_document_stack, 1)
+        layout.addWidget(self._selection_summary)
+
+        navigation = WrappingActionLayout()
+        self._trace_previous_button = self._action_button(
+            "Previous page",
+            "tracePreviousPage",
+            "Select the preceding page in the assembled order.",
+        )
+        self._trace_next_button = self._action_button(
+            "Next page", "traceNextPage", "Select the next page in the assembled order."
+        )
+        self._trace_previous_button.clicked.connect(lambda: self._select_trace_adjacent(-1))
+        self._trace_next_button.clicked.connect(lambda: self._select_trace_adjacent(1))
+        navigation.addWidget(self._trace_previous_button)
+        navigation.addWidget(self._trace_next_button)
+        self._trace_zoom = QSpinBox()
+        self._trace_zoom.setObjectName("traceZoom")
+        self._trace_zoom.setAccessibleName(tr("Zoom relative to fit"))
+        self._trace_zoom.setRange(100, 300)
+        self._trace_zoom.setSingleStep(25)
+        self._trace_zoom.setSuffix("%")
+        self._trace_zoom.setSpecialValueText(tr("Fit page"))
+        self._trace_zoom.valueChanged.connect(self._trace_document.set_zoom)
+        navigation.addWidget(self._trace_zoom)
+        navigation.addWidget(self._rotate_button)
+        self._trace_arrangement_actions = (
+            self._move_earlier_button,
+            self._move_later_button,
+            self._change_order_button,
+            self._remove_button,
+        )
+        for button in self._trace_arrangement_actions:
+            navigation.addWidget(button)
+            button.hide()
+        self._trace_open_pdf_button = self._action_button(
+            "Open exported PDF",
+            "traceOpenExport",
+            "Verify the file identity and open it in your PDF viewer.",
+        )
+        self._trace_open_pdf_button.clicked.connect(self._open_pdf_button.click)
+        self._trace_open_pdf_button.hide()
+        navigation.addWidget(self._trace_open_pdf_button)
+        layout.addLayout(navigation)
+        return content
+
+    def _build_trace_recipe_pane(self) -> QWidget:
+        self._trace_recipe_pane = TraceRecipePane()
+        self._trace_recipe_pane.page_requested.connect(self._select_recipe_page)
+        return self._trace_recipe_pane
+
+    def _sync_trace_plan(self, state: OrganizerViewState) -> None:
+        if self._trace_evidence is not None and self._trace_evidence.case_id != state.case_id:
+            self._cancel_trace_output_check()
+            self._trace_evidence = None
+            self._trace_output_status = None
+            self._trace_recipe_pane.set_export_evidence(None)
+        self._trace_recipe_pane.set_plan(state.trace_plan)
+        groups: dict[int, list[OrganizerPageView]] = {}
+        for page in state.pages:
+            groups.setdefault(page.document_number or 0, []).append(page)
+        identity = (
+            state.case_id,
+            state.trace_plan.sources if state.trace_plan is not None else (),
+            tuple(
+                (
+                    number,
+                    tuple(
+                        (page.page_id, page.position, page.source_display_name) for page in pages
+                    ),
+                )
+                for number, pages in groups.items()
+            ),
+        )
+        if identity == self._trace_sources_identity:
+            return
+        self._trace_sources_identity = identity
+        self._trace_source_tree.clear()
+        sources = state.trace_plan.sources if state.trace_plan is not None else ()
+        for source in sources:
+            groups.setdefault(source.binding.binding, [])
+        names = {source.binding.binding: source.display_name for source in sources}
+        counts = {source.binding.binding: source.binding.page_count for source in sources}
+        for number, pages in sorted(groups.items()):
+            name = names.get(number) or (pages[0].source_display_name if pages else None)
+            name = name or tr("Document {value1}", value1=number)
+            group = QTreeWidgetItem(
+                self._trace_source_tree,
+                [
+                    tr(
+                        "{value1} · {value2} of {value3} in packet",
+                        value1=name,
+                        value2=len(pages),
+                        value3=counts.get(number, len(pages)),
+                    )
+                ],
+            )
+            group.setToolTip(0, group.text(0))
+            for page in pages:
+                item = QTreeWidgetItem(
+                    group,
+                    [
+                        tr(
+                            "Source {value1} → page {value2}",
+                            value1=page.source_page_number or 1,
+                            value2=page.position,
+                        )
+                    ],
+                )
+                item.setData(0, Qt.ItemDataRole.UserRole, page.page_id)
+        self._trace_source_tree.expandAll()
+
+    def _select_recipe_page(self, page_id: UUID) -> None:
+        row = self._model.row_for_page(page_id)
+        if row is not None:
+            self._restore_page_selection(page_id)
+            self._page_view.scrollTo(self._model.index(row, 0))
+            self._trace_arrangement.scrollTo(self._model.index(row, 0))
+
+    def _select_source_tree_page(self, item: QTreeWidgetItem, _column: int) -> None:
+        page_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if type(page_id) is UUID:
+            self._restore_page_selection(page_id)
+            self._trace_split.select_pane("document")
+            self._trace_document.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _select_trace_adjacent(self, offset: int) -> None:
+        row = self._page_view.currentIndex().row() + offset
+        page_id = self._model.page_id_at(row)
+        if page_id is not None:
+            self._restore_page_selection(page_id)
+            self._page_view.scrollTo(self._model.index(row, 0))
+            self._trace_arrangement.scrollTo(self._model.index(row, 0))
+
+    def _set_trace_lens(self, lens: str) -> None:
+        self._trace_lens = lens
+        self._trace_canvas_failed = None
+        if lens == "exported":
+            self._request_trace_output_check(open_when_verified=False)
+        else:
+            self._cancel_trace_output_check()
+        for key, button in self._trace_lens_buttons.items():
+            button.setChecked(key == lens)
+        self._trace_document_stack.setCurrentWidget(
+            self._trace_arrangement if lens == "arrange" else self._trace_document
+        )
+        self._trace_zoom.setVisible(lens not in {"arrange", "exported"})
+        self._rotate_button.setVisible(lens in {"planned", "arrange"})
+        for button in self._trace_arrangement_actions:
+            button.setVisible(lens == "arrange")
+        self._trace_open_pdf_button.setVisible(
+            lens == "exported" and self._trace_evidence is not None
+        )
+        self._refresh_trace_document()
+        self._schedule_preview_refresh()
+
+    def _refresh_trace_document(self, *_args: object) -> None:
+        row = self._page_view.currentIndex().row()
+        page_id = self._selected_page_id()
+        pages = self._model.pages
+        self._trace_recipe_pane.select_page(page_id)
+        self._trace_previous_button.setEnabled(0 < row < len(pages))
+        self._trace_next_button.setEnabled(0 <= row < len(pages) - 1)
+        target = self._trace_canvas_target()
+        if self._trace_canvas_request is not None and self._trace_canvas_request[1] != target:
+            self._cancel_trace_canvas()
+        if self._trace_canvas_image is not None and self._trace_canvas_image[0] != target:
+            self._trace_canvas_image = None
+        if self._trace_lens == "arrange":
+            return
+        if self._trace_lens == "exported":
+            self._refresh_trace_exported(page_id)
+            return
+        if page_id is None or not 0 <= row < len(pages):
+            self._trace_document.display(None, tr("Add a file to start the packet."))
+            return
+        page = pages[row]
+        description = (
+            tr(
+                "Source page {value1} · Assembled page {value2}",
+                value1=page.source_page_number or 1,
+                value2=page.position,
+            )
+            if self._trace_lens == "source"
+            else self._page_label(page)
+        )
+        pixmap = self._trace_canvas_image[1] if self._trace_canvas_image is not None else None
+        if self._trace_lens == "planned" and pixmap is None:
+            pixmap = self._model.preview(page_id)
+        if pixmap is None:
+            status = (
+                PreviewState.LOADING
+                if self._trace_lens == "source" and page.preview_supported
+                else self._model.preview_state(page_id)
+            )
+            if target is not None and self._trace_canvas_failed == target:
+                status = PreviewState.FAILED
+            if status is not None:
+                description = tr(
+                    "{value1} · Preview {value2}", value1=description, value2=tr(status.value)
+                )
+        if self._trace_lens == "planned" and (page.overlay_summaries or page.removal_mark_count):
+            description += "\n" + tr("Review saved marks in the page editor.")
+        self._trace_document.display(pixmap, description)
+        self._selection_summary.setText(description)
+        if (
+            target is not None
+            and self._trace_canvas_image is None
+            and self._trace_canvas_request is None
+            and self._trace_canvas_failed != target
+            and not self._trace_canvas_timer.isActive()
+        ):
+            self._trace_canvas_timer.start()
+
+    def _trace_canvas_target(self) -> _TraceCanvasTarget | None:
+        state = self._state
+        page_id = self._selected_page_id()
+        row = self._model.row_for_page(page_id) if page_id is not None else None
+        if (
+            state is None
+            or state.case_id is None
+            or state.trace_plan is None
+            or state.autosave_pending
+            or page_id is None
+            or row is None
+            or not self._model.pages[row].preview_supported
+            or self._trace_lens not in {"source", "planned"}
+            or self._closing_requested
+            or self._assisted_session.locked
+        ):
+            return None
+        return _TraceCanvasTarget(
+            state.case_id, page_id, state.trace_plan.fingerprint, self._trace_lens == "source"
+        )
+
+    def _request_trace_canvas(self) -> None:
+        target = self._trace_canvas_target()
+        if (
+            target is None
+            or self._active_operation is not None
+            or self._case_close_pending
+            or not self._controls_enabled
+            or not self._trace_document.isVisible()
+        ):
+            return
+        operation_id = self._allocate_operation_id()
+        token = OperationCancellation()
+        self._trace_canvas_request = operation_id, target, token
+        self._commands.source_preview_requested.emit(
+            operation_id,
+            target.case_id,
+            target.page_id,
+            _SCAN_REVIEW_PREVIEW_WIDTH,
+            _SCAN_REVIEW_PREVIEW_HEIGHT,
+            token,
+            target.source,
+        )
+
+    def _cancel_trace_canvas(self) -> None:
+        self._trace_canvas_timer.stop()
+        if self._trace_canvas_request is not None:
+            self._trace_canvas_request[2].cancel()
+            self._trace_canvas_request = None
+
+    def _accept_trace_canvas(
+        self, operation_id: int, case_id: object, page_id: object, source: bool
+    ) -> _TraceCanvasTarget | None:
+        pending = self._trace_canvas_request
+        if pending is None or pending[0] != operation_id:
+            return None
+        self._trace_canvas_request = None
+        target = pending[1]
+        if (
+            case_id != target.case_id
+            or page_id != target.page_id
+            or source != target.source
+            or pending[2].cancelled()
+            or target != self._trace_canvas_target()
+        ):
+            return None
+        return target
+
+    @Slot(int, object, object, object, bool)
+    def _trace_canvas_ready(
+        self, operation_id: int, case_id: object, page_id: object, result: object, source: bool
+    ) -> None:
+        target = self._accept_trace_canvas(operation_id, case_id, page_id, source)
+        if target is None:
+            return
+        if isinstance(result, (PdfThumbnailResult, ImagePagePreviewResult)):
+            pixels = result.snapshot.pixels
+        elif isinstance(result, ImagePageTransformResult):
+            pixels = result.pixels
+        else:
+            self._trace_canvas_failed = target
+            self._refresh_trace_document()
+            return
+        snapshot = result.snapshot
+        if snapshot.case_id != target.case_id or snapshot.page_id != target.page_id:
+            self._trace_canvas_failed = target
+            self._refresh_trace_document()
+            return
+        image = QImage(
+            pixels,
+            snapshot.width_pixels,
+            snapshot.height_pixels,
+            snapshot.row_stride_bytes,
+            QImage.Format.Format_RGBA8888,
+        ).copy()
+        if image.isNull():
+            self._trace_canvas_failed = target
+        else:
+            self._trace_canvas_image = target, QPixmap.fromImage(image)
+        self._refresh_trace_document()
+
+    @Slot(int, object, object, object, bool)
+    def _trace_canvas_failure(
+        self, operation_id: int, case_id: object, page_id: object, failure: object, source: bool
+    ) -> None:
+        target = self._accept_trace_canvas(operation_id, case_id, page_id, source)
+        if target is not None:
+            self._trace_canvas_failed = target
+            self._refresh_trace_document()
+            if source and isinstance(failure, UiFailure):
+                self._announce(failure.message)
+
+    def _refresh_trace_exported(self, page_id: UUID | None) -> None:
+        evidence = self._trace_evidence
+        self._trace_open_pdf_button.setVisible(evidence is not None)
+        if evidence is None:
+            self._trace_document.display(None, tr("No PDF exported in this case session."))
+            return
+        state = self._state
+        plan = state.trace_plan if state is not None else None
+        current = (
+            state is not None
+            and plan is not None
+            and evidence.applies_to(
+                state.case_id, plan.fingerprint, ocr_language_set_id=self._trace_ocr_language_set_id
+            )
+        )
+        if self._trace_output_request is not None:
+            status = tr("Checking the exported file…")
+        elif self._trace_output_status is TraceOutputStatus.PRESENT:
+            status = tr("Exported file matches the verified output.")
+        elif self._trace_output_status is TraceOutputStatus.MISSING:
+            status = tr("Exported file could not be found.")
+        elif self._trace_output_status is TraceOutputStatus.CHANGED:
+            status = tr("Exported file has changed since verification.")
+        else:
+            status = tr("Exported file not checked in this view.")
+        if not current:
+            status = tr("Out of date for the current recipe.") + "\n" + status
+        mapping = ""
+        if page_id in evidence.page_ids:
+            mapping = tr(
+                "Selected page was output page {value1} of {value2}.",
+                value1=evidence.page_ids.index(page_id) + 1,
+                value2=evidence.page_count,
+            )
+        elif page_id is not None:
+            mapping = tr("The selected page was not in this PDF.")
+        self._trace_document.display(
+            None,
+            "\n".join(
+                part
+                for part in (
+                    evidence.destination.name,
+                    status,
+                    mapping,
+                    tr("Use Open PDF to view the exported file."),
+                )
+                if part
+            ),
+        )
+
+    @Slot(int, object)
+    def _trace_pdf_export_ready(self, operation_id: int, evidence: object) -> None:
+        active = self._active_operation
+        if (
+            not isinstance(evidence, TraceExportEvidence)
+            or self._state is None
+            or self._state.case_id != evidence.case_id
+            or active is None
+            or active.operation_id != operation_id
+            or active.kind is not _LongOperationKind.PDF_EXPORT
+        ):
+            return
+        self._cancel_trace_output_check()
+        self._trace_evidence = evidence
+        self._trace_output_status = TraceOutputStatus.PRESENT
+        self._trace_recipe_pane.set_export_evidence(evidence)
+        self._refresh_trace_document()
+
+    def _cancel_trace_output_check(self) -> None:
+        if self._trace_output_request is not None:
+            self._trace_output_request[1].cancel()
+            self._trace_output_request = None
+
+    def _request_trace_output_check(self, *, open_when_verified: bool) -> None:
+        evidence = self._trace_evidence
+        if evidence is None or self._assisted_session.locked:
+            return
+        self._cancel_trace_output_check()
+        token = OperationCancellation()
+        operation_id = self._allocate_operation_id()
+        self._trace_output_request = operation_id, token, open_when_verified
+        self._commands.trace_export_inspect_requested.emit(operation_id, evidence, token)
+
+    @Slot(int, object, object)
+    def _trace_export_inspected(self, operation_id: int, evidence: object, status: object) -> None:
+        request = self._trace_output_request
+        if request is None or request[0] != operation_id or evidence != self._trace_evidence:
+            return
+        self._trace_output_request = None
+        if self._assisted_session.locked or self._closing_requested:
+            return
+        if not isinstance(status, TraceOutputStatus):
+            return
+        self._trace_output_status = status
+        self._trace_recipe_pane.set_output_status(status)
+        self._refresh_trace_document()
+        if request[2]:
+            if status is TraceOutputStatus.PRESENT:
+                self._open_export_path(False)
+            else:
+                message = tr("The exported PDF could not be verified. Export again to a new file.")
+                self._set_error_text(message)
+                self._error_label.show()
+                self._announce(message, assertive=True)
+
+    def _choose_trace_recipe(self, mode: str) -> None:
+        state = self._state
+        if (
+            state is None
+            or state.case_id is None
+            or state.trace_plan is None
+            or state.autosave_pending
+            or not state.pages
+            or self._active_operation is not None
+        ):
+            return
+        recipe = state.trace_plan.recipe
+        try:
+            if mode != "apply":
+                recipe.require_automation_supported()
+        except TraceRecipeError as error:
+            self._set_error_text(error.safe_message)
+            self._error_label.show()
+            self._focus_error_recovery(self._error_label)
+            return
+        options = self._file_dialog_options()
+        if mode == "apply":
+            selected, _ = QFileDialog.getOpenFileName(
+                self, tr("Apply recipe"), "", tr("TRACE recipes (*.json)"), options=options
+            )
+        else:
+            script = mode == "script"
+            selected, _ = QFileDialog.getSaveFileName(
+                self,
+                tr("Export PowerShell script") if script else tr("Save recipe"),
+                "PaperWorkShell-recipe.ps1" if script else "PaperWorkShell-recipe.json",
+                tr("PowerShell script (*.ps1)") if script else tr("TRACE recipes (*.json)"),
+                options=options,
+            )
+        if not selected:
+            return
+        destination = Path(selected)
+        self._error_label.hide()
+        if mode == "script":
+            try:
+                export_trace_powershell(recipe, destination)
+            except (TraceRecipeError, TraceAutomationError) as error:
+                self._set_error_text(error.safe_message)
+                self._error_label.show()
+                self._focus_error_recovery(self._error_label)
+            else:
+                self._announce(tr("PowerShell script saved."))
+            return
+        operation = self._begin_long_operation(_LongOperationKind.TRACE_RECIPE)
+        self._cancel_button.hide()
+        signal = (
+            self._commands.trace_recipe_apply_requested
+            if mode == "apply"
+            else self._commands.trace_recipe_save_requested
+        )
+        signal.emit(
+            operation.operation_id, state.case_id, state.trace_plan.fingerprint, destination
+        )
+
+    def _build_trace_commands(self) -> None:
+        case_required = tr("Open a saved case to use this command.")
+        page_required = tr("Select an applicable page and finish any operation in progress.")
+        chooser_required = tr("Close the current case to return to the case chooser.")
+        add = tr("Add")
+        organize = tr("Organize")
+        improve = tr("Improve")
+        fill = tr("Fill")
+        protect = tr("Protect")
+        check = tr("Check")
+        export = tr("Export")
+        settings = tr("Settings")
+        self._trace_chooser_commands = (
+            TraceCommand(
+                "case.new", tr("New case…"), add, self._create_case_button, chooser_required
+            ),
+            TraceCommand(
+                "case.open",
+                tr("Open selected case"),
+                add,
+                self._open_case_button,
+                tr("Select a case first."),
+            ),
+            TraceCommand(
+                "case.refresh",
+                tr("Refresh case list"),
+                add,
+                self._refresh_cases_button,
+                chooser_required,
+            ),
+            TraceCommand(
+                "case.assisted",
+                tr("Start assisted case"),
+                protect,
+                self._assisted_create_button,
+                chooser_required,
+            ),
+        )
+        self._trace_save_recipe_button = self._action_button(
+            "Save recipe…",
+            "traceSaveRecipe",
+            "Save source slots, assembled order and rotation as a local recipe.",
+        )
+        self._trace_apply_recipe_button = self._action_button(
+            "Apply recipe…",
+            "traceApplyRecipe",
+            "Use a saved recipe with the currently imported sources.",
+        )
+        self._trace_script_button = self._action_button(
+            "Export PowerShell script…",
+            "traceExportPowerShell",
+            "Create a local script for page selection, order, rotation and ordinary PDF export.",
+        )
+        for mode, action in (
+            ("save", self._trace_save_recipe_button),
+            ("apply", self._trace_apply_recipe_button),
+            ("script", self._trace_script_button),
+        ):
+            action.clicked.connect(
+                lambda _checked=False, selected=mode: self._choose_trace_recipe(selected)
+            )
+        self._trace_case_commands = (
+            TraceCommand(
+                "source.import",
+                tr("Add file…"),
+                add,
+                self._import_button,
+                case_required,
+                ("import", "PDF JPEG PNG"),
+            ),
+            TraceCommand(
+                "case.rename", tr("Rename case…"), add, self._rename_case_button, case_required
+            ),
+            TraceCommand(
+                "case.close",
+                tr("Close case"),
+                add,
+                self._close_case_button,
+                case_required,
+                ("return",),
+            ),
+            TraceCommand(
+                "case.lock",
+                tr("Lock assisted case"),
+                protect,
+                self._assisted_lock_button,
+                tr("This case is not an active assisted case."),
+            ),
+            TraceCommand(
+                "page.move-earlier",
+                tr("Move up"),
+                organize,
+                self._move_earlier_button,
+                tr("Select a page below the first one."),
+                ("earlier",),
+            ),
+            TraceCommand(
+                "page.move-later",
+                tr("Move down"),
+                organize,
+                self._move_later_button,
+                tr("Select a page above the last one."),
+                ("later",),
+            ),
+            TraceCommand(
+                "page.order",
+                tr("Reorder pages…"),
+                organize,
+                self._change_order_button,
+                tr("Add at least two pages to reorder them."),
+                ("arrange", "sort"),
+            ),
+            TraceCommand(
+                "page.rotate",
+                tr("Rotate selected page 90°"),
+                organize,
+                self._rotate_button,
+                page_required,
+                ("turn", "clockwise"),
+            ),
+            TraceCommand(
+                "page.remove",
+                tr("Remove page"),
+                organize,
+                self._remove_button,
+                page_required,
+                ("delete",),
+            ),
+            TraceCommand(
+                "history.undo",
+                tr("Undo"),
+                organize,
+                self._undo_button,
+                tr("There are no available edits to undo."),
+            ),
+            TraceCommand(
+                "history.redo",
+                tr("Redo"),
+                organize,
+                self._redo_button,
+                tr("There are no available edits to redo."),
+            ),
+            TraceCommand(
+                "scan.improve",
+                tr("Improve selected scan…"),
+                improve,
+                self._scan_review_button,
+                tr("Select a supported scan and let current changes save."),
+                ("crop", "deskew", "contrast"),
+            ),
+            TraceCommand(
+                "overlay.edit",
+                tr("Add text or marks…"),
+                fill,
+                self._core_overlay_tools_button,
+                page_required,
+                ("form", "checkmark", "overlay"),
+            ),
+            TraceCommand(
+                "signature.place",
+                tr("Place signature image…"),
+                fill,
+                self._place_signature_image_button,
+                page_required,
+            ),
+            TraceCommand(
+                "signature.remove",
+                tr("Remove signature image…"),
+                fill,
+                self._remove_signature_image_button,
+                page_required,
+            ),
+            TraceCommand(
+                "checklist.review",
+                tr("Document checklist…"),
+                fill,
+                self._checklist_button,
+                case_required,
+                ("template", "package"),
+            ),
+            TraceCommand(
+                "removal.mark",
+                tr("Permanently remove information…"),
+                protect,
+                self._redaction_tools_button,
+                page_required,
+                ("redaction",),
+            ),
+            TraceCommand(
+                "quality.check",
+                tr("Check page quality"),
+                check,
+                self._quality_check_button,
+                tr("Add supported pages and let current changes save."),
+                ("OCR", "review"),
+            ),
+            TraceCommand(
+                "package.constraints",
+                tr("Review package constraints…"),
+                check,
+                self._portal_constraints_button,
+                case_required,
+            ),
+            TraceCommand(
+                "recipe.save",
+                tr("Save recipe…"),
+                export,
+                self._trace_save_recipe_button,
+                case_required,
+                ("reuse",),
+            ),
+            TraceCommand(
+                "recipe.apply",
+                tr("Apply recipe…"),
+                organize,
+                self._trace_apply_recipe_button,
+                case_required,
+                ("reuse",),
+            ),
+            TraceCommand(
+                "recipe.script",
+                tr("Export PowerShell script…"),
+                export,
+                self._trace_script_button,
+                case_required,
+                ("automation", "headless"),
+            ),
+            TraceCommand(
+                "pdf.export",
+                tr("Export PDF…"),
+                export,
+                self._pages_pdf_export_button,
+                tr("Add pages and let current changes save."),
+                ("OCR", "searchable", "save"),
+            ),
+            TraceCommand(
+                "package.export",
+                tr("Export checklist package…"),
+                export,
+                self._package_export_button,
+                case_required,
+                ("summary", "ZIP"),
+            ),
+            TraceCommand(
+                "removal.export",
+                tr("Export removal derivative…"),
+                export,
+                self._removal_export_button,
+                tr("Review saved removal marks on a supported single-page case."),
+            ),
+        )
+        density = self._action_button(
+            "Compact page list", "traceDensity", "Use less space between page rows."
+        )
+        density.setCheckable(True)
+        density.toggled.connect(self._set_trace_compact)
+        self._trace_global_commands = (
+            TraceCommand(
+                "ocr.languages",
+                tr("OCR languages…"),
+                settings,
+                self._ocr_language_button,
+                tr("Wait for the application to be ready."),
+                ("Tesseract",),
+            ),
+            TraceCommand(
+                "help.keyboard",
+                tr("Keyboard guide"),
+                settings,
+                self._action_button(
+                    "Keyboard guide", "traceGuideCommand", "Keyboard shortcuts and navigation. F1."
+                ),
+                tr("Wait for the application to be ready."),
+            ),
+            TraceCommand(
+                "help.support",
+                tr("Create support bundle…"),
+                settings,
+                self._action_button(
+                    "Create support bundle…",
+                    "traceSupportCommand",
+                    "Review sanitized support files before saving.",
+                ),
+                tr("Wait for the application to be ready."),
+            ),
+            TraceCommand(
+                "view.compact",
+                tr("Compact page list"),
+                settings,
+                density,
+                case_required,
+                ("density", "comfortable"),
+            ),
+        )
+        self._trace_global_commands[1].button.clicked.connect(self._show_keyboard_help)
+        self._trace_global_commands[2].button.clicked.connect(self._show_diagnostic_bundle)
+        self._keyboard_help_action.triggered.disconnect(self._show_keyboard_help)
+        self._diagnostic_bundle_action.triggered.disconnect(self._show_diagnostic_bundle)
+        self._keyboard_help_action.triggered.connect(self._trace_global_commands[1].button.click)
+        self._diagnostic_bundle_action.triggered.connect(
+            self._trace_global_commands[2].button.click
+        )
+        for command in self._trace_global_commands[1:]:
+            command.button.setParent(self._trace_app_bar)
+            command.button.hide()
+        self._set_trace_menu(self._settings_button, self._trace_global_commands)
+        self._trace_button_proxy: dict[QPushButton, QPushButton] = {
+            command.button: self._settings_button for command in self._trace_global_commands
+        }
+        for key, group in (
+            ("add", add),
+            ("organize", organize),
+            ("improve", improve),
+            ("fill", fill),
+            ("protect", protect),
+            ("check", check),
+            ("export", export),
+        ):
+            group_button = QPushButton(group)
+            group_button.setObjectName(f"traceWorkflow-{key}")
+            commands = tuple(row for row in self._trace_case_commands if row.group == group)
+            for row in commands:
+                if row.button.parentWidget() is None:
+                    row.button.setParent(self._organizer_page)
+                    row.button.hide()
+                self._trace_button_proxy[row.button] = group_button
+            self._set_trace_menu(group_button, commands)
+            self._trace_workflow_actions.addWidget(group_button)
+        for pane, label in (
+            ("pages", tr("Pages")),
+            ("document", tr("Document")),
+            ("inspector", tr("Inspection")),
+        ):
+            button = QPushButton(label)
+            button.setObjectName(f"tracePane-{pane}")
+            button.clicked.connect(
+                lambda _checked=False, selected=pane: self._trace_select_pane(selected)
+            )
+            self._trace_workflow_actions.addWidget(button)
+
+    def _set_trace_menu(self, invoker: QPushButton, commands: tuple[TraceCommand, ...]) -> None:
+        menu = QMenu(invoker)
+        invoker.setMenu(menu)
+
+        def populate() -> None:
+            menu.clear()
+            for command in commands:
+                if command.key == "case.lock" and command.button.isHidden():
+                    continue
+                action = menu.addAction(self._trace_command_label(command))
+                action.setEnabled(command.button.isEnabled())
+                action.setCheckable(command.button.isCheckable())
+                action.setChecked(command.button.isChecked())
+                action.setToolTip(command.button.accessibleDescription())
+                action.triggered.connect(command.button.click)
+
+        menu.aboutToShow.connect(populate)
+
+    def _trace_command_label(self, command: TraceCommand) -> str:
+        if command.key == "pdf.export":
+            return command.button.accessibleName()
+        return command.label
+
+    def _show_command_palette(self) -> None:
+        if self._closing_requested:
+            return
+        focus = QApplication.focusWidget()
+        state = self._state
+        commands = (
+            self._trace_chooser_commands
+            if state is None or state.case_id is None
+            else tuple(
+                row
+                for row in self._trace_case_commands
+                if row.key != "case.lock" or not row.button.isHidden()
+            )
+        )
+        dialog = TraceCommandPalette(self, commands + self._trace_global_commands)
+        dialog.exec()
+        if focus is not None and self._focus_widget_is_available(focus):
+            focus.setFocus(Qt.FocusReason.OtherFocusReason)
+        if dialog.command is not None:
+            dialog.command.button.click()
+        dialog.deleteLater()
+
+    def _focus_trace_invoker(self, action: QPushButton) -> None:
+        proxy = self._trace_button_proxy.get(action)
+        if action.isHidden() and proxy is not None and proxy.isVisible():
+            proxy.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _set_trace_compact(self, compact: bool) -> None:
+        self._trace_rail_delegate.compact = compact
+        self._page_view.doItemsLayout()
+        self._page_view.viewport().update()
+        self._schedule_preview_refresh()
+
+    def _trace_select_pane(self, selected: str) -> None:
+        if selected == "inspector":
+            if self._trace_split.toggle_inspection():
+                self._trace_inspector_tabs.tabBar().setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+        self._trace_split.select_pane(selected)
+        if selected == "document":
+            self._refresh_trace_document()
+            self._trace_document_stack.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
+        elif selected == "pages":
+            self._trace_left_tabs.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _set_workflow_tab_order(self) -> None:
         """Link the shared controls once every workflow has the same window."""
@@ -1630,25 +2632,26 @@ class PaperWorkShellWindow(QMainWindow):
 
     def _build_shortcuts(self) -> None:
         shortcuts = (
-            ("Ctrl+N", self._request_create_case),
-            ("Ctrl+O", self._open_selected_case),
-            ("Ctrl+I", self._choose_import),
-            ("Ctrl+Z", self._request_undo),
-            ("Ctrl+Y", self._request_redo),
-            ("Alt+Up", lambda: self._move_selected(-1)),
-            ("Alt+Down", lambda: self._move_selected(1)),
-            ("Ctrl+R", self._rotate_selected),
-            ("Delete", self._remove_selected),
-            ("Ctrl+Shift+A", self._request_scan_review),
-            ("Ctrl+Shift+Q", self._request_quality_review),
-            ("Ctrl+Shift+L", self._open_ocr_languages),
-            ("Ctrl+Shift+O", self._change_full_order),
-            ("Ctrl+Shift+F", self._request_core_overlay_tools),
-            ("Ctrl+Shift+P", self._request_redaction_tools),
-            ("Ctrl+Shift+C", self._request_checklist),
-            ("Ctrl+Shift+S", self._choose_signature_image),
-            ("Ctrl+Shift+D", self._request_signature_image_placements),
-            ("Ctrl+Shift+R", self._retry_failed_preview),
+            ("Ctrl+K", self._show_command_palette),
+            ("Ctrl+N", self._create_case_button.click),
+            ("Ctrl+O", self._open_case_button.click),
+            ("Ctrl+I", self._import_button.click),
+            ("Ctrl+Z", self._undo_button.click),
+            ("Ctrl+Y", self._redo_button.click),
+            ("Alt+Up", self._move_earlier_button.click),
+            ("Alt+Down", self._move_later_button.click),
+            ("Ctrl+R", self._rotate_button.click),
+            ("Delete", self._remove_button.click),
+            ("Ctrl+Shift+A", self._scan_review_button.click),
+            ("Ctrl+Shift+Q", self._quality_check_button.click),
+            ("Ctrl+Shift+L", self._ocr_language_button.click),
+            ("Ctrl+Shift+O", self._change_order_button.click),
+            ("Ctrl+Shift+F", self._core_overlay_tools_button.click),
+            ("Ctrl+Shift+P", self._redaction_tools_button.click),
+            ("Ctrl+Shift+C", self._checklist_button.click),
+            ("Ctrl+Shift+S", self._place_signature_image_button.click),
+            ("Ctrl+Shift+D", self._remove_signature_image_button.click),
+            ("Ctrl+Shift+R", self._retry_preview_button.click),
             ("Escape", self._cancel_active_operation),
         )
         self._shortcuts: list[QShortcut] = []
@@ -1739,6 +2742,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._worker.status_changed.connect(self._status_changed)
         self._worker.operation_status_changed.connect(self._operation_status_changed)
         self._worker.pages_pdf_export_saved.connect(self._pages_pdf_export_saved)
+        self._worker.source_preview_ready.connect(self._trace_canvas_ready)
+        self._worker.source_preview_failed.connect(self._trace_canvas_failure)
+        self._worker.trace_pdf_export_ready.connect(self._trace_pdf_export_ready)
+        self._worker.trace_export_inspected.connect(self._trace_export_inspected)
         self._worker.case_reopen_required.connect(self._reopen_required)
         self._worker.review_required.connect(self._review_required)
         self._worker.operation_started.connect(self._operation_started)
@@ -1870,7 +2877,8 @@ class PaperWorkShellWindow(QMainWindow):
         dialog = self._ocr_language_dialog
         if dialog is not None:
             dialog.set_snapshot(request_id, snapshot)
-        self._complete_ocr_language_refresh(request_id)
+        if self._complete_ocr_language_refresh(request_id):
+            self._update_trace_ocr_identity(snapshot)
 
     @Slot(int, object)
     def _ocr_languages_failed(self, request_id: int, failure: object) -> None:
@@ -1893,6 +2901,7 @@ class PaperWorkShellWindow(QMainWindow):
         if type(snapshot) is not OcrLanguageSnapshot:
             return
         self._selected_ocr_language_codes = snapshot.selected_language_codes
+        self._update_trace_ocr_identity(snapshot)
         # OCR findings are configuration-bound as well as revision-bound. A
         # new process-session language set makes any accepted review stale,
         # even though it does not mutate the case manifest.
@@ -1904,6 +2913,12 @@ class PaperWorkShellWindow(QMainWindow):
             value1=count,
             value2=noun,
         )
+
+    def _update_trace_ocr_identity(self, snapshot: OcrLanguageSnapshot) -> None:
+        self._trace_ocr_language_set_id = snapshot.selected_language_set_id
+        self._trace_recipe_pane.set_ocr_language_set(snapshot.selected_language_set_id)
+        if self._trace_lens == "exported":
+            self._refresh_trace_document()
 
     @Slot(int)
     def _ocr_language_dialog_finished(self, _result: int) -> None:
@@ -1921,6 +2936,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._announce(saved_message)
 
     def _focus_ocr_language_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._ocr_language_button)
         if self._closing_requested or not self._ocr_language_button.isEnabled():
             return
         self.activateWindow()
@@ -2018,6 +3034,18 @@ class PaperWorkShellWindow(QMainWindow):
         )
         selected_page = self._selected_page_id()
         if state.case_id is None or prior_state is None or prior_state.case_id != state.case_id:
+            if (
+                prior_state is not None
+                and prior_state.case_id is not None
+                and selected_page is not None
+            ):
+                self._trace_last_selection = prior_state.case_id, selected_page
+            remembered = self._trace_last_selection
+            selected_page = (
+                remembered[1] if remembered is not None and remembered[0] == state.case_id else None
+            )
+            if self._trace_lens == "exported":
+                self._set_trace_lens("planned")
             self._first_png_import_origin = None
             self._first_png_import_preview = None
             self._import_file_label.clear()
@@ -2033,6 +3061,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._latest_import_progress = None
             self._import_presentation = _ImportPresentationState.IDLE
         self._state = state
+        self._sync_trace_plan(state)
         self._saved_label.setText(
             tr("No case open.")
             if state.case_id is None
@@ -2097,6 +3126,7 @@ class PaperWorkShellWindow(QMainWindow):
             self._autosave_timer.stop()
             self._hide_retry_save()
         self._restore_page_selection(selected_page)
+        self._refresh_trace_document()
         self._update_page_actions()
         self._update_preview_retry_action()
         self._update_quality_actions()
@@ -2948,6 +3978,7 @@ class PaperWorkShellWindow(QMainWindow):
         if finished_preview:
             self._model.finish_preview_loading(self._active_preview_page_ids)
         self._finish_active_operation()
+        self._refresh_trace_document()
         if finished_quality:
             self._active_quality_binding = None
             self._quality_result_focus_requested = False
@@ -3363,6 +4394,8 @@ class PaperWorkShellWindow(QMainWindow):
             or not state.pages
         ):
             return
+        self._trace_split.select_pane("inspector")
+        self._trace_inspector_tabs.setCurrentIndex(1)
         quality_action_had_focus = self._quality_check_button.hasFocus()
         self._preview_refresh_timer.stop()
         self._deferred_preview_state = None
@@ -3479,11 +4512,14 @@ class PaperWorkShellWindow(QMainWindow):
         state = self._state
         if state is None or state.case_id is None or not state.pages:
             return ()
-        viewport = self._page_view.viewport().rect()
+        visible_page_view = (
+            self._trace_arrangement if self._trace_lens == "arrange" else self._page_view
+        )
+        viewport = visible_page_view.viewport().rect()
         visible_rows = tuple(
             row
             for row in range(self._model.rowCount())
-            if self._page_view.visualRect(self._model.index(row, 0)).intersects(viewport)
+            if visible_page_view.visualRect(self._model.index(row, 0)).intersects(viewport)
         )
         rows = _bounded_preview_rows(
             self._model.rowCount(),
@@ -3686,6 +4722,12 @@ class PaperWorkShellWindow(QMainWindow):
         self._open_export_folder_button.show()
 
     def _open_last_export(self, folder: bool) -> None:
+        if not folder and self._trace_evidence is not None:
+            self._request_trace_output_check(open_when_verified=True)
+            return
+        self._open_export_path(folder)
+
+    def _open_export_path(self, folder: bool) -> None:
         if self._assisted_session.locked or self._last_export_path is None:
             return
         path = self._last_export_path.parent if folder else self._last_export_path
@@ -4149,6 +5191,15 @@ class PaperWorkShellWindow(QMainWindow):
             and self._active_operation is None
         )
         self._pages_pdf_export_button.setEnabled(pages_pdf_enabled)
+        recipe_enabled = pages_pdf_enabled and state is not None and state.trace_plan is not None
+        self._trace_save_recipe_button.setEnabled(recipe_enabled)
+        self._trace_apply_recipe_button.setEnabled(recipe_enabled)
+        self._trace_script_button.setEnabled(recipe_enabled)
+        export_label = (
+            tr("Export {count}-page PDF…", count=page_count) if page_count else tr("Export PDF…")
+        )
+        self._pages_pdf_export_button.setText(export_label)
+        self._pages_pdf_export_button.setAccessibleName(export_label)
         self._pages_pdf_export_action.setEnabled(pages_pdf_enabled)
         removal_enabled = (
             pages_pdf_enabled
@@ -4664,6 +5715,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_core_overlay_tools_button_after_dialog)
 
     def _focus_core_overlay_tools_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._core_overlay_tools_button)
         if self._closing_requested or not self._core_overlay_tools_button.isEnabled():
             return
         self.activateWindow()
@@ -5157,6 +6209,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_redaction_tools_button_after_dialog)
 
     def _focus_redaction_tools_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._redaction_tools_button)
         if self._closing_requested or not self._redaction_tools_button.isEnabled():
             return
         self.activateWindow()
@@ -5361,6 +6414,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_checklist_button_after_dialog)
 
     def _focus_checklist_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._checklist_button)
         if self._closing_requested or not self._checklist_button.isEnabled():
             return
         self.activateWindow()
@@ -6456,6 +7510,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_package_export_button)
 
     def _focus_package_export_button(self) -> None:
+        self._focus_trace_invoker(self._package_export_button)
         if not self._closing_requested and self._package_export_button.isEnabled():
             self.activateWindow()
             self._package_export_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -6640,6 +7695,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_portal_constraints_button_after_dialog)
 
     def _focus_portal_constraints_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._portal_constraints_button)
         if self._closing_requested or not self._portal_constraints_button.isEnabled():
             return
         self.activateWindow()
@@ -6907,6 +7963,7 @@ class PaperWorkShellWindow(QMainWindow):
             QTimer.singleShot(0, self._focus_signature_image_button_after_dialog)
 
     def _focus_signature_image_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._place_signature_image_button)
         if self._closing_requested or not self._place_signature_image_button.isEnabled():
             return
         self.activateWindow()
@@ -6914,6 +7971,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._ensure_widget_visible(self._place_signature_image_button)
 
     def _focus_remove_signature_image_button_after_dialog(self) -> None:
+        self._focus_trace_invoker(self._remove_signature_image_button)
         if self._closing_requested or not self._remove_signature_image_button.isEnabled():
             return
         self.activateWindow()
@@ -7206,6 +8264,8 @@ class PaperWorkShellWindow(QMainWindow):
             raise RuntimeError("long operation overlap")
         operation_id = self._allocate_operation_id()
         operation = _LongOperation(operation_id, kind, OperationCancellation())
+        self._cancel_trace_canvas()
+        self._cancel_trace_output_check()
         self._active_operation = operation
         self._announcer.reset_progress()
         if kind is _LongOperationKind.IMPORT:
@@ -7445,6 +8505,8 @@ class PaperWorkShellWindow(QMainWindow):
         )
 
     def _focus_quality_result_or_action(self) -> None:
+        self._trace_split.select_pane("inspector")
+        self._trace_inspector_tabs.setCurrentIndex(1)
         if self._quality_findings_view.isVisible() and self._quality_findings_view.isEnabled():
             self._quality_findings_view.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(self._quality_findings_view)
@@ -7563,6 +8625,7 @@ class PaperWorkShellWindow(QMainWindow):
             if self._model.rowCount() > 0:
                 candidates = (
                     self._page_view,
+                    self._trace_document_stack.currentWidget(),
                     self._import_button,
                     self._close_case_button,
                 )
@@ -7659,6 +8722,8 @@ class PaperWorkShellWindow(QMainWindow):
             self._ensure_widget_visible(self._import_button)
             return
         elif target == "quality":
+            self._trace_split.select_pane("inspector")
+            self._trace_inspector_tabs.setCurrentIndex(1)
             self._update_quality_actions()
             if self._quality_check_button.isVisible() and self._quality_check_button.isEnabled():
                 self._quality_check_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -7786,6 +8851,8 @@ class PaperWorkShellWindow(QMainWindow):
 
         if self._closing_requested:
             return
+        self._cancel_trace_canvas()
+        self._cancel_trace_output_check()
         diagnostic_dialog = self._diagnostic_bundle_dialog
         if diagnostic_dialog is not None:
             pending = diagnostic_dialog.busy

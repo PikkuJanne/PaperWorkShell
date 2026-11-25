@@ -83,6 +83,11 @@ A hardened v1.0 requires completion of all milestones, including the redaction s
 
 ### 1.5.1 Current internal-delivery sequence
 
+The **2026-11-25 TRACE approval** authorizes PWS-0813 to replace the normal native
+interface and proceed through private build and installed verification. The
+[TRACE continuation](docs/development/pws0813-trace.md) records parity and candidate
+evidence. Existing release criteria and PWS-0811 findings keep their original scope.
+
 The maintainer's **2026-11-06 repair assignment** makes **PWS-0811** the current
 internal task. Implement the supplied R9 feedback, measure and repair avoidable
 waiting, build a unique successor, and verify its installed interface and real

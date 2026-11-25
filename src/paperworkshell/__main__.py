@@ -1,17 +1,20 @@
-"""PaperWorkShell desktop composition entrypoint."""
+"""PaperWorkShell desktop and TRACE batch composition entrypoint."""
 
 from __future__ import annotations
 
 import ctypes
+import json
 import os
+import signal
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 from typing import TypedDict
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from paperworkshell.app.assisted_use import AssistedUseService
 from paperworkshell.app.case_lifecycle import CaseLifecycleService
@@ -90,7 +93,20 @@ from paperworkshell.app.target_size_pdf_export import (
     PdfImageStageProcessorPort,
     TargetSizePdfCandidateProducer,
 )
+from paperworkshell.app.trace_automation import (
+    MAX_TRACE_AUTOMATION_REQUEST_BYTES,
+    TraceAutomationError,
+    TraceAutomationRequest,
+    decode_trace_automation_request,
+    execute_trace_automation,
+)
 from paperworkshell.diagnostics.phase_observer import ENGINEERING_CANDIDATE
+from paperworkshell.domain.case_lifecycle import (
+    CaseDeletionConfirmation,
+    CaseDeletionStatus,
+    CaseLifecycleError,
+    CaseLifecycleErrorCode,
+)
 from paperworkshell.domain.image_pages import IMAGE_PAGE_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.image_transforms import IMAGE_TRANSFORM_ARTIFACT_HEADER_BYTES
 from paperworkshell.domain.import_precheck import ImportLimits
@@ -99,6 +115,8 @@ from paperworkshell.domain.ocr import OcrError, OcrErrorCode, reject_ocr
 from paperworkshell.domain.pdf_export import (
     DEFAULT_PDF_EXPORT_PROFILE,
     IMAGE_PDF_EXPORT_PROFILE,
+    PdfExportCheckCode,
+    PdfExportError,
     PdfExportErrorCode,
     PdfExportOutcome,
     PdfExportPlan,
@@ -124,6 +142,8 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportPlan,
     reject_searchable_pdf_export,
 )
+from paperworkshell.domain.source_ingest import SourceIngestError
+from paperworkshell.domain.trace_recipe import TraceRecipeError
 from paperworkshell.export.package_service import (
     PackageExportOutcome,
     TextCompanionExtractor,
@@ -139,9 +159,10 @@ from paperworkshell.overlays.exporting import (
     reject_flattened_pdf_export,
 )
 from paperworkshell.overlays.signature_rasters import SignatureImageOverlayRasterSource
-from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES
+from paperworkshell.storage._windows import MAXIMUM_STREAM_CHUNK_BYTES, current_profile_root
 from paperworkshell.storage.assisted_use import WindowsAssistedUseStore
 from paperworkshell.storage.case_lifecycle import WindowsCaseLifecycleStore
+from paperworkshell.storage.errors import WorkspaceError
 from paperworkshell.storage.export_destination import WindowsExportDestination
 from paperworkshell.storage.export_history import WindowsPdfExportHistoryRepository
 from paperworkshell.storage.export_retry import WindowsPdfExportRetryRepository
@@ -157,7 +178,7 @@ from paperworkshell.storage.signature_images import WindowsSignatureImageAssetSt
 from paperworkshell.storage.source_ingest import WindowsSourceIngestStore
 from paperworkshell.storage.source_precheck import WindowsSourcePrechecker
 from paperworkshell.storage.thumbnail_cache import WindowsThumbnailCacheStore
-from paperworkshell.storage.workspace import CaseWorkspaceManager
+from paperworkshell.storage.workspace import DEFAULT_CASES_ROOT_PARTS, CaseWorkspaceManager
 from paperworkshell.templates.catalog import (
     GENERIC_PORTAL_APPLICATION_TEMPLATE_KEY,
     built_in_template_repository,
@@ -2268,8 +2289,172 @@ def _show_installed_startup_error(error: InstalledRuntimeError) -> None:
             pass
 
 
+_TRACE_CLEANUP_WARNING = (
+    "PaperWorkShell could not remove its private temporary automation case. "
+    "Any remainder is under PaperWorkShell's Automation folder in local application data."
+)
+
+
+def _trace_report(payload: dict[str, object]) -> None:
+    print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")), flush=True)
+
+
+def _cleanup_trace_case(
+    manager: CaseWorkspaceManager, backend: OrganizerBackend | None, case_id: UUID
+) -> bool:
+    if backend is not None:
+        try:
+            backend.shutdown()
+        except Exception:
+            return False
+    try:
+        result = WindowsCaseLifecycleStore(manager).delete_case(
+            case_id, CaseDeletionConfirmation.REMOVE_FROM_APPLICATION_STORAGE
+        )
+        if result.status is not CaseDeletionStatus.COMPLETE:
+            return False
+    except CaseLifecycleError as error:
+        if error.code is not CaseLifecycleErrorCode.CASE_NOT_FOUND:
+            return False
+    except Exception:
+        return False
+    try:
+        # Remove only the exact empty run folder. The lifecycle store above
+        # authenticates and removes the generated case and all of its contents.
+        manager.cases_root.rmdir()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return False
+    return True
+
+
+def _trace_success_report(
+    outcome: PdfExportOutcome, runtime: InstalledRuntime, *, cleaned: bool
+) -> dict[str, object]:
+    report = outcome.report
+    warnings = []
+    if report.unsigned_derivative:
+        warnings.append("The PDF is an unsigned derivative.")
+    if outcome.history_retry_required:
+        warnings.append("The verified PDF was saved, but recording the export was incomplete.")
+    if not cleaned:
+        warnings.append(_TRACE_CLEANUP_WARNING)
+    return {
+        "status": "Warning" if warnings else "Passed",
+        "committed": True,
+        "candidate_id": runtime.candidate_id,
+        "application_version": runtime.version,
+        "page_count": report.page_count,
+        "output_bytes": report.output_byte_size,
+        "output_sha256": report.output_sha256,
+        "warnings": warnings,
+        "checks": [
+            {
+                "code": check.code.value,
+                "status": "Warning"
+                if check.code is PdfExportCheckCode.UNSIGNED_DERIVATIVE
+                else "Passed",
+                "finding": check.claim,
+            }
+            for check in outcome.checks
+        ],
+    }
+
+
+def _trace_failure_report(error: Exception, *, cleaned: bool = True) -> int:
+    if isinstance(
+        error,
+        (
+            TraceRecipeError,
+            TraceAutomationError,
+            CaseLifecycleError,
+            PdfExportError,
+            SourceIngestError,
+            WorkspaceError,
+        ),
+    ):
+        code, message = str(error.code), error.safe_message
+    elif isinstance(error, InstalledRuntimeError):
+        code, message = error.code, str(error)
+    else:
+        code = "TRACE_EXECUTION_FAILED"
+        message = "PaperWorkShell could not finish the automation safely."
+    cancelled = code.endswith("_CANCELLED")
+    _trace_report(
+        {
+            "status": "Cancelled" if cancelled else "Failed",
+            "code": code,
+            "message": message,
+            "warnings": [] if cleaned else [_TRACE_CLEANUP_WARNING],
+        }
+    )
+    return 130 if cancelled else 1
+
+
+def _run_trace_case(request: TraceAutomationRequest, runtime: InstalledRuntime) -> int:
+    cancelled = Event()
+    previous_handler = signal.signal(signal.SIGINT, lambda *_: cancelled.set())
+    try:
+        resources = create_desktop_application_resource_context()
+        policy = resources.resource_policy
+        profile = current_profile_root()
+        desktop_cases = profile.joinpath(*DEFAULT_CASES_ROOT_PARTS)
+        automation = desktop_cases.with_name("Automation")
+        if any(request.destination.is_relative_to(root) for root in (desktop_cases, automation)):
+            raise PdfExportError(PdfExportErrorCode.DESTINATION_INVALID, "trace.app_storage")
+        case_id = uuid4()
+        manager = CaseWorkspaceManager(
+            profile_root=profile,
+            cases_root=automation / str(uuid4()),
+            quota=_workspace_quota(policy),
+            id_factory=lambda: case_id,
+            minimum_free_space_reserve_bytes=policy.minimum_export_free_space_reserve_bytes,
+        )
+        backend: OrganizerBackend | None = None
+        try:
+            backend = _build_backend(manager, resources=resources)
+            backend.create_case("TRACE automation")
+            outcome = execute_trace_automation(backend, request, cancellation=cancelled.is_set)
+        except Exception as error:
+            return _trace_failure_report(
+                error, cleaned=_cleanup_trace_case(manager, backend, case_id)
+            )
+        cleaned = _cleanup_trace_case(manager, backend, case_id)
+        _trace_report(_trace_success_report(outcome.committed_export, runtime, cleaned=cleaned))
+        return 0
+    finally:
+        signal.signal(signal.SIGINT, previous_handler)
+
+
+def _run_trace_console() -> int:
+    """Read one bounded UTF-8 request from standard input and emit one JSON result."""
+
+    try:
+        if sys.stdin.isatty():
+            raise TraceAutomationError(
+                "TRACE_REQUEST_INVALID", "Run the generated TRACE PowerShell script."
+            )
+        request = decode_trace_automation_request(
+            sys.stdin.buffer.read(MAX_TRACE_AUTOMATION_REQUEST_BYTES + 1)
+        )
+        runtime = _installed_runtime()
+        if os.name != "nt" or runtime is None:
+            raise TraceAutomationError(
+                "TRACE_RUNTIME_UNAVAILABLE",
+                "Run the script with the installed PaperWorkShell runtime.",
+            )
+        return _run_trace_case(request, runtime)
+    except Exception as error:
+        return _trace_failure_report(error)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the desktop application."""
+    """Run the desktop application or the explicitly requested batch route."""
+
+    arguments = sys.argv if argv is None else argv
+    if tuple(arguments[1:]) == ("--trace-batch",):
+        return _run_trace_console()
 
     try:
         installed = _installed_runtime()

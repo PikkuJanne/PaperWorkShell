@@ -32,7 +32,8 @@ def test_partial_previews_and_rotations_keep_identical_nonintersecting_rows() ->
     window._state_changed(OrganizerViewState(uuid4(), 1, pages, False, False, False))
     window.show()
     app.processEvents()
-    view = window._page_view
+    window._set_trace_lens("arrange")
+    view = window._trace_arrangement
     try:
         assert view.viewMode() == QListView.ViewMode.ListMode
         before = [view.visualRect(window._model.index(i, 0)) for i in range(4)]
