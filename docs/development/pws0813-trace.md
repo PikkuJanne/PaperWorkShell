@@ -303,7 +303,7 @@ worker, parser, export and review authority remain the same. The private runtime
 and installed workflow evidence above are scoped to the named candidates. PaperWorkShell
 continues to operate offline and independently of the ThirdLife portfolio.
 
-### Contract scope still open
+### Contract scope at B4
 
 TRACE's Exported view and comparison checks cover the latest ordinary or searchable PDF in the
 active case session. Package and removal reports are available in their own workflows. Restoring
@@ -371,18 +371,83 @@ palette highlights to cyan `#8EE3F0`. The palette opened with Ctrl+K and focused
 edit. The workbench and command-palette captures each contained zero TRACE lime pixels in
 Aquatic. Restoring Windows contrast to None returned both surfaces to their original TRACE lime
 pixel counts in the same process. A third inventory matched all 868 entries after rehearsal.
-The offline guest remains at the reopened B5 workbench at 1024 × 768 and 100% scaling, with
+The offline guest finished at the reopened B5 workbench at 1024 × 768 and 100% scaling, with
 the R16 and R18 checkpoints saved. The setup and desktop helper tasks are gone. See
 `output/pws0813/installed-trace-b5/contrast-pixel-receipt.json`, `final-state.json` in the same
 directory, and `output/pws0813/desktop-evidence-b5` in the primary checkout. This check covered
 Aquatic and None at 96 DPI. B4's separate native 192 DPI result retains its original scope.
 
+## B6 saved Exported view
+
+The exact B5 staged application showed the session-only empty Exported view on case open. B6
+uses the last reference in the active manifest's export history and requires an exact version and
+record digest match. The saved page count and structural checks come from history v1. Missing,
+changed and unlinked records cannot supply restored context. A file chosen in Exported is checked
+on the backend for exact byte size and SHA-256. Open exported PDF repeats that check against the
+same selected file before the viewer handoff. A case close clears the selection. The reopened view
+omits page mapping, current-recipe status and OCR findings because history v1 has no durable
+evidence for them. Reports from an export completed in the current session still supply those details.
+
+The focused TRACE, export desktop, history v1, Windows storage and security suite passed 103
+tests with one Windows symlink privilege skip (1314). That suite covered missing and changed
+records, unlinked records, same-size changed PDFs, missing selected files, cancellation, stale
+completion after closing the case, and byte re-verification before viewer handoff. An existing
+PDF export keyboard test now expects the page-count label used since B5. The registered Windows
+accessibility lane passed all 360 tests. A separate offscreen run clipped the focused Next page
+control in one enlarged RTL case. That case passed in isolation offscreen and in the full native
+Windows lane. Ruff format check and lint, strict typing, localization, schemas, task graph,
+documentation and both boundary checks passed. The offline build introduces no new dependency,
+file association, case migration or public release interface.
+
+The private `pws0813-trace-engineering-b6` Setup was built offline from
+`a3246304da09dd98c095e53a2a8f408d4f997385`. The read-only unsigned installer is
+`output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b6-win-x64-UNSIGNED.exe`
+in the primary checkout. It is 512,956,400 bytes. SHA-256 is
+`df972ef8877af617eea1c9930eebe2f04b0edb35d01cdf325634f12fb805bce1`. All 336 application
+files matched the exact Git source and all 3,210 staged payload members passed verification.
+The build receipts are under `output/pws0813/build-pws0813-trace-engineering-b6`.
+
+### Installed verification
+
+The product question is whether the exact successor restores saved v1 checks on the retained
+rehearsal case and enables Open exported PDF only after explicit identity verification. B6
+replaces the active B5 installation through Windows Settings with Keep cases. The retained exact
+two-page PDF and a second valid 4,315-byte PDF with a different digest exercise the comparison.
+An exact match must enable Open exported PDF. A digest mismatch must leave it unavailable. A
+second process must require a fresh selection. Any receipt, identity or retention discrepancy
+leaves the installed criterion failing.
+
+B6 Setup ran in the offline guest's standard desktop session at elevation 0. All 3,210 installed
+payload files matched the build. The actual Start shortcut launched the app and the retained
+rehearsal case showed its two-page v1 receipt with seven structural checks. The named findings
+list took keyboard focus. The native chooser cancelled back to the selection request. The
+4,315-byte PDF with a different digest was rejected and the Open action stayed hidden. The
+exact retained 4,315-byte PDF matched and enabled Open. The checks stopped at the enabled
+control. The focused source test covers re-verification and viewer handoff. After normal close
+and a second Start launch, Exported required a fresh file selection in the reopened case. At
+1024 × 768 the chooser control scrolled into view on focus.
+
+All 868 retained case, sample and export entries matched the pre-install backup after the
+rehearsal. The B5 delivery hash still matches. R16 and R18 remain saved, and their active parent
+was preserved. The offline guest finished at the reopened B6 Exported view under the standard
+account in session 5, at 96 DPI with the original contrast settings and per-user file associations.
+The owned helper tasks were removed. Final receipts are in `output/pws0813/installed-trace-b6`,
+and screenshots and native accessibility trees are in `output/pws0813/desktop-evidence-b6`.
+
+The B6 screenshot `output/pws0813/desktop-evidence-b6/capture-initial-picker-cancelled.png`
+showed the current plan's shared `output page` summary below the historical Exported canvas.
+That wording made a current-plan position look like saved mapping. The new visibility assertion
+failed against B6 source. Commit `dead56ed4e695f7b83b5af3e8c01e7f382cb9b31` hides that summary in
+Exported and restores it when switching back to Planned. The focused suite passed again with
+the same Windows symlink skip, and all 360 native accessibility checks passed again. B6 remains
+the one private successor built in this bounded step.
+Installed verification of the label correction remains open.
+
 ### Next bounded step
 
-Restore the Exported view's last verified PDF context when a case is reopened. Start with the
-manifest-linked, path-free export-history record and explicit selection of a PDF for exact size
-and SHA-256 verification. Keep existing history v1 compatible. Historical records provide
-structural checks and output identity. Only show page mapping, the current recipe relationship,
-or OCR checks when durable evidence supports them. Cover missing, changed and unlinked records
-with focused tests and verify the reopen journey on a private successor if the implementation
-changes installed behavior.
+Build the committed Exported view label correction as one private successor with a fresh B7
+candidate identity. Use the authorized offline standard-user replacement and the retained
+rehearsal case to verify that Exported shows its saved structural checks, requires explicit
+PDF selection, and omits the current plan's `output page` summary. Verify that Planned still
+shows its page summary. Preserve B5, B6, retained cases and exports, and R16/R18. Record the
+exact candidate and observations here, then stop.
