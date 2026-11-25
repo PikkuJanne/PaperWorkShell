@@ -7207,12 +7207,14 @@ tasks:
   blocker: null
   evidence:
     completed_at: null
-    revision: candidate:pws0813-trace-engineering-b4
+    revision: candidate:pws0813-trace-engineering-b5
     commands:
     - "tools/dev.py test-accessibility passed 359 tests on B4 source."
     - "Focused TRACE, assisted use, signature, export, OCR settings, privacy and lifecycle suite passed 180 tests."
     - "Format check, lint, mypy, localization, schemas, documentation, task graph and import and portfolio boundaries passed."
     - "Offline installer stage and compile bound 336 application files. Standard-user PWS-Test replacement preserved 860 inventoried entries."
+    - "B5 native contrast regression failed on B4 and passed after the fix. All 360 accessibility tests and 76 focused unit tests passed. Standard-user B5 Setup preserved 868 entries and verified all 3,210 installed members. Windows Aquatic selection and focus passed at native 96 DPI."
     notes:
     - "The TRACE implementation and exact B4 verification are recorded in docs/development/pws0813-trace.md."
+    - "The continuation records B5 source, installer and native contrast evidence."
     - "The task remains in progress for the open comparison, inspection and logged-out batch contract scope."

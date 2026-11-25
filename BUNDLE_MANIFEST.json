@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 515916,
-      "sha256": "63065e2aabad091feebd18dba77be9afe9b14b84aa59d61c3c1ac065cb9b585e"
+      "bytes": 516287,
+      "sha256": "97b24fda9aab8fc0623db617613f888d869a1ec17033b71d4e3a95e218b5feac"
     },
     {
       "path": "TASKS.schema.json",
@@ -481,7 +481,7 @@
     {
       "path": "packaging/windows/product-v1.json",
       "bytes": 750,
-      "sha256": "e6bd53474f7430b9a78ebb225733cf98e85b42736f3e99eb1a89189026410e0b"
+      "sha256": "d37a2703c0d27e6150cac45d8eafadc4c41aa56561a5374ddc85f943f32e0d48"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",

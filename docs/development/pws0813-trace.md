@@ -347,8 +347,42 @@ selection and focus while clearing the overrides. TRACE now gives Qt only the co
 releases that palette when Windows contrast becomes active. Native focus styling still uses the
 current platform palette.
 
-Install the exact B5 candidate and repeat the B4 Aquatic selection and command palette checks
-at 96 DPI. Confirm that selection and focus use the Windows palette, then restore None and
-confirm that TRACE colors return in the same process. Preserve the before/after captures and the
-retained synthetic case and export hashes. If the installed colors still differ from the current
-Windows palette, retain the captures and leave native contrast verification open.
+The regression failed against B4 because its application highlight remained set, then passed
+with the fix. The registered accessibility lane passed all 360 tests. The focused TRACE
+workbench, package-window and installer unit suite passed 76 tests. Ruff formatting and lint,
+strict typing, localization, schema, task graph, documentation and both boundary validators
+passed. The accessibility lane ran with the dedicated checkout's `src` on `PYTHONPATH` so the
+reused locked environment resolved this checkout's code.
+
+The offline B5 build used source `445d948bb5eadc713752957988e5fd29c76f9db4`. The unsigned
+512,950,123-byte Setup file has SHA-256
+`eb7df78fdb99dcaec5d6723d1a4cfe3ed0146d4d338988462a808502eaa88b21`. Its read-only delivery
+copy is `output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b5-win-x64-UNSIGNED.exe`
+in the primary checkout. The offline build bound all 336 application files. Of 3,210 payload
+members, the presentation module was the only changed runtime code. The installed marker,
+component list and two source archives also changed.
+
+The limited account replaced B4 through Windows Settings with cases preserved. All 868 entries
+in the pre-install backup matched after B5 installation, including the earlier three TRACE PDFs.
+All 3,210 installed payload members matched the build inventory. The normal Start shortcut
+opened B5 and reopened the two-page retained rehearsal case. At native 96 DPI, Windows Aquatic
+changed the selected page, its visible focus border, the selected recipe row, and the command
+palette highlights to cyan `#8EE3F0`. The palette opened with Ctrl+K and focused its named search
+edit. The workbench and command-palette captures each contained zero TRACE lime pixels in
+Aquatic. Restoring Windows contrast to None returned both surfaces to their original TRACE lime
+pixel counts in the same process. A third inventory matched all 868 entries after rehearsal.
+The offline guest remains at the reopened B5 workbench at 1024 × 768 and 100% scaling, with
+the R16 and R18 checkpoints saved. The setup and desktop helper tasks are gone. See
+`output/pws0813/installed-trace-b5/contrast-pixel-receipt.json`, `final-state.json` in the same
+directory, and `output/pws0813/desktop-evidence-b5` in the primary checkout. This check covered
+Aquatic and None at 96 DPI. B4's separate native 192 DPI result retains its original scope.
+
+### Next bounded step
+
+Restore the Exported view's last verified PDF context when a case is reopened. Start with the
+manifest-linked, path-free export-history record and explicit selection of a PDF for exact size
+and SHA-256 verification. Keep existing history v1 compatible. Historical records provide
+structural checks and output identity. Only show page mapping, the current recipe relationship,
+or OCR checks when durable evidence supports them. Cover missing, changed and unlinked records
+with focused tests and verify the reopen journey on a private successor if the implementation
+changes installed behavior.
