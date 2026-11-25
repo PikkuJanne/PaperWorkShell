@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 40713,
-      "sha256": "190a59512a5ea07d1a72bc17b142afa0af597b50fd621da5af49b6d0bb4594e9"
+      "bytes": 41077,
+      "sha256": "a781e34548f36c876c8d41d29137d8e49f5a33f39af61a537b54dad5ccb708e3"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -481,7 +481,7 @@
     {
       "path": "packaging/windows/product-v1.json",
       "bytes": 750,
-      "sha256": "adb101985ab788b658b26ac6beae991130d114968d06f00d3adcdd555b5188ad"
+      "sha256": "52d61a1e7f7cc36f31d0175b89208958e7f7cf0838cf856cf3a0f2edc83f6941"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",

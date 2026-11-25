@@ -5,6 +5,7 @@ from __future__ import annotations
 import stat
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from math import ceil, floor
 from pathlib import Path
 from typing import Final
 from uuid import UUID
@@ -15,6 +16,7 @@ from PySide6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QObject,
+    QRect,
     Qt,
     QTimer,
     QUrl,
@@ -79,6 +81,7 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImageDeleteOutcome,
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
+    TracePlannedPreview,
 )
 from paperworkshell.app.package_workflow import PackageReviewState
 from paperworkshell.app.portal_constraints import (
@@ -156,6 +159,7 @@ from paperworkshell.domain.target_size_search import TargetSizeColorChoice
 from paperworkshell.domain.text_companion import TextCompanionError, TextCompanionErrorCode
 from paperworkshell.domain.trace_recipe import TraceOutputStatus, TraceRecipeError
 from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.overlays.models import OverlayRecord, TextualOverlayPayload
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.assisted_session import AssistedSessionController
@@ -180,6 +184,7 @@ from paperworkshell.ui.models import (
     QualityFindingListModel,
 )
 from paperworkshell.ui.ocr_languages import OcrLanguageDialog
+from paperworkshell.ui.overlay_canvas import paint_core_overlay_preview
 from paperworkshell.ui.overlay_tools import (
     CoreOverlayToolsDialog,
     safe_core_overlay_failure,
@@ -300,6 +305,14 @@ class _TraceCanvasTarget:
     page_id: UUID
     plan: str
     source: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _TraceCanvasPresentation:
+    target: _TraceCanvasTarget
+    image: QPixmap
+    rendered_marks: int = 0
+    approximate_text: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,7 +559,7 @@ def _overlay_editor_display_facts(
 
     if type(page) is not OrganizerPageView:
         raise ValueError("page must be an OrganizerPageView")
-    crop = NormalizedPageBox.full_page()
+    crop = page.crop or NormalizedPageBox.full_page()
     pointer_mapping_enabled = True
     if page.scan_review_intent is not None:
         source_crop = page.scan_review_intent.crop
@@ -568,6 +581,31 @@ def _overlay_editor_display_facts(
 
 def _next_generation(current: int) -> int:
     return 1 if current >= _MAX_OPERATION_ID else current + 1
+
+
+def _organizer_preview_image(
+    snapshot: PdfThumbnailSnapshot | ImagePagePreviewSnapshot | ImagePageTransformSnapshot,
+    pixels: bytes,
+    page: OrganizerPageView | None,
+) -> QImage:
+    image = QImage(
+        pixels,
+        snapshot.width_pixels,
+        snapshot.height_pixels,
+        snapshot.row_stride_bytes,
+        QImage.Format.Format_RGBA8888,
+    )
+    if image.isNull():
+        return image
+    if isinstance(snapshot, PdfThumbnailSnapshot) and page is not None and page.crop is not None:
+        if snapshot.additional_rotation.value != page.rotation_degrees:
+            return QImage()
+        crop = PageCoordinateTransform(
+            manifest_rotation=ClockwiseRotation(page.rotation_degrees)
+        ).normalized_box_to_rendered(page.crop, RenderedImageSize(image.width(), image.height()))
+        left, top = floor(crop.left), floor(crop.top)
+        return image.copy(QRect(left, top, ceil(crop.right) - left, ceil(crop.bottom) - top))
+    return image.copy()
 
 
 class PageOrderDialog(QDialog):
@@ -866,7 +904,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_canvas_request: tuple[int, _TraceCanvasTarget, OperationCancellation] | None = (
             None
         )
-        self._trace_canvas_image: tuple[_TraceCanvasTarget, QPixmap] | None = None
+        self._trace_canvas_image: _TraceCanvasPresentation | None = None
         self._trace_canvas_failed: _TraceCanvasTarget | None = None
         self._trace_ocr_language_set_id: str | None = None
         self._trace_evidence: TraceExportEvidence | None = None
@@ -1889,7 +1927,7 @@ class PaperWorkShellWindow(QMainWindow):
         target = self._trace_canvas_target()
         if self._trace_canvas_request is not None and self._trace_canvas_request[1] != target:
             self._cancel_trace_canvas()
-        if self._trace_canvas_image is not None and self._trace_canvas_image[0] != target:
+        if self._trace_canvas_image is not None and self._trace_canvas_image.target != target:
             self._trace_canvas_image = None
         if self._trace_lens == "arrange":
             return
@@ -1909,7 +1947,8 @@ class PaperWorkShellWindow(QMainWindow):
             if self._trace_lens == "source"
             else self._page_label(page)
         )
-        pixmap = self._trace_canvas_image[1] if self._trace_canvas_image is not None else None
+        canvas = self._trace_canvas_image
+        pixmap = canvas.image if canvas is not None else None
         if self._trace_lens == "planned" and pixmap is None:
             pixmap = self._model.preview(page_id)
         if pixmap is None:
@@ -1924,8 +1963,15 @@ class PaperWorkShellWindow(QMainWindow):
                 description = tr(
                     "{value1} · Preview {value2}", value1=description, value2=tr(status.value)
                 )
-        if self._trace_lens == "planned" and (page.overlay_summaries or page.removal_mark_count):
-            description += "\n" + tr("Review saved marks in the page editor.")
+        if self._trace_lens == "planned":
+            rendered_marks = canvas.rendered_marks if canvas is not None else 0
+            if (
+                page.removal_mark_count
+                or sum(mark.count for mark in page.overlay_summaries) > rendered_marks
+            ):
+                description += "\n" + tr("Review saved marks in the page editor.")
+            if canvas is not None and canvas.approximate_text:
+                description += "\n" + tr("Text size is approximate in this preview.")
         self._trace_document.display(pixmap, description)
         self._selection_summary.setText(description)
         if (
@@ -2012,6 +2058,10 @@ class PaperWorkShellWindow(QMainWindow):
         target = self._accept_trace_canvas(operation_id, case_id, page_id, source)
         if target is None:
             return
+        records: tuple[OverlayRecord, ...] = ()
+        if not source and isinstance(result, TracePlannedPreview):
+            records = result.overlays
+            result = result.raster
         if isinstance(result, (PdfThumbnailResult, ImagePagePreviewResult)):
             pixels = result.snapshot.pixels
         elif isinstance(result, ImagePageTransformResult):
@@ -2025,17 +2075,31 @@ class PaperWorkShellWindow(QMainWindow):
             self._trace_canvas_failed = target
             self._refresh_trace_document()
             return
-        image = QImage(
-            pixels,
-            snapshot.width_pixels,
-            snapshot.height_pixels,
-            snapshot.row_stride_bytes,
-            QImage.Format.Format_RGBA8888,
-        ).copy()
+        row = self._model.row_for_page(target.page_id)
+        page = self._model.pages[row] if row is not None and not source else None
+        image = _organizer_preview_image(snapshot, pixels, page)
         if image.isNull():
             self._trace_canvas_failed = target
         else:
-            self._trace_canvas_image = target, QPixmap.fromImage(image)
+            rendered_marks = 0
+            if page is not None and records:
+                transform, can_map_marks = _overlay_editor_display_facts(page)
+                if can_map_marks and paint_core_overlay_preview(
+                    image,
+                    transform,
+                    records,
+                    self.font(),
+                    self.logicalDpiY(),
+                    maximum_paint_pixels=self._resource_policy.maximum_preview_pixels_per_page,
+                ):
+                    rendered_marks = len(records)
+            self._trace_canvas_image = _TraceCanvasPresentation(
+                target,
+                QPixmap.fromImage(image),
+                rendered_marks,
+                rendered_marks > 0
+                and any(isinstance(record.payload, TextualOverlayPayload) for record in records),
+            )
         self._refresh_trace_document()
 
     @Slot(int, object, object, object, bool)
@@ -3294,13 +3358,9 @@ class PaperWorkShellWindow(QMainWindow):
             return
         images_valid = True
         for snapshot, pixels in snapshots:
-            image = QImage(
-                pixels,
-                snapshot.width_pixels,
-                snapshot.height_pixels,
-                snapshot.row_stride_bytes,
-                QImage.Format.Format_RGBA8888,
-            ).copy()
+            row = self._model.row_for_page(snapshot.page_id)
+            page = self._model.pages[row] if row is not None else None
+            image = _organizer_preview_image(snapshot, pixels, page)
             if image.isNull():
                 self._model.set_preview_failed(snapshot.page_id)
                 images_valid = False

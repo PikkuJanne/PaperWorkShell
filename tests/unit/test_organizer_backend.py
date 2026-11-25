@@ -1466,6 +1466,51 @@ def test_trace_source_preview_uses_original_and_rejects_foreign_case() -> None:
     assert wrong_case.value.code is TraceRecipeErrorCode.TARGET_CHANGED
 
 
+def test_trace_planned_preview_returns_only_saved_core_marks_for_its_page() -> None:
+    backend, repository, _, _, thumbnails = _backend(_document(page_count=1, include_image=True))
+    backend.open_case(CASE_ID)
+    pdf_editor = backend.begin_core_overlay_tools(PAGE_IDS[0])
+    backend.apply_core_overlay_tools(pdf_editor.create(OverlayKind.TEXT, value="Other page"))
+    editor = backend.begin_core_overlay_tools(IMAGE_PAGE_ID)
+    marks = editor.create(OverlayKind.DATE, value="Synthetic visible date")
+    backend.apply_core_overlay_tools(marks)
+    revision = backend.state.revision
+    request = ImagePageTransformRequest(CASE_ID, IMAGE_PAGE_ID, ImageTransformIntent(), 320, 240)
+    raster = _review_adjusted_result(request)
+    thumbnails.results = (raster,)
+
+    planned = backend.get_trace_planned_preview(IMAGE_PAGE_ID, 320, 240, cancellation=lambda: False)
+
+    assert planned.raster is raster and planned.overlays == marks.records
+    assert "Synthetic visible date" not in repr(planned)
+    assert backend.state.revision == revision and repository.save_calls == 2
+
+
+def test_pdf_crop_preserves_the_bounded_worker_preview_route() -> None:
+    document = _document(page_count=1)
+    operations = cast(list[object], document["page_operations"])
+    operations.append(
+        {
+            "operation_id": "50000000-0000-4000-8000-000000000210",
+            "operation_version": 1,
+            "sequence": 1,
+            "payload": {
+                "kind": "crop",
+                "page_id": str(PAGE_IDS[0]),
+                "box": NormalizedPageBox(0, 0, 500_000, 1_000_000).to_manifest(),
+            },
+        }
+    )
+    backend, repository, _, _, thumbnails = _backend(document)
+    opened = backend.open_case(CASE_ID)
+
+    backend.get_thumbnails(320, 240, page_ids=(PAGE_IDS[0],))
+
+    assert opened.pages[0].crop == NormalizedPageBox(0, 0, 500_000, 1_000_000)
+    assert thumbnails.requests == (PdfThumbnailRequest(CASE_ID, PAGE_IDS[0], 320, 240),)
+    assert repository.save_calls == 0
+
+
 def test_image_preview_request_binds_the_complete_persisted_transform_intent() -> None:
     document = _document(page_count=0, include_image=True)
     operations = cast(list[object], document["page_operations"])

@@ -34,17 +34,20 @@ from paperworkshell.domain.page_coordinates import (
     PdfPageBoxSelection,
     PdfPageCoordinateGeometry,
     PdfUserSpaceBox,
+    RenderedImageSize,
 )
 from paperworkshell.overlays.models import (
     DEFAULT_FONT_TOKEN,
+    MAX_OVERLAY_TEXT_CODE_POINTS,
     MAX_OVERLAYS,
     MarkOverlayPayload,
     OverlayKind,
     OverlayRecord,
     RgbaColor,
+    SignatureImageOverlayPayload,
     TextualOverlayPayload,
 )
-from paperworkshell.ui.overlay_canvas import OverlayEditorCanvas
+from paperworkshell.ui.overlay_canvas import OverlayEditorCanvas, paint_core_overlay_preview
 from tests.unit.test_overlay_tools_dialog import _application, _dialog
 
 PAGE = UUID("30000000-0000-4000-8000-000000000001")
@@ -118,6 +121,76 @@ def _bounds(points: set[tuple[int, int]]) -> tuple[int, int, int, int]:
         max(x for x, _ in points),
         max(y for _, y in points),
     )
+
+
+@pytest.mark.parametrize("use_text", (False, True))
+def test_planned_preview_paints_rotated_and_clipped_core_marks_without_guides(
+    use_text: bool,
+) -> None:
+    _application()
+    image = QImage(240, 180, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.white)
+    crop = NormalizedPageBox(300_000, 100_000, 500_000, 700_000)
+    transform = _transform(90, crop)
+    record = _record("MMMMMMMM", 36)
+    if not use_text:
+        record = replace(record, payload=MarkOverlayPayload(OverlayKind.CHECKMARK, GREEN))
+
+    assert paint_core_overlay_preview(
+        image, transform, (record,), QFont(), 96, maximum_paint_pixels=240 * 180
+    )
+
+    visible = transform.visible_part(record.box)
+    assert visible is not None
+    rendered = transform.normalized_box_to_rendered(visible, RenderedImageSize(240, 180))
+    left, top, right, bottom = _bounds(_green(image))
+    assert rendered.left <= left < right <= rendered.right
+    assert rendered.top <= top < bottom <= rendered.bottom
+    # Every changed pixel is green or an antialiasing blend with the white page.
+    raw = bytes(image.constBits())
+    assert all(raw[i] == raw[i + 2] <= raw[i + 1] for i in range(0, len(raw), 4))
+
+
+def test_planned_preview_rejects_over_budget_or_unsupported_marks_before_painting() -> None:
+    _application()
+    image = QImage(180, 240, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.white)
+    before = bytes(image.constBits())
+    record = _record()
+    for records in (
+        (record, _record("M" * MAX_OVERLAY_TEXT_CODE_POINTS)),
+        (record, replace(record, payload=SignatureImageOverlayPayload(MARK))),
+        (record,) * (MAX_OVERLAYS + 1),
+    ):
+        assert not paint_core_overlay_preview(
+            image, _transform(), records, QFont(), 96, maximum_paint_pixels=180 * 240
+        )
+        assert bytes(image.constBits()) == before
+
+
+def test_planned_preview_limits_cumulative_clipped_raster_footprint() -> None:
+    _application()
+    image = QImage(200, 100, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.white)
+    before = bytes(image.constBits())
+    crop = NormalizedPageBox(300_000, 100_000, 500_000, 700_000)
+    transform = _transform(90, crop)
+    record = replace(
+        _record(),
+        box=NormalizedPageBox(0, 100_000, 550_000, 700_000),
+        payload=MarkOverlayPayload(OverlayKind.CROSS, GREEN),
+    )
+
+    # A single box covers 10,000 pixels after clipping, even though its full
+    # intent spans more than the viewport. Two draws charge 20,000 pixels.
+    assert not paint_core_overlay_preview(
+        image, transform, (record, record), QFont(), 96, maximum_paint_pixels=15_000
+    )
+    assert bytes(image.constBits()) == before
+    assert paint_core_overlay_preview(
+        image, transform, (record,), QFont(), 96, maximum_paint_pixels=15_000
+    )
+    assert _green(image)
 
 
 @pytest.mark.parametrize("selected", (False, True))

@@ -211,7 +211,7 @@ from paperworkshell.domain.trace_recipe import (
     trace_source_identities,
 )
 from paperworkshell.localization.catalog import tr
-from paperworkshell.overlays.commands import OverlayCommandHistory
+from paperworkshell.overlays.commands import CORE_OVERLAY_KINDS, OverlayCommandHistory
 from paperworkshell.overlays.exporting import FlattenedPdfExportOutcome
 from paperworkshell.overlays.models import (
     MAX_OVERLAYS,
@@ -544,6 +544,14 @@ class OrganizerSignatureImageRefreshStatus(StrEnum):
 
     REFRESHED = "refreshed"
     REOPEN_REQUIRED = "reopen_required"
+
+
+@dataclass(frozen=True, slots=True)
+class TracePlannedPreview:
+    """One validated page raster and its private, saved visual mark intent."""
+
+    raster: PagePreviewResult = field(repr=False)
+    overlays: tuple[OverlayRecord, ...] = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2063,7 +2071,8 @@ class OrganizerBackend:
         The preview service uses one shared batch deadline while its secure brokers launch fresh,
         one-shot workers for cache misses and image normalization. The organizer derives its
         default batch budget from the selected page count without changing the independently
-        bounded worker-operation limits. An explicit caller timeout remains exact.
+        bounded worker-operation limits. TRACE applies PDF crop to the returned worker pixels.
+        An explicit caller timeout remains exact.
         """
 
         session = self._require_session()
@@ -2086,7 +2095,7 @@ class OrganizerBackend:
                 )
             rotation_degrees = page.quarter_turns_clockwise * 90
             if media_type is DetectedMediaType.PDF:
-                if _has_raster_only_transform(page):
+                if _has_raster_only_transform(page, include_crop=False):
                     reject_page_operation(
                         PageOperationErrorCode.MODEL_INVALID,
                         "organizer.pdf_scan_transform",
@@ -2210,6 +2219,44 @@ class OrganizerBackend:
         ):
             reject_page_preview(PagePreviewErrorCode.RESULT_INVALID, "preview.source_result")
         return results[0]
+
+    def get_trace_planned_preview(
+        self,
+        page_id: UUID,
+        maximum_width_pixels: int,
+        maximum_height_pixels: int,
+        *,
+        cancellation: PreviewCancellationProbe,
+    ) -> TracePlannedPreview:
+        """Return an active page's bounded pixels and saved core mark overlay intent."""
+
+        session = self._require_session()
+        snapshot = session.snapshot
+        (raster,) = self.get_thumbnails(
+            maximum_width_pixels,
+            maximum_height_pixels,
+            page_ids=(page_id,),
+            cancellation=cancellation,
+        )
+        if (
+            self._session is not session
+            or session.snapshot is not snapshot
+            or session.autosave.pending
+        ):
+            raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+        overlays = cast(list[dict[str, object]], snapshot.document["overlays"])
+        page_records = (
+            OverlayRecord.from_manifest(item)
+            for item in overlays
+            if item.get("page_id") == str(page_id)
+        )
+        core_marks = tuple(
+            sorted(
+                (record for record in page_records if record.kind in CORE_OVERLAY_KINDS),
+                key=lambda record: (record.z_index, record.overlay_id.int),
+            )
+        )
+        return TracePlannedPreview(raster, core_marks)
 
     def analyze_quality(
         self,
@@ -3104,11 +3151,11 @@ def _history_with_scan_review(
     return updated
 
 
-def _has_raster_only_transform(page: PageState) -> bool:
+def _has_raster_only_transform(page: PageState, *, include_crop: bool = True) -> bool:
     """Return whether a page requests intent not consumed by the PDF preview path."""
 
     return (
-        page.crop is not None
+        (include_crop and page.crop is not None)
         or page.deskew_angle_millidegrees_clockwise != 0
         or page.contrast_factor_millionths != IDENTITY_CONTRAST_FACTOR_MILLIONTHS
         or page.background_cleanup_strength_millionths != 0

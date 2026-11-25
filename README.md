@@ -16,9 +16,15 @@ qualification remain deferred; an internal build is not a qualified public relea
 
 Open a case and use **Add file** to bring in PDFs, JPEGs or PNGs. Use **Pages** for the
 assembled order and **Sources** to see where each page came from. **Arrange** exposes
-keyboard page movement, while **Source**, **Planned** and **Exported** show the original,
-the current preview, and the identity of the verified PDF from this session. **Ctrl+K**
+keyboard page movement. **Source** shows the original page. **Planned** previews saved
+page transforms and supported core visual marks. Use the page editor for marks that
+need closer review. **Exported** shows checks from the verified PDF. When you reopen
+a case, select the PDF to match it to the saved export by size and SHA-256. **Ctrl+K**
 finds the same commands available in the workbench groups.
+
+Select a **Recipe** step to inspect its configuration. For example, the export step
+lists configured engine and profile requirements, and a mark step shows the saved
+placement on the selected page.
 
 **Save recipe** records source slots, page selection, order and rotation. Import the matching
 files in slot order before choosing **Apply recipe**. **Export PowerShell script** uses the

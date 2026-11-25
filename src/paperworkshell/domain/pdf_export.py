@@ -53,6 +53,10 @@ MAX_PDF_EXPORT_PAGES: Final = MAX_PAGE_COUNT
 MAX_PDF_EXPORT_CHECKS: Final = 8
 MAX_PDF_EXPORT_HISTORY_RETRY_RECORD_BYTES: Final = 4 * 1024
 PDF_EXPORT_HISTORY_RETRY_RECEIPT_VERSION: Final = 1
+PIKEPDF_EXPORT_ENGINE_VERSION: Final = "10.10.0"
+QPDF_EXPORT_ENGINE_VERSION: Final = "12.3.2"
+PYPDFIUM2_EXPORT_ENGINE_VERSION: Final = "5.12.1"
+PDFIUM_EXPORT_ENGINE_VERSION: Final = "152.0.7947.0"
 
 _CONTEXT_TOKEN: Final = re.compile(r"[a-z][a-z0-9_.]{0,63}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -383,6 +387,28 @@ PORTAL_PDF_EXPORT_PROFILE: Final = PdfExportProfile(
     assembly=PdfExportAssemblyProfile.PIKEPDF_PORTAL_V3,
     profile_version=PORTAL_PDF_EXPORT_VERSION,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PdfExportEngineProfile:
+    """Exact dependency versions required by the verified export configuration."""
+
+    pikepdf: str = PIKEPDF_EXPORT_ENGINE_VERSION
+    qpdf: str = QPDF_EXPORT_ENGINE_VERSION
+    pypdfium2: str = PYPDFIUM2_EXPORT_ENGINE_VERSION
+    pdfium: str = PDFIUM_EXPORT_ENGINE_VERSION
+
+    def __post_init__(self) -> None:
+        if (
+            self.pikepdf != PIKEPDF_EXPORT_ENGINE_VERSION
+            or self.qpdf != QPDF_EXPORT_ENGINE_VERSION
+            or self.pypdfium2 != PYPDFIUM2_EXPORT_ENGINE_VERSION
+            or self.pdfium != PDFIUM_EXPORT_ENGINE_VERSION
+        ):
+            reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report_engines")
+
+
+DEFAULT_PDF_EXPORT_ENGINE_PROFILE: Final = PdfExportEngineProfile()
 
 
 @dataclass(frozen=True, slots=True)

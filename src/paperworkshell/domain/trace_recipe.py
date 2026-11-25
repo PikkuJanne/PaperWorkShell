@@ -11,6 +11,7 @@ from typing import Final, cast
 from uuid import UUID
 
 from paperworkshell.domain.import_precheck import DetectedMediaType
+from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.page_operations import (
     MAX_PAGE_COUNT,
     NEUTRAL_CONTRAST_FACTOR_MILLIONTHS,
@@ -307,6 +308,32 @@ class TraceSourceIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class TraceMarkConfiguration:
+    """Geometry and configuration of an active mark without its private content."""
+
+    page_id: UUID
+    kind: str
+    box: NormalizedPageBox
+    version: int
+    layer: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TracePackageConfiguration:
+    """Saved package policy without user-authored filenames or assignment labels."""
+
+    version: int
+    allowed_modes: tuple[str, ...]
+    encryption_policy: str
+    max_files: int | None
+    max_total_bytes: int | None
+    max_file_bytes: int | None
+    max_pages_per_file: int | None
+    assignment_count: int
+    requested_name_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class TraceOperation:
     """One projected operation with stable targets and effective parameters."""
 
@@ -314,6 +341,8 @@ class TraceOperation:
     page_ids: tuple[UUID, ...]
     depends_on: tuple[TraceOperationKind, ...]
     parameters: tuple[int, ...] = ()
+    marks: tuple[TraceMarkConfiguration, ...] = field(default=(), repr=False)
+    package: TracePackageConfiguration | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +367,40 @@ def trace_source_identities(document: Mapping[str, object]) -> tuple[TraceSource
             cast(str, source["display_name"]),
         )
         for slot, source in enumerate(cast(list[dict[str, object]], document["sources"]), start=1)
+    )
+
+
+def _inspect_trace_mark(
+    record: Mapping[str, object], operation: TraceOperationKind
+) -> TraceMarkConfiguration:
+    overlay = operation is TraceOperationKind.OVERLAY
+    if overlay:
+        payload = cast(Mapping[str, object], record["payload"])
+        kind = cast(str, payload["kind"])
+    else:
+        kind = cast(str, record["state"])
+    return TraceMarkConfiguration(
+        page_id=UUID(cast(str, record["page_id"])),
+        kind=kind,
+        box=NormalizedPageBox.from_manifest(cast(Mapping[str, object], record["box"])),
+        version=cast(int, record["overlay_version" if overlay else "mark_version"]),
+        layer=cast(int, record["z_index"]) if overlay else None,
+    )
+
+
+def _inspect_trace_package(
+    constraints: Mapping[str, object], assignment_count: int
+) -> TracePackageConfiguration:
+    return TracePackageConfiguration(
+        version=cast(int, constraints["constraints_version"]),
+        allowed_modes=tuple(cast(list[str], constraints["allowed_output_modes"])),
+        encryption_policy=cast(str, constraints["encryption_policy"]),
+        max_files=cast(int | None, constraints.get("maximum_file_count")),
+        max_total_bytes=cast(int | None, constraints.get("maximum_total_bytes")),
+        max_file_bytes=cast(int | None, constraints.get("maximum_file_bytes")),
+        max_pages_per_file=cast(int | None, constraints.get("maximum_pages_per_file")),
+        assignment_count=assignment_count,
+        requested_name_count=len(cast(list[str], constraints.get("requested_output_names", []))),
     )
 
 
@@ -426,20 +489,29 @@ def build_trace_plan(document: Mapping[str, object], projection: OrganizerProjec
                     tuple(page_id for page_id in projection.page_sequence if page_id in targets),
                     dependencies,
                     (len(selected),),
+                    marks=tuple(_inspect_trace_mark(item, kind) for item in selected),
                 )
             )
         return selected
 
     overlays = add_marks(TraceOperationKind.OVERLAY, "overlays")
     removal = add_marks(TraceOperationKind.REMOVAL, "redaction_marks")
-    constraints = document.get("constraints", _DEFAULT_CONSTRAINTS)
+    constraints = cast(Mapping[str, object], document.get("constraints", _DEFAULT_CONSTRAINTS))
+    assignments = cast(list[object], document.get("assignments", []))
     package_intent = (
         document.get("template_ref") is not None
-        or bool(document.get("assignments"))
+        or bool(assignments)
         or constraints != _DEFAULT_CONSTRAINTS
     )
     if package_intent:
-        steps.append(TraceOperation(TraceOperationKind.PACKAGE, projection.page_sequence, base))
+        steps.append(
+            TraceOperation(
+                TraceOperationKind.PACKAGE,
+                projection.page_sequence,
+                base,
+                package=_inspect_trace_package(constraints, len(assignments)),
+            )
+        )
     if active:
         dependencies = tuple(dict.fromkeys(step.kind for step in steps))
         steps.append(

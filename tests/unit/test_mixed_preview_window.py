@@ -26,6 +26,7 @@ from paperworkshell.domain.image_pages import (
     ImageSourceColorModel,
     ImageSourceFormat,
 )
+from paperworkshell.domain.page_coordinates import NormalizedPageBox
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailCacheKey,
@@ -41,6 +42,8 @@ from paperworkshell.ui.window import (
     _PREVIEW_REFRESH_DEBOUNCE_MS,
     PaperWorkShellWindow,
     _LongOperationKind,
+    _organizer_preview_image,
+    _overlay_editor_display_facts,
 )
 
 CASE_ID = UUID("83000000-0000-4000-8000-000000000001")
@@ -115,6 +118,36 @@ def _pdf_result() -> PdfThumbnailResult:
         PdfRenderRotation.DEGREES_0,
     )
     return PdfThumbnailResult(request, key, snapshot, PdfThumbnailCacheStatus.GENERATED)
+
+
+def test_saved_pdf_crop_uses_the_rotated_preview_coordinates() -> None:
+    page = OrganizerPageView(
+        PDF_PAGE_ID, 1, 90, True, crop=NormalizedPageBox(0, 0, 500_000, 1_000_000)
+    )
+    # The worker already applied the 90-degree turn. The left half of the
+    # original page now occupies the top two rows of this 2 by 4 raster.
+    red = bytes((255, 0, 0, 255))
+    blue = bytes((0, 0, 255, 255))
+    snapshot = replace(
+        _pdf_result().snapshot,
+        width_pixels=2,
+        height_pixels=4,
+        row_stride_bytes=8,
+        pixels=red * 4 + blue * 4,
+        additional_rotation=PdfRenderRotation.DEGREES_90,
+    )
+    source_view = _organizer_preview_image(snapshot, snapshot.pixels, None)
+    planned_view = _organizer_preview_image(snapshot, snapshot.pixels, page)
+    assert (source_view.width(), source_view.height()) == (2, 4)
+    assert (planned_view.width(), planned_view.height()) == (2, 2)
+    assert source_view.pixelColor(0, 3).blue() == 255
+    assert planned_view.pixelColor(1, 1).red() == 255
+    wrong_rotation = replace(snapshot, additional_rotation=PdfRenderRotation.DEGREES_0)
+    assert _organizer_preview_image(wrong_rotation, wrong_rotation.pixels, page).isNull()
+
+    transform, pointer_mapping = _overlay_editor_display_facts(page)
+    assert transform.manifest_crop == page.crop
+    assert pointer_mapping
 
 
 def _image_result() -> ImagePagePreviewResult:

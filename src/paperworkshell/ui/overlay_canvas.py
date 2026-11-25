@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QFontMetrics,
     QGuiApplication,
     QHideEvent,
+    QImage,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -48,6 +49,7 @@ from paperworkshell.domain.page_coordinates import (
 )
 from paperworkshell.localization.catalog import mark, tr
 from paperworkshell.overlays.models import (
+    MAX_OVERLAY_TEXT_CODE_POINTS,
     MAX_OVERLAYS,
     MarkOverlayPayload,
     OverlayKind,
@@ -532,8 +534,12 @@ class OverlayEditorCanvas(QLabel):
             painter.fillRect(handle, QColor("white"))
             painter.setPen(QPen(QColor("black"), 2, Qt.PenStyle.SolidLine))
             painter.drawRect(handle)
-        if type(record.payload) in {TextualOverlayPayload, MarkOverlayPayload}:
-            self._paint_content(painter, record)
+        payload = record.payload
+        if isinstance(payload, (TextualOverlayPayload, MarkOverlayPayload)):
+            frame = _content_frame(
+                self._transform, self._page_rect(), self.logicalDpiY(), self._zoom_percent
+            )
+            _paint_content(painter, payload, self._box_for(record), frame, self.font())
             return
         name = localized_overlay_record_name(record).replace(" visual mark", "")
         metrics = painter.fontMetrics()
@@ -566,132 +572,6 @@ class OverlayEditorCanvas(QLabel):
         if self._transform.pdf_geometry is None:
             return tr("Text size is approximate in this preview.")
         return ""
-
-    def _content_frame(self) -> tuple[QTransform, float, float]:
-        """Map full-page coordinates through crop/rotation, without paper guesses."""
-
-        crop = self._transform.manifest_crop
-        geometry = self._transform.pdf_geometry
-        if geometry is not None:
-            width = geometry.logical_width_user_units * geometry.user_unit
-            height = geometry.logical_height_user_units * geometry.user_unit
-        else:
-            page = self._page_rect()
-            width, height = page.width(), page.height()
-            if int(self._transform.manifest_rotation) in {90, 270}:
-                width, height = height, width
-            # Unknown physical size: one logical unit is a current screen pixel.
-            # This gives exact normalized placement, not an invented point scale.
-            width *= NORMALIZED_PAGE_MILLIONTHS / crop.width
-            height *= NORMALIZED_PAGE_MILLIONTHS / crop.height
-        size, viewport = self._rendered_size(), self._viewport()
-        origin, right, bottom = (
-            self._transform.normalized_to_screen(point, size, viewport)
-            for point in (
-                NormalizedPagePoint(crop.x, crop.y),
-                NormalizedPagePoint(crop.right, crop.y),
-                NormalizedPagePoint(crop.x, crop.bottom),
-            )
-        )
-        sx = (right.x - origin.x) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
-        sy = (right.y - origin.y) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
-        tx = (bottom.x - origin.x) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
-        ty = (bottom.y - origin.y) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
-        x, y = (
-            width * crop.x / NORMALIZED_PAGE_MILLIONTHS,
-            height * crop.y / NORMALIZED_PAGE_MILLIONTHS,
-        )
-        return (
-            QTransform(sx, sy, tx, ty, origin.x - sx * x - tx * y, origin.y - sy * x - ty * y),
-            width,
-            height,
-        )
-
-    def _paint_content(self, painter: QPainter, record: OverlayRecord) -> None:
-        payload = record.payload
-        if not isinstance(payload, (TextualOverlayPayload, MarkOverlayPayload)):
-            return
-        raw = payload.color.value
-        color = QColor(*(int(raw[index : index + 2], 16) for index in (1, 3, 5, 7)))
-        if not color.alpha():
-            return
-        transform, width, height = self._content_frame()
-        box = self._box_for(record)
-        rect = QRectF(
-            width * box.x / NORMALIZED_PAGE_MILLIONTHS,
-            height * box.y / NORMALIZED_PAGE_MILLIONTHS,
-            width * box.width / NORMALIZED_PAGE_MILLIONTHS,
-            height * box.height / NORMALIZED_PAGE_MILLIONTHS,
-        )
-        painter.save()
-        try:
-            painter.setClipRect(self._page_rect(), Qt.ClipOperation.IntersectClip)
-            painter.setWorldTransform(transform, True)
-            painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
-            path = QPainterPath()
-            if type(payload) is TextualOverlayPayload:
-                if not payload.value:
-                    return
-                font = QFont(self.font())
-                family = _preview_font_family()
-                if family is not None:
-                    font.setFamily(family)
-                pixels = float(payload.font_size_points)
-                if self._transform.pdf_geometry is None:
-                    pixels *= self.logicalDpiY() / 72 * self._zoom_percent / 100
-                font.setPixelSize(max(1, round(pixels)))
-                # Outlines remain bounded by the existing 4,096-code-point
-                # model limit, even when a tiny crop makes the transform large.
-                # No full-page bitmap or transformed giant glyph raster is made.
-                path.addText(QPointF(0, 0), font, payload.value)
-                ink = path.boundingRect()
-                x = rect.left() - min(0.0, ink.left())
-                if ink.width() <= rect.width():
-                    x = min(x, rect.right() - ink.right())
-                path.translate(x, rect.center().y() - ink.center().y())
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(color)
-            else:
-                scale = (
-                    1.0 if self._transform.pdf_geometry is not None else self._zoom_percent / 100
-                )
-                stroke = min(6.0 * scale, max(1.0 * scale, min(rect.width(), rect.height()) / 8))
-                pen = QPen(
-                    color,
-                    stroke,
-                    Qt.PenStyle.SolidLine,
-                    Qt.PenCapStyle.FlatCap,
-                    Qt.PenJoinStyle.MiterJoin,
-                )
-                painter.setPen(pen)
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                if stroke >= min(rect.width(), rect.height()):
-                    # Match the export adapter's minimum-cell behavior instead
-                    # of constructing an inverted inset for a subpixel mark.
-                    painter.setPen(Qt.PenStyle.NoPen)
-                    painter.setBrush(color)
-                    path.addRect(rect)
-                    painter.drawPath(path)
-                    return
-                inner = rect.adjusted(stroke / 2, stroke / 2, -stroke / 2, -stroke / 2)
-                if payload.kind is OverlayKind.CHECKMARK:
-                    path.moveTo(
-                        inner.left() + inner.width() * 0.12, inner.top() + inner.height() * 0.55
-                    )
-                    path.lineTo(
-                        inner.left() + inner.width() * 0.40, inner.top() + inner.height() * 0.82
-                    )
-                    path.lineTo(
-                        inner.left() + inner.width() * 0.88, inner.top() + inner.height() * 0.18
-                    )
-                else:
-                    path.moveTo(inner.topLeft())
-                    path.lineTo(inner.bottomRight())
-                    path.moveTo(inner.topRight())
-                    path.lineTo(inner.bottomLeft())
-            painter.drawPath(path)
-        finally:
-            painter.restore()
 
     def _box_for(self, record: OverlayRecord) -> NormalizedPageBox:
         return (
@@ -847,11 +727,7 @@ class OverlayEditorCanvas(QLabel):
     def _notice_font(self) -> QFont:
         # A source preview cannot move when a locale admits a different native
         # fallback family. One fixed, admitted face owns the notice margin.
-        font = QFont(self.font())
-        family = _preview_font_family()
-        if family is not None:
-            font.setFamily(family)
-        return font
+        return _preview_font(self.font())
 
     def _rendered_size(self) -> RenderedImageSize:
         page = self._page_rect()
@@ -899,6 +775,210 @@ class OverlayEditorCanvas(QLabel):
         width = max(1, round(page_width * self._zoom_percent / 100)) + 2 * margin
         height = max(1, round(page_height * self._zoom_percent / 100)) + 2 * margin
         self.setFixedSize(width, height)
+
+
+def paint_core_overlay_preview(
+    image: QImage,
+    transform: PageCoordinateTransform,
+    records: tuple[OverlayRecord, ...],
+    font: QFont,
+    logical_dpi: int,
+    *,
+    maximum_paint_pixels: int,
+) -> bool:
+    """Paint ordered core marks on a disposable, bounded preview in place.
+
+    Return false before painting if the input cannot be previewed within budget.
+    """
+
+    if image.isNull() or image.paintingActive() or len(records) > MAX_OVERLAYS:
+        return False
+    visible: list[tuple[NormalizedPageBox, TextualOverlayPayload | MarkOverlayPayload]] = []
+    crop = transform.manifest_crop
+    raster_pixels = image.width() * image.height()
+    footprint_limit = maximum_paint_pixels * crop.width * crop.height
+    footprint = 0
+    text_code_points = 0
+    for record in records:
+        payload = record.payload
+        if not isinstance(payload, (TextualOverlayPayload, MarkOverlayPayload)):
+            return False
+        clipped = transform.visible_part(record.box)
+        if clipped is None:
+            continue
+        # Charge each clipped box separately, since overlapping marks still overdraw.
+        footprint += raster_pixels * clipped.width * clipped.height
+        if footprint > footprint_limit:
+            return False
+        if isinstance(payload, TextualOverlayPayload):
+            text_code_points += len(payload.value)
+            # Limit the entire passive preview to one maximum-length text mark.
+            if text_code_points > MAX_OVERLAY_TEXT_CODE_POINTS:
+                return False
+        visible.append((record.box, payload))
+    if not visible:
+        return True
+
+    size = image.deviceIndependentSize()
+    frame = _content_frame(transform, QRectF(0, 0, size.width(), size.height()), logical_dpi)
+    painter = QPainter(image)
+    if not painter.isActive():
+        return False
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        for box, payload in visible:
+            _paint_content(painter, payload, box, frame, font)
+    finally:
+        painter.end()
+    return True
+
+
+def _preview_font(base_font: QFont) -> QFont:
+    font = QFont(base_font)
+    family = _preview_font_family()
+    if family is not None:
+        font.setFamily(family)
+    return font
+
+
+@dataclass(frozen=True, slots=True)
+class _ContentFrame:
+    page: QRectF
+    transform: QTransform
+    width: float
+    height: float
+    mark_scale: float
+    text_scale: float
+
+
+def _content_frame(
+    transform: PageCoordinateTransform, page: QRectF, logical_dpi: int, zoom_percent: int = 100
+) -> _ContentFrame:
+    """Map full-page coordinates through crop/rotation, without paper guesses."""
+
+    crop = transform.manifest_crop
+    geometry = transform.pdf_geometry
+    if geometry is not None:
+        width = geometry.logical_width_user_units * geometry.user_unit
+        height = geometry.logical_height_user_units * geometry.user_unit
+    else:
+        width, height = page.width(), page.height()
+        if int(transform.manifest_rotation) in {90, 270}:
+            width, height = height, width
+        # Unknown physical size: one logical unit is a current screen pixel.
+        # This gives exact normalized placement, not an invented point scale.
+        width *= NORMALIZED_PAGE_MILLIONTHS / crop.width
+        height *= NORMALIZED_PAGE_MILLIONTHS / crop.height
+    size = RenderedImageSize(max(1, round(page.width())), max(1, round(page.height())))
+    viewport = ScreenViewport(page.left(), page.top(), page.width(), page.height())
+    origin, right, bottom = (
+        transform.normalized_to_screen(point, size, viewport)
+        for point in (
+            NormalizedPagePoint(crop.x, crop.y),
+            NormalizedPagePoint(crop.right, crop.y),
+            NormalizedPagePoint(crop.x, crop.bottom),
+        )
+    )
+    sx = (right.x - origin.x) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
+    sy = (right.y - origin.y) / (width * crop.width / NORMALIZED_PAGE_MILLIONTHS)
+    tx = (bottom.x - origin.x) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
+    ty = (bottom.y - origin.y) / (height * crop.height / NORMALIZED_PAGE_MILLIONTHS)
+    x, y = (
+        width * crop.x / NORMALIZED_PAGE_MILLIONTHS,
+        height * crop.y / NORMALIZED_PAGE_MILLIONTHS,
+    )
+    mark_scale = 1.0 if geometry is not None else zoom_percent / 100
+    text_scale = 1.0 if geometry is not None else logical_dpi / 72 * zoom_percent / 100
+    return _ContentFrame(
+        page,
+        QTransform(sx, sy, tx, ty, origin.x - sx * x - tx * y, origin.y - sy * x - ty * y),
+        width,
+        height,
+        mark_scale,
+        text_scale,
+    )
+
+
+def _paint_content(
+    painter: QPainter,
+    payload: TextualOverlayPayload | MarkOverlayPayload,
+    box: NormalizedPageBox,
+    frame: _ContentFrame,
+    base_font: QFont,
+) -> None:
+    raw = payload.color.value
+    color = QColor(*(int(raw[index : index + 2], 16) for index in (1, 3, 5, 7)))
+    if not color.alpha():
+        return
+    width, height = frame.width, frame.height
+    rect = QRectF(
+        width * box.x / NORMALIZED_PAGE_MILLIONTHS,
+        height * box.y / NORMALIZED_PAGE_MILLIONTHS,
+        width * box.width / NORMALIZED_PAGE_MILLIONTHS,
+        height * box.height / NORMALIZED_PAGE_MILLIONTHS,
+    )
+    painter.save()
+    try:
+        painter.setClipRect(frame.page, Qt.ClipOperation.IntersectClip)
+        painter.setWorldTransform(frame.transform, True)
+        painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+        path = QPainterPath()
+        if type(payload) is TextualOverlayPayload:
+            if not payload.value:
+                return
+            font = _preview_font(base_font)
+            pixels = payload.font_size_points * frame.text_scale
+            font.setPixelSize(max(1, round(pixels)))
+            # Outlines remain bounded by the existing 4,096-code-point
+            # model limit, even when a tiny crop makes the transform large.
+            # No full-page bitmap or transformed giant glyph raster is made.
+            path.addText(QPointF(0, 0), font, payload.value)
+            ink = path.boundingRect()
+            x = rect.left() - min(0.0, ink.left())
+            if ink.width() <= rect.width():
+                x = min(x, rect.right() - ink.right())
+            path.translate(x, rect.center().y() - ink.center().y())
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+        else:
+            scale = frame.mark_scale
+            stroke = min(6.0 * scale, max(1.0 * scale, min(rect.width(), rect.height()) / 8))
+            pen = QPen(
+                color,
+                stroke,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.FlatCap,
+                Qt.PenJoinStyle.MiterJoin,
+            )
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            if stroke >= min(rect.width(), rect.height()):
+                # Match the export adapter's minimum-cell behavior instead
+                # of constructing an inverted inset for a subpixel mark.
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+                path.addRect(rect)
+                painter.drawPath(path)
+                return
+            inner = rect.adjusted(stroke / 2, stroke / 2, -stroke / 2, -stroke / 2)
+            if payload.kind is OverlayKind.CHECKMARK:
+                path.moveTo(
+                    inner.left() + inner.width() * 0.12, inner.top() + inner.height() * 0.55
+                )
+                path.lineTo(
+                    inner.left() + inner.width() * 0.40, inner.top() + inner.height() * 0.82
+                )
+                path.lineTo(
+                    inner.left() + inner.width() * 0.88, inner.top() + inner.height() * 0.18
+                )
+            else:
+                path.moveTo(inner.topLeft())
+                path.lineTo(inner.bottomRight())
+                path.moveTo(inner.topRight())
+                path.lineTo(inner.bottomLeft())
+        painter.drawPath(path)
+    finally:
+        painter.restore()
 
 
 def _round_to_guide(value: int, step: int) -> int:

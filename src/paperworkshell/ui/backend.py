@@ -25,6 +25,7 @@ from paperworkshell.app.organizer import (
     OrganizerSignatureImageDeleteOutcome,
     OrganizerSignatureImagePlacementOutcome,
     OrganizerViewState,
+    TracePlannedPreview,
 )
 from paperworkshell.app.package_pdf_export import PackagePdfCandidateError
 from paperworkshell.app.package_workflow import PackageReviewState, PackageWorkflowError
@@ -33,6 +34,7 @@ from paperworkshell.app.page_previews import (
     PagePreviewErrorCode,
     PagePreviewProgress,
     PagePreviewProgressPhase,
+    PagePreviewResult,
 )
 from paperworkshell.app.portal_constraints import (
     ConstraintEditorError,
@@ -1122,16 +1124,14 @@ class OrganizerBackendWorker(QObject):
         try:
             if backend.state.case_id != case_id:
                 raise TraceRecipeError(TraceRecipeErrorCode.TARGET_CHANGED)
+            result: PagePreviewResult | TracePlannedPreview
             if source:
                 result = backend.get_trace_source_preview(
                     case_id, page_id, width, height, cancellation=cancellation.cancelled
                 )
             else:
-                (result,) = backend.get_thumbnails(
-                    width,
-                    height,
-                    page_ids=(page_id,),
-                    cancellation=cancellation.cancelled,
+                result = backend.get_trace_planned_preview(
+                    page_id, width, height, cancellation=cancellation.cancelled
                 )
         except Exception as error:
             self.source_preview_failed.emit(

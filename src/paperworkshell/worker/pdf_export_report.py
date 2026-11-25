@@ -9,6 +9,9 @@ from uuid import UUID
 
 from paperworkshell.domain.manifest_repository import MAX_SAFE_MANIFEST_INTEGER
 from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_ENGINE_PROFILE as DEFAULT_PDF_EXPORT_ENGINE_PROFILE,
+)
+from paperworkshell.domain.pdf_export import (
     MAX_PDF_EXPORT_CHECKS,
     OPTIMIZED_PDF_EXPORT_REPORT_VERSION,
     OPTIMIZED_PORTAL_PDF_EXPORT_REPORT_VERSION,
@@ -21,6 +24,21 @@ from paperworkshell.domain.pdf_export import (
     PdfExportVerificationReport,
     reject_pdf_export,
 )
+from paperworkshell.domain.pdf_export import (
+    PDFIUM_EXPORT_ENGINE_VERSION as PDFIUM_EXPORT_ENGINE_VERSION,
+)
+from paperworkshell.domain.pdf_export import (
+    PIKEPDF_EXPORT_ENGINE_VERSION as PIKEPDF_EXPORT_ENGINE_VERSION,
+)
+from paperworkshell.domain.pdf_export import (
+    PYPDFIUM2_EXPORT_ENGINE_VERSION as PYPDFIUM2_EXPORT_ENGINE_VERSION,
+)
+from paperworkshell.domain.pdf_export import (
+    QPDF_EXPORT_ENGINE_VERSION as QPDF_EXPORT_ENGINE_VERSION,
+)
+from paperworkshell.domain.pdf_export import (
+    PdfExportEngineProfile as PdfExportEngineProfile,
+)
 from paperworkshell.domain.pdf_optimization import (
     PdfOptimizationOutcome,
     PdfOptimizationProfile,
@@ -32,10 +50,6 @@ PDF_EXPORT_WORKER_REPORT_VERSION: Final = 1
 # worker tree is confirmed terminated. Keep the complete closed report below
 # the pipe's 8 KiB kernel buffer so a worker can never block on its own result.
 MAX_PDF_EXPORT_WORKER_REPORT_BYTES: Final = 4_096
-PIKEPDF_EXPORT_ENGINE_VERSION: Final = "10.10.0"
-QPDF_EXPORT_ENGINE_VERSION: Final = "12.3.2"
-PYPDFIUM2_EXPORT_ENGINE_VERSION: Final = "5.12.1"
-PDFIUM_EXPORT_ENGINE_VERSION: Final = "152.0.7947.0"
 
 _ROOT_MEMBERS: Final = frozenset(
     {
@@ -70,28 +84,6 @@ _OPTIMIZATION_MEMBERS: Final = frozenset(
         "verified_page_count",
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class PdfExportEngineProfile:
-    """Exact dependency versions used for the performed verification checks."""
-
-    pikepdf: str = PIKEPDF_EXPORT_ENGINE_VERSION
-    qpdf: str = QPDF_EXPORT_ENGINE_VERSION
-    pypdfium2: str = PYPDFIUM2_EXPORT_ENGINE_VERSION
-    pdfium: str = PDFIUM_EXPORT_ENGINE_VERSION
-
-    def __post_init__(self) -> None:
-        if (
-            self.pikepdf != PIKEPDF_EXPORT_ENGINE_VERSION
-            or self.qpdf != QPDF_EXPORT_ENGINE_VERSION
-            or self.pypdfium2 != PYPDFIUM2_EXPORT_ENGINE_VERSION
-            or self.pdfium != PDFIUM_EXPORT_ENGINE_VERSION
-        ):
-            reject_pdf_export(PdfExportErrorCode.REPORT_INVALID, "export.report_engines")
-
-
-DEFAULT_PDF_EXPORT_ENGINE_PROFILE: Final = PdfExportEngineProfile()
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Final
 from uuid import UUID
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
@@ -19,14 +20,45 @@ from paperworkshell.app.trace_results import (
     TraceExportEvidence,
     TraceSavedExportEvidence,
 )
+from paperworkshell.domain.ocr import TRUSTED_OCRMYPDF_VERSION, TRUSTED_TESSERACT_VERSION
+from paperworkshell.domain.page_coordinates import NormalizedPageBox
+from paperworkshell.domain.pdf_export import (
+    DEFAULT_PDF_EXPORT_ENGINE_PROFILE,
+    IMAGE_PDF_EXPORT_PROFILE,
+)
+from paperworkshell.domain.searchable_pdf_export import DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE
 from paperworkshell.domain.trace_recipe import (
     TRACE_OPERATION_LABELS,
+    TraceMarkConfiguration,
     TraceOperation,
     TraceOperationKind,
     TraceOutputStatus,
+    TracePackageConfiguration,
     TracePlan,
 )
-from paperworkshell.localization.catalog import tr
+from paperworkshell.localization.catalog import mark, tr
+from paperworkshell.overlays.exporting import FLATTENED_PDF_EXPORT_PLAN_VERSION
+
+_MARK_LABELS: Final = {
+    "text": mark("Text"),
+    "date": mark("Date"),
+    "checkmark": mark("Checkmark"),
+    "cross": mark("Cross"),
+    "initials": mark("Initials"),
+    "signature_image": mark("Signature image"),
+    "highlight": mark("Highlight"),
+    "shape": mark("Shape"),
+    "unapplied": mark("Unapplied removal mark"),
+}
+_PACKAGE_MODE_LABELS: Final = {
+    "combined_pdf": mark("One combined PDF"),
+    "separate_pdfs": mark("Several separate PDFs"),
+    "zip": mark("ZIP package"),
+}
+_PACKAGE_ENCRYPTION_LABELS: Final = {
+    "must_be_unencrypted": mark("Outputs must be unencrypted"),
+    "allowed": mark("Encrypted outputs are allowed"),
+}
 
 
 class TraceRecipePane(QWidget):
@@ -43,6 +75,7 @@ class TraceRecipePane(QWidget):
         self._evidence: TraceExportEvidence | TraceSavedExportEvidence | None = None
         self._output_status: TraceOutputStatus | None = None
         self._ocr_language_set_id: str | None = None
+        self._shown_configuration: tuple[TraceOperation | None, UUID | None] = (None, None)
 
         layout = QVBoxLayout(self)
         title = QLabel(tr("Recipe"), self)
@@ -72,6 +105,12 @@ class TraceRecipePane(QWidget):
         )
         self._details.setAccessibleName(tr("Operation parameters and dependencies"))
         layout.addWidget(self._details)
+        self._configuration = QListWidget(self)
+        self._configuration.setObjectName("traceOperationConfiguration")
+        self._configuration.setAccessibleName(tr("Selected operation configuration"))
+        self._configuration.setWordWrap(True)
+        layout.addWidget(self._configuration, 2)
+        self._configuration.hide()
 
         self._result_status = QLabel(self)
         self._result_status.setWordWrap(True)
@@ -111,6 +150,7 @@ class TraceRecipePane(QWidget):
 
     def select_page(self, page_id: UUID | None) -> None:
         self._page_id = page_id
+        self._show_configuration(self._selected_operation())
         if self._plan is None or page_id is None:
             self._selection_text.setText(tr("Select a page to inspect its recipe operations."))
             return
@@ -178,6 +218,37 @@ class TraceRecipePane(QWidget):
             self._details.setText(_operation_description(self._plan.operations[row]))
         else:
             self._details.clear()
+        self._show_configuration(self._selected_operation())
+
+    def _selected_operation(self) -> TraceOperation | None:
+        row = self._list.currentRow()
+        if self._plan is not None and 0 <= row < len(self._plan.operations):
+            return self._plan.operations[row]
+        return None
+
+    def _show_configuration(self, operation: TraceOperation | None) -> None:
+        page = self._page_id if operation is not None and operation.marks else None
+        if self._shown_configuration == (operation, page):
+            return
+        self._shown_configuration = (operation, page)
+        rows: tuple[str, ...] = ()
+        if operation is not None:
+            if operation.marks:
+                selected = sorted(
+                    (mark for mark in operation.marks if mark.page_id == page),
+                    key=lambda mark: mark.layer or 0,
+                )
+                rows = tuple(_mark_description(mark) for mark in selected) or (
+                    tr("Select an affected page to inspect its saved mark settings."),
+                )
+            elif operation.package is not None:
+                rows = _package_description(operation.package)
+            elif operation.kind is TraceOperationKind.EXPORT:
+                rows = _export_configuration()
+        self._configuration.clear()
+        for text in rows:
+            QListWidgetItem(text, self._configuration)
+        self._configuration.setVisible(bool(rows))
 
     def _toggle_checks(self, enabled: bool) -> None:
         self._checks_button.setText(
@@ -258,3 +329,75 @@ def _operation_description(operation: TraceOperation) -> str:
         )
         facts.append(tr("Depends on: {value1}", value1=dependencies))
     return "\n".join(facts)
+
+
+def _mark_description(configuration: TraceMarkConfiguration) -> str:
+    box: NormalizedPageBox = configuration.box
+    facts = [
+        tr(_MARK_LABELS[configuration.kind]),
+        tr("Record version {value1}", value1=configuration.version),
+    ]
+    if configuration.layer is not None:
+        facts.append(tr("Layer index {value1}", value1=configuration.layer))
+    return (
+        " · ".join(facts)
+        + "\n"
+        + tr(
+            "Box x {value1}%, y {value2}%, width {value3}%, height {value4}%.",
+            value1=box.x / 10_000,
+            value2=box.y / 10_000,
+            value3=box.width / 10_000,
+            value4=box.height / 10_000,
+        )
+    )
+
+
+def _package_description(configuration: TracePackageConfiguration) -> tuple[str, ...]:
+    modes = ", ".join(tr(_PACKAGE_MODE_LABELS[mode]) for mode in configuration.allowed_modes)
+    facts = [
+        tr("Saved package policy version {value1}", value1=configuration.version),
+        tr("Allowed output modes: {value1}", value1=modes),
+        tr(_PACKAGE_ENCRYPTION_LABELS[configuration.encryption_policy]),
+        tr("Saved assignments: {value1}", value1=configuration.assignment_count),
+        tr("Requested output names: {value1}", value1=configuration.requested_name_count),
+    ]
+    if configuration.max_files is not None:
+        facts.append(tr("Maximum files: {value1}", value1=configuration.max_files))
+    if configuration.max_total_bytes is not None:
+        facts.append(tr("Maximum package bytes: {value1}", value1=configuration.max_total_bytes))
+    if configuration.max_file_bytes is not None:
+        facts.append(tr("Maximum bytes per file: {value1}", value1=configuration.max_file_bytes))
+    if configuration.max_pages_per_file is not None:
+        facts.append(
+            tr("Maximum pages per file: {value1}", value1=configuration.max_pages_per_file)
+        )
+    return tuple(facts)
+
+
+def _export_configuration() -> tuple[str, ...]:
+    engines = DEFAULT_PDF_EXPORT_ENGINE_PROFILE
+    structural = IMAGE_PDF_EXPORT_PROFILE
+    searchable = DEFAULT_SEARCHABLE_PDF_EXPORT_PROFILE
+    return (
+        tr(
+            "Required PDF engines: pikepdf {value1}, qpdf {value2}, pypdfium2 {value3}, PDFium {value4}.",
+            value1=engines.pikepdf,
+            value2=engines.qpdf,
+            value3=engines.pypdfium2,
+            value4=engines.pdfium,
+        ),
+        tr("Structural PDF assembly profile: {value1}", value1=structural.assembly.value),
+        tr("PDF render verification profile: {value1}", value1=structural.render.value),
+        tr("PDF structure verification profile: {value1}", value1=structural.qpdf.value),
+        tr("Flattened PDF plan version {value1}", value1=FLATTENED_PDF_EXPORT_PLAN_VERSION),
+        tr(
+            "Optional searchable text profile: {value1} (version {value2})",
+            value1=searchable.ocr_profile_id,
+            value2=searchable.profile_version,
+        ),
+        tr(
+            "Required for OCR: OCRmyPDF {value1}, Tesseract {value2}.",
+            value1=TRUSTED_OCRMYPDF_VERSION,
+            value2=TRUSTED_TESSERACT_VERSION,
+        ),
+    )
