@@ -7167,7 +7167,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0810
@@ -7206,8 +7206,8 @@ tasks:
   - installed-runtime
   blocker: null
   evidence:
-    completed_at: null
-    revision: candidate:pws0813-trace-engineering-b6
+    completed_at: '2026-11-25'
+    revision: candidate:pws0813-trace-engineering-b8
     commands:
     - "tools/dev.py test-accessibility passed 359 tests on B4 source."
     - "Focused TRACE, assisted use, signature, export, OCR settings, privacy and lifecycle suite passed 180 tests."
@@ -7216,8 +7216,11 @@ tasks:
     - "B5 native contrast regression failed on B4 and passed after the fix. All 360 accessibility tests and 76 focused unit tests passed. Standard-user B5 Setup preserved 868 entries and verified all 3,210 installed members. Windows Aquatic selection and focus passed at native 96 DPI."
     - "B6 from a3246304da09dd98c095e53a2a8f408d4f997385 restored v1 structural checks, rejected a same-size changed PDF, verified the exact retained PDF and required fresh selection after restart. Standard-user replacement preserved 868 entries and verified 3,210 installed files."
     - "The installed B6 current-plan summary remained visible in Exported. The regression failed on B6 source and passed after dead56ed4e695f7b83b5af3e8c01e7f382cb9b31. The corrected source passed 103 focused tests with one Windows symlink skip and all 360 native accessibility tests."
+    - "Installed B7 confirmed the Exported label fix, saved core marks in Planned and the unedited Source view. The combined four-page package and its text summary passed independent inspection. Exact installed limited Interactive batch output matched B1 and PowerShell bytes."
+    - "Exact B8 source passed 243 focused tests with one Windows symlink capability skip, 360 native accessibility tests, three serial containment and isolation tests, and the flattened-output bound failure path. Three obsolete-preview tests passed after fixture repair. Ruff, strict typing, localization, schemas, docs, task graph and both boundaries passed."
+    - "B8 Setup verified 3,210 installed files and preserved all 889 retained entries. Native 96- and 192-DPI captures confirmed the long Recipe configuration wraps, with named keyboard focus and Ctrl+K search at 192 DPI. The offline guest returned to its original resolution, scale and contrast."
     notes:
     - "The TRACE implementation and exact B4 verification are recorded in docs/development/pws0813-trace.md."
     - "The continuation records B5 source, installer and native contrast evidence."
-    - "The continuation records B6 reopen evidence and the pending installed check of the source-only label correction."
-    - "The task remains in progress for the open comparison, inspection and logged-out batch contract scope."
+    - "The continuation records B6 reopen evidence, B7 package and batch evidence, the B7 narrow-pane failure, and exact B8 source, installer and native fix verification."
+    - "The bounded offline console path was verified in the signed-in standard-user session. Logged-out batch admission was denied by the existing Windows account policy. The signed release and M8 release gate retain their separate prerequisites."

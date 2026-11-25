@@ -10,8 +10,9 @@ from uuid import UUID
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtGui import QImage, QPainter
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QPushButton, QStyle, QStyleOptionViewItem
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
 from paperworkshell.domain.case_lifecycle import CaseIndex, CaseSummary
@@ -24,7 +25,7 @@ from paperworkshell.ui.backend import (
     OrganizerBackendWorker,
 )
 from paperworkshell.ui.models import PreviewState
-from paperworkshell.ui.page_delegate import OrganizerPageDelegate
+from paperworkshell.ui.trace_workbench import TracePageRailDelegate
 from paperworkshell.ui.window import PaperWorkShellWindow, _LongOperationKind
 from tests.unit.test_mixed_preview_window import CASE_ID, PDF_PAGE_ID, _pdf_result
 from tests.unit.test_package_export_window import _application
@@ -119,7 +120,14 @@ class _PreviewRequest:
                 maximum_height_pixels=self.height,
                 additional_rotation=rotation,
             ),
-            snapshot=replace(result.snapshot, pixels=bytes(pixel), additional_rotation=rotation),
+            snapshot=replace(
+                result.snapshot,
+                width_pixels=24,
+                height_pixels=32,
+                row_stride_bytes=24 * 4,
+                pixels=bytes(pixel) * (24 * 32),
+                additional_rotation=rotation,
+            ),
         )
 
 
@@ -135,14 +143,17 @@ def _flush_autosave(window: PaperWorkShellWindow) -> None:
 
 
 def _start_preview(
-    window: PaperWorkShellWindow, requests: list[_PreviewRequest]
+    window: PaperWorkShellWindow, requests: list[_PreviewRequest], *, prior_requests: int
 ) -> _PreviewRequest:
-    assert window._preview_refresh_timer.isActive()
-    window._preview_refresh_timer.stop()
-    request_count = len(requests)
-    window._preview_refresh_timer.timeout.emit()
-    assert len(requests) == request_count + 1
+    if len(requests) == prior_requests:
+        assert window._preview_refresh_timer.isActive()
+        window._preview_refresh_timer.stop()
+        window._preview_refresh_timer.timeout.emit()
+    assert len(requests) == prior_requests + 1
     request = requests[-1]
+    active = window._active_operation
+    assert active is not None and active.kind is _LongOperationKind.PREVIEW
+    assert active.operation_id == request.operation_id
     assert request.page_ids == (PDF_PAGE_ID,)
     assert window._model.preview_state(PDF_PAGE_ID) is PreviewState.LOADING
     return request
@@ -166,12 +177,24 @@ def _painted_pixel(window: PaperWorkShellWindow) -> tuple[int, int, int, int]:
     view = window._page_view
     index = window._model.index(row, 0)
     view.scrollTo(index)
-    center = OrganizerPageDelegate.regions(view.visualRect(index))[0].center()
+    delegate = view.itemDelegateForIndex(index)
+    assert isinstance(delegate, TracePageRailDelegate)
+    option = QStyleOptionViewItem()
+    view.initViewItemOption(option)
+    option.rect = view.visualRect(index)
+    delegate.initStyleOption(option, index)
+    decoration = view.style().subElementRect(
+        QStyle.SubElement.SE_ItemViewItemDecoration, option, view
+    )
+    assert decoration.isValid()
+    center = decoration.center()
     viewport = view.viewport()
     assert viewport.rect().contains(center)
-    painted = viewport.grab()
-    point = center * painted.devicePixelRatio()
-    color = painted.toImage().pixelColor(point)
+    painted = QImage(viewport.size(), QImage.Format.Format_RGBA8888)
+    painted.fill(Qt.GlobalColor.transparent)
+    with QPainter(painted) as painter:
+        delegate.paint(painter, option, index)
+    color = painted.pixelColor(center)
     return color.red(), color.green(), color.blue(), color.alpha()
 
 
@@ -205,7 +228,7 @@ def test_obsolete_organizer_preview_cannot_paint(
         _click(window._open_case_button)
         app.processEvents()
         assert window._selected_page_id() == PDF_PAGE_ID
-        old = _start_preview(window, requests)
+        old = _start_preview(window, requests, prior_requests=0)
         stale = (old.result(_OLD_PIXEL, PdfRenderRotation.DEGREES_0),)
 
         _click(
@@ -263,7 +286,7 @@ def test_obsolete_organizer_preview_cannot_paint(
             PdfRenderRotation.DEGREES_90 if action == "rotate" else PdfRenderRotation.DEGREES_0
         )
         assert window._state.pages[0].rotation_degrees == rotation.value
-        current = _start_preview(window, requests)
+        current = _start_preview(window, requests, prior_requests=1)
         assert current.operation_id != old.operation_id and current.generation > old.generation
         worker.thumbnails_ready.emit(
             current.operation_id, current.generation, (current.result(_CURRENT_PIXEL, rotation),)

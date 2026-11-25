@@ -474,6 +474,22 @@ during guarded staging. The staging check passed on retry, along with all 58 non
 separate run. PWS-0207's frozen implementation-index comparison continued to fail on descendant
 source; the divergence predates TRACE. The existing PWS-0207 evidence retains its exact scope.
 
+The full B6-started unit run reported 8,055 passes, two skips, seven failures and eight setup
+errors. In addition to the renderer and historical baseline findings, it exposed the three
+obsolete-preview test assumptions repaired below and two preexisting preview-storage-capacity
+contract failures in the worker image-normalize and searchable-export tests. The full integration
+sweep was stopped at 37 percent after the affected live checks were identified. The affected
+flattened export failure path passed in isolation on exact B8 source.
+
+The initial broad security run included host worker recovery allowlist failures. Stopping the
+integration sweep left one lease from its authenticated owner process. The same allowlist
+rejection remained on a serial rerun. The production recovery API repaired the stopped test
+lease using only its two independently authenticated disposable fixture roots. The exact B8
+serial rerun passed all three live containment and isolation tests. The flattened-output bound
+integration check passed separately, and the host recovery journal remained empty. See
+`output/pws0813/host-worker-test-lease-recovery.json`. These results cover the affected worker
+checks. The broad preliminary runs retain their original results.
+
 The offline B7 installer uses commit `d8c4b8e261984e776e4bb7328f01aedc13b30908`. The read-only
 unsigned delivery file is
 `output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b7-win-x64-UNSIGNED.exe` in
@@ -502,3 +518,89 @@ mark geometry and configured export requirements. Long engine and profile rows c
 right edge at 96 DPI. The capture `output/pws0813/desktop-evidence-b7/capture-pdf-export-configuration.png`
 records that failing layout. The successor's inspection check requires the complete long identifiers
 to wrap at the narrow width, including the native 192-DPI layout.
+
+The fresh synthetic package case imported four PDFs. The unassigned case received checklist
+guidance and no package was created. After separate assignment and confirmation of all four
+requirements, the native review showed Ready and the four-page combined plan. The worker
+verified all four pages before publication. The native summary dialog saved its displayed
+text after the filename was entered and the Save button invoked. An earlier automation
+submission had failed to confirm the save and produced no text file.
+
+Independent PDF reopening found no syntax findings or encryption. All page rasters, text,
+dimensions and rotations matched the saved assignments in template order. The actual keyboard
+selection assigned the fixtures in form, address, support and identity order. Those saved
+assignments supplied the comparison expectation. The 1,274-byte combined PDF has SHA-256
+`7b1d261c664e497cdb58f0d16bc5882367106abd7d1ffdcb20c77af9190dc4fc`. The 6,393-byte summary has
+SHA-256 `7e185da40d0c3f9d1168978f4f7381232b84d15302a03acab925c10673616f41`. Both artifacts and
+their independent receipt are under `output/pws0813/installed-trace-b7/package-output`.
+
+The exact B7 console runtime processed the retained bounded recipe under a limited Interactive
+task in the offline standard-user desktop session, without a TRACE GUI for the batch command.
+It exited successfully, performed seven checks on two pages and preserved the input. The
+786-byte PDF matched the earlier PowerShell and B1 output, with SHA-256
+`364a77bc7603d6956d64d18f0280c89ab27170ac06aa2a6bcf815ed30a5dca95`. See
+`output/pws0813/installed-trace-b7/interactive-batch`. A read-only batch-logon admission probe
+for the existing account returned Windows status `0xc000015b` for logon type 4. The guest's
+script policy and account rights stayed in place. A logged-out run remains unverified in this
+VM. The supported bounded console path and the PowerShell transport have separate evidence.
+
+## B8 configuration readability
+
+The B7 configuration text clipped inside a narrow list item. B8 puts the same text in a named
+read-only pane with vertical scrolling. Long profile identifiers wrap within the visible width,
+and Tab leaves the pane. The narrow 260-pixel fixture with 20-point text reproduced the B7
+problem and passed after the repair. It checks an actual profile token across multiple text
+layout lines with zero horizontal scroll range.
+
+Exact B8 source passed 243 focused tests with one Windows symlink capability skip and 360
+native accessibility tests. The 33-module desktop route suite passed 425 tests on B7. Three
+older thumbnail-race tests initially used the retired page delegate and assumed a fixed Qt
+timer delivery sequence. The repaired fixtures drive the actual TRACE delegate and accept one
+current request regardless of whether the event loop has already delivered it. All three pass
+while still checking that obsolete results leave the current pixels intact. This test-only repair
+followed B8 packaging. Ruff, strict typing, localization, schemas, documentation, task graph and
+both boundary validators passed.
+
+B8 `pws0813-trace-engineering-b8` was built offline from `acc0b2621259975c6d418807488ce239b338ac05`.
+The read-only unsigned installer is
+`output/pws0813/delivery/PaperWorkShell-pws0813-trace-engineering-b8-win-x64-UNSIGNED.exe`,
+512,966,979 bytes, with SHA-256
+`6b2dce059dc2ef2f02e8fc5206e5aacf285af472dfd281d7785881c9c809d33e`. All 336 application files
+matched the exact source and all 3,210 payload members verified. The only changed installed
+application source file since B7 is `ui/trace_recipe.py`. The installed marker, component list
+and two source archives also changed. See `output/pws0813/build-pws0813-trace-engineering-b8`.
+
+### Installed B8 verification
+
+B8 replaced B7 through the standard-user Keep cases route. The verified 889-entry baseline
+included the fresh package case, package PDF, saved summary and batch PDF. The installed app
+reopened the earlier saved Exported view. At 96 DPI the named read-only configuration control
+showed all PDF engine versions and wrapped the long render profile inside the narrow pane.
+Native accessibility reported the exact control enabled, on screen and keyboard-focused. Tab
+moved focus onward. See `output/pws0813/desktop-evidence-b8/capture-pdf-export-configuration.png`
+and the direct focus receipts in that directory.
+
+Windows reported native 192 DPI at 1600 × 1200. Ctrl+K opened the command palette with visible
+focus in its named search control. A depth-limited accessibility tree led the first probe to
+hide the inspector. The direct lookup then found the named Edit, but its first screenshot
+showed only the top edge of the pane in the outer application viewport. Focusing the export
+checks button and pressing Shift+Tab brought the configuration into view with keyboard focus.
+The capture `output/pws0813/desktop-evidence-b8/capture-b8-focus-native-192-configuration.png`
+shows all four engine versions and the full previously clipped render profile across wrapped
+lines. The 192-DPI readability observation covers those visible rows. The enlarged-text
+regression separately checks the text pane's wrapping and horizontal scroll range.
+
+The guest returned to 1024 × 768 at native 96 DPI with its original contrast settings and tested
+per-user file associations. The final offline session remained at the B8 rehearsal workbench and
+retained all 889 inventoried entries. R16 and R18 are saved and the active checkpoint parent was
+preserved. The owned helper tasks exited. Exact installed and retention results are under
+`output/pws0813/installed-trace-b8`, including `final-state-verified.json` and
+`post-native-state.json`. The verified final receipts preserve the earlier raw receipts and bind
+the retained PDF digest to a fresh hash and the backup inventory.
+
+### Task closure
+
+PWS-0813 is done for the private native replacement. The representative installed evidence covers
+the standard launch, saved cases, comparisons, package, bounded console runtime, keyboard and native
+scaling. PWS-0811 remains in review. PWS-0808 and public release retain their separate dependencies.
+The primary checkout and older immutable candidates stayed in place.
