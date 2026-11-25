@@ -13,8 +13,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,12 +27,14 @@ from PySide6.QtWidgets import (
 
 from paperworkshell.app.organizer import OrganizerBackend, OrganizerPageView, OrganizerViewState
 from paperworkshell.app.package_workflow import PackageReviewState
+from paperworkshell.app.trace_results import TraceExportEvidence
 from paperworkshell.domain.package_summary import (
     PackageSummary,
     PackageSummaryOutput,
     PackageSummaryOutputState,
     PackageSummaryStatus,
 )
+from paperworkshell.domain.trace_recipe import TraceOutputStatus
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.ui.backend import (
     OperationCancellation,
@@ -635,6 +637,61 @@ def test_a_new_ordinary_export_restores_only_its_own_verified_open_target() -> N
         assert window._last_result_label.text() == "Saved current.pdf — 4 pages."
         assert window._open_pdf_button.isVisible()
         assert window._open_export_folder_button.isVisible()
+
+
+def test_exported_lens_opens_the_authenticated_pdf_after_package_outcome(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with _window() as (window, commands, worker):
+        opened: list[Path] = []
+
+        def record_open(url: QUrl) -> bool:
+            opened.append(Path(url.toLocalFile()))
+            return True
+
+        monkeypatch.setattr(QDesktopServices, "openUrl", record_open)
+        commands.trace_export_inspect_requested.disconnect(worker.inspect_trace_export)
+        checks: list[tuple[int, object, OperationCancellation]] = []
+        commands.trace_export_inspect_requested.connect(lambda *args: checks.append(args))
+
+        export = window._begin_long_operation(_LongOperationKind.PDF_EXPORT)
+        destination = tmp_path / "Earlier Ångström PDF.pdf"
+        evidence = TraceExportEvidence(
+            case_id=CASE_ID,
+            export_id=REVIEW_ID,
+            plan_revision=3,
+            plan_fingerprint="a" * 64,
+            worker_fingerprint="b" * 64,
+            destination=destination,
+            sha256="c" * 64,
+            byte_size=100,
+            page_ids=(PAGE_ID,),
+            make_searchable=False,
+            checks=(),
+        )
+        window._pdf_export_destination = destination
+        worker.trace_pdf_export_ready.emit(export.operation_id, evidence)
+        worker.pages_pdf_export_saved.emit(export.operation_id, 1)
+        worker.operation_finished.emit(export.operation_id)
+        window._publish_package_result("Package export finished.")
+        assert window._open_pdf_button.isHidden()
+        assert window._last_export_path is None
+
+        view = window.findChild(QPushButton, "traceView-exported")
+        open_pdf = window.findChild(QPushButton, "traceOpenExport")
+        assert view is not None and open_pdf is not None
+        _press(view)
+        assert open_pdf.isVisible() and open_pdf.isEnabled()
+        _press(open_pdf)
+        assert len(checks) == 2
+        prior_id, prior_evidence, prior_token = checks[0]
+        active_id, active_evidence, _active_token = checks[1]
+        assert prior_evidence is evidence and active_evidence is evidence
+        assert prior_token.cancelled()
+        worker.trace_export_inspected.emit(prior_id, evidence, TraceOutputStatus.PRESENT)
+        assert not opened
+        worker.trace_export_inspected.emit(active_id, evidence, TraceOutputStatus.PRESENT)
+        assert opened == [destination]
 
 
 def test_invalid_inspection_response_releases_review_and_reports_a_main_window_failure() -> None:

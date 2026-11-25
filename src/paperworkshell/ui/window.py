@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -1726,7 +1726,9 @@ class PaperWorkShellWindow(QMainWindow):
             "traceOpenExport",
             "Verify the file identity and open it in your PDF viewer.",
         )
-        self._trace_open_pdf_button.clicked.connect(self._open_pdf_button.click)
+        self._trace_open_pdf_button.clicked.connect(
+            lambda: self._request_trace_output_check(open_when_verified=True)
+        )
         self._trace_open_pdf_button.hide()
         navigation.addWidget(self._trace_open_pdf_button)
         layout.addLayout(navigation)
@@ -2098,10 +2100,15 @@ class PaperWorkShellWindow(QMainWindow):
     @Slot(int, object, object)
     def _trace_export_inspected(self, operation_id: int, evidence: object, status: object) -> None:
         request = self._trace_output_request
-        if request is None or request[0] != operation_id or evidence != self._trace_evidence:
+        if (
+            request is None
+            or request[0] != operation_id
+            or not isinstance(evidence, TraceExportEvidence)
+            or evidence != self._trace_evidence
+        ):
             return
         self._trace_output_request = None
-        if self._assisted_session.locked or self._closing_requested:
+        if self._assisted_session.locked or self._closing_requested or self._case_close_pending:
             return
         if not isinstance(status, TraceOutputStatus):
             return
@@ -2110,7 +2117,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._refresh_trace_document()
         if request[2]:
             if status is TraceOutputStatus.PRESENT:
-                self._open_export_path(False)
+                self._open_export_path(evidence.destination)
             else:
                 message = tr("The exported PDF could not be verified. Export again to a new file.")
                 self._set_error_text(message)
@@ -2553,7 +2560,13 @@ class PaperWorkShellWindow(QMainWindow):
                 if row.key != "case.lock" or not row.button.isHidden()
             )
         )
-        dialog = TraceCommandPalette(self, commands + self._trace_global_commands)
+        dialog = TraceCommandPalette(
+            self,
+            tuple(
+                replace(command, label=self._trace_command_label(command))
+                for command in commands + self._trace_global_commands
+            ),
+        )
         dialog.exec()
         if focus is not None and self._focus_widget_is_available(focus):
             focus.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -4690,15 +4703,21 @@ class PaperWorkShellWindow(QMainWindow):
         self._open_export_folder_button.show()
 
     def _open_last_export(self, folder: bool) -> None:
-        if not folder and self._trace_evidence is not None:
+        path = self._last_export_path
+        if path is None:
+            return
+        if (
+            not folder
+            and self._trace_evidence is not None
+            and self._trace_evidence.destination == path
+        ):
             self._request_trace_output_check(open_when_verified=True)
             return
-        self._open_export_path(folder)
+        self._open_export_path(path.parent if folder else path)
 
-    def _open_export_path(self, folder: bool) -> None:
-        if self._assisted_session.locked or self._last_export_path is None:
+    def _open_export_path(self, path: Path) -> None:
+        if self._assisted_session.locked:
             return
-        path = self._last_export_path.parent if folder else self._last_export_path
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.absolute()))):
             self._announce(
                 tr(

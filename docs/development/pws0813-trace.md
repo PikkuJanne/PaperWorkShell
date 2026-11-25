@@ -158,5 +158,55 @@ The source rehearsal also confirmed that two signature cancellation branches ski
 restoration because the backing action was hidden. The successor targets the available Fill menu.
 The installer-focused verification proceeds with these narrow corrections together.
 
+## Third engineering build
+
+Source `2b56ab3dc05a60989008de0008b7cac704218913` on `codex/pws-0813-trace` built the unsigned
+`PaperWorkShell-pws0813-trace-engineering-b3-win-x64-UNSIGNED.exe`. The verified delivery copy is
+under `output/pws0813/delivery` in the primary checkout. Size is 512,949,825 bytes and SHA-256 is
+`834ed22fb745a8099cb9dfbb9ad8ff2adf5cb75f2f5daca286f995dd8481297b`. The exact build receipt is
+under `output/pws0813/build-pws0813-trace-engineering-b3`.
+
+The B3 source passed all 359 accessibility tests and 68 focused assisted-case, signature,
+removal, constraints and workbench tests. Format check, lint, strict typing and the portfolio
+boundary passed. The broad B2 unit run was stopped after surfacing assertions that still expected
+old controls to be visible. The changed routes were checked with native menu locators in the
+focused successor suite.
+
+The confirmed B1 installed rehearsal created a synthetic case, imported two PDFs, a JPEG and a
+PNG, and persisted all four pages. Keyboard movement and rotation selected the intended
+stable source-page instance. Whole-candidate installed verification is still in progress at this
+record point.
+
+The limited PowerShell Direct batch invocation on installed B1 rejected the unsupported OCR
+recipe and failed supported input inspection with `SOURCE_INSPECT_FAILED`. A local limited
+noninteractive task will test whether that failure is specific to the remoting token. This uses
+the same fixture, installation and parser boundary. A pass establishes local background batch
+processing in this lab. A failure leaves installed headless execution unresolved.
+Task Scheduler rejected registration of the limited S4U task with Access is denied. No process
+or document worker started. A local limited Interactive task tests whether the installed
+batch entry works outside PowerShell Direct with the routine user token. It can establish
+the background console behavior in an existing user session. A separate noninteractive logon
+remains unverified in this environment.
+The limited local task ran installed B1 `--trace-batch` without launching a GUI, producing the
+expected 786-byte PDF and seven actual checks. Its SHA-256 matches the independently inspected
+PowerShell output. The source remained unchanged and the temporary automation case was removed.
+This result is scoped to a console process in the existing limited desktop session. The S4U
+registration denial, PowerShell Direct intake failure and guest `.ps1` restriction retain their
+separate results.
+
+The first installed PDF export wrote `trace-installed-packet.pdf`, 23,664 bytes, with SHA-256
+`481babcba02526217d4933925fb12f62d7aa38046172c2f2cf9bcb393b67e452`. Bounded Poppler reopening,
+four independent renders and text extraction confirmed the planned JPEG, rotated PDF, digital form,
+and PNG order. Strict pikepdf reopening found no syntax findings or encryption. Page rotations were
+0°, 90°, 0°, and 0°. The original fixture hashes matched, and the saved export history identified
+the same bytes.
+
+The final source audit found that a checklist package could clear the shared footer path while
+the Exported view still had verified evidence for a PDF. Authentication could succeed, then the
+viewer could try to use the different footer path. The correction passes the verified result's
+own path to the viewer and ignores completion after case closure starts. A regression test uses
+distinct report and footer destinations. A pass establishes that the view opens the artifact it
+actually checked even after a separate export changes the footer.
+
 The authorized origin is public. This local branch includes private candidate ancestry,
 so the private engineering work stays in the dedicated checkout.
