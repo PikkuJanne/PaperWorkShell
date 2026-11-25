@@ -5,7 +5,6 @@ from __future__ import annotations
 import stat
 from dataclasses import dataclass
 from enum import StrEnum
-from itertools import pairwise
 from pathlib import Path
 from typing import Final
 from uuid import UUID
@@ -917,7 +916,6 @@ class PaperWorkShellWindow(QMainWindow):
         shell_layout.addWidget(self._application_scroll, 1)
         shell_layout.addWidget(self._status_surface)
         self.setCentralWidget(shell)
-        self._set_workflow_tab_order()
         file_menu = self.menuBar().addMenu(tr("&File"))
         self._package_export_action = QAction(tr("Export &checklist package…"), self)
         self._package_export_action.setObjectName("packageExportMenuAction")
@@ -1159,8 +1157,14 @@ class PaperWorkShellWindow(QMainWindow):
         self._last_result_label.setTextFormat(Qt.TextFormat.PlainText)
         self._last_result_label.setWordWrap(True)
         self._last_result_label.hide()
+        self._trace_destination_label = QLabel()
+        self._trace_destination_label.setObjectName("traceExportDestination")
+        self._trace_destination_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._trace_destination_label.setWordWrap(True)
+        self._trace_destination_label.hide()
         status_layout.addWidget(self._import_file_label)
         status_layout.addWidget(self._status_label)
+        status_layout.addWidget(self._trace_destination_label)
         status_layout.addWidget(self._last_result_label)
         self._last_export_path: Path | None = None
         self._pdf_export_destination: Path | None = None
@@ -1409,6 +1413,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_sources_identity: object = None
         self._trace_left_tabs = QTabWidget()
         self._trace_left_tabs.setAccessibleName(tr("Pages and source documents"))
+        self._trace_left_tabs.setUsesScrollButtons(False)
+        self._trace_left_tabs.setElideMode(Qt.TextElideMode.ElideRight)
         self._trace_left_tabs.addTab(self._page_view, tr("Pages"))
         self._trace_left_tabs.addTab(self._trace_source_tree, tr("Sources"))
         self._trace_left_tabs.currentChanged.connect(self._schedule_preview_refresh)
@@ -1632,6 +1638,8 @@ class PaperWorkShellWindow(QMainWindow):
         center = self._build_trace_document()
         self._trace_inspector_tabs = QTabWidget()
         self._trace_inspector_tabs.setAccessibleName(tr("Recipe and inspection"))
+        self._trace_inspector_tabs.setUsesScrollButtons(False)
+        self._trace_inspector_tabs.setElideMode(Qt.TextElideMode.ElideRight)
         self._trace_inspector_tabs.addTab(self._build_trace_recipe_pane(), tr("Recipe"))
         self._trace_inspector_tabs.addTab(quality_group, tr("Checks"))
         self._trace_split = TraceWorkbenchSplit(organizer_group, center, self._trace_inspector_tabs)
@@ -2555,7 +2563,7 @@ class PaperWorkShellWindow(QMainWindow):
 
     def _focus_trace_invoker(self, action: QPushButton) -> None:
         proxy = self._trace_button_proxy.get(action)
-        if action.isHidden() and proxy is not None and proxy.isVisible():
+        if action.isHidden() and action.isEnabled() and proxy is not None and proxy.isVisible():
             proxy.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _set_trace_compact(self, compact: bool) -> None:
@@ -2575,52 +2583,6 @@ class PaperWorkShellWindow(QMainWindow):
             self._trace_document_stack.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
         elif selected == "pages":
             self._trace_left_tabs.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
-
-    def _set_workflow_tab_order(self) -> None:
-        """Link the shared controls once every workflow has the same window."""
-        tab_chain = (
-            self._ocr_language_button,
-            self._case_list,
-            self._create_case_button,
-            self._open_case_button,
-            self._refresh_cases_button,
-            self._assisted_create_button,
-            self._import_button,
-            self._pages_pdf_export_button,
-            self._rename_case_button,
-            self._assisted_lock_button,
-            self._close_case_button,
-            self._page_view,
-            self._move_earlier_button,
-            self._move_later_button,
-            self._rotate_button,
-            self._remove_button,
-            self._scan_review_button,
-            self._change_order_button,
-            self._undo_button,
-            self._redo_button,
-            self._core_overlay_tools_button,
-            self._place_signature_image_button,
-            self._remove_signature_image_button,
-            self._checklist_button,
-            self._redaction_tools_button,
-            self._portal_constraints_button,
-            self._package_export_button,
-            self._removal_export_button,
-            self._quality_summary,
-            self._quality_check_button,
-            self._quality_findings_view,
-            self._quality_go_to_page_button,
-            self._error_label,
-            self._cancel_button,
-            self._retry_preview_button,
-            self._retry_save_button,
-            self._retry_close_button,
-            self._open_pdf_button,
-            self._open_export_folder_button,
-        )
-        for current, following in pairwise(tab_chain):
-            QWidget.setTabOrder(current, following)
 
     def _action_button(self, text: str, object_name: str, description: str) -> QPushButton:
         button = QPushButton(tr(text))
@@ -4140,6 +4102,7 @@ class PaperWorkShellWindow(QMainWindow):
         pending_save = self._state is not None and self._state.autosave_pending
         if failure.retryable and pending_save:
             self._retry_save_button.setVisible(True)
+            self._saved_label.setText(tr("Changes are unsaved. Retry saving."))
         else:
             self._hide_retry_save()
         if correlated_kind is _LongOperationKind.PREVIEW and failure.retryable:
@@ -4200,6 +4163,7 @@ class PaperWorkShellWindow(QMainWindow):
             assertive=True,
         )
         self._retry_save_button.setVisible(True)
+        self._saved_label.setText(tr("Changes are unsaved. Retry saving."))
         QTimer.singleShot(0, self._focus_retry_save_after_shutdown_refusal)
 
     def _focus_retry_save_after_shutdown_refusal(self) -> None:
@@ -4682,6 +4646,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._hide_error()
         operation = self._begin_long_operation(_LongOperationKind.PDF_EXPORT)
         self._pdf_export_destination = Path(selected)
+        self._trace_destination_label.setText(
+            tr("Export destination · {value1}", value1=str(self._pdf_export_destination))
+        )
+        self._trace_destination_label.show()
         self._pdf_export_saved_id = None
         self._set_controls_enabled(False)
         self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -5047,6 +5015,7 @@ class PaperWorkShellWindow(QMainWindow):
             return
         self._deferred_preview_state = None
         self._cancel_active_preview()
+        self._saved_label.setText(tr("Saving changes…"))
         self._commands.retry_save_requested.emit()
 
     def _selected_case_id(self) -> UUID | None:
@@ -8313,6 +8282,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setEnabled(False)
 
     def _finish_active_operation(self) -> None:
+        self._trace_destination_label.hide()
         finished_kind = None if self._active_operation is None else self._active_operation.kind
         if self._cancel_button.hasFocus():
             self._focus_safe_control()
@@ -8583,6 +8553,8 @@ class PaperWorkShellWindow(QMainWindow):
         self._error_label.setAccessibleName(tr("Action error. {value1}", value1=message))
 
     def _focus_error_recovery(self, action: QWidget) -> None:
+        if isinstance(action, QPushButton) and not action.isVisible() and action.isEnabled():
+            action = self._trace_button_proxy.get(action, action)
         if self._focus_widget_is_available(action):
             action.setFocus(Qt.FocusReason.OtherFocusReason)
             self._ensure_widget_visible(action)

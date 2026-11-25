@@ -274,16 +274,23 @@ def test_rtl_main_workflow_keeps_logical_tab_order_and_mirrors_layout() -> None:
                 worker.state_changed.emit(_state())
                 window.resize(1200, 800)
                 _application().processEvents()
-                orders.append(_tab_names(window))
-                positions.append(
-                    (
-                        window._move_earlier_button.mapTo(window, QPoint()).x(),
-                        window._move_later_button.mapTo(window, QPoint()).x(),
+                orders.append(
+                    tuple(
+                        name
+                        for name in _tab_names(window)
+                        if name not in {"ScrollLeftButton", "ScrollRightButton"}
                     )
+                )
+                fill = window.findChild(QPushButton, "traceWorkflow-fill")
+                protect = window.findChild(QPushButton, "traceWorkflow-protect")
+                assert fill is not None and protect is not None
+                assert fill.isVisible() and protect.isVisible()
+                positions.append(
+                    (fill.mapTo(window, QPoint()).x(), protect.mapTo(window, QPoint()).x())
                 )
     assert orders[0] == orders[1]
     assert "importButton" in orders[1]
-    assert "editFormMarksButton" in orders[1]
+    assert "traceWorkflow-fill" in orders[1]
     assert "cancelButton" not in orders[1]  # No operation is running.
     # Workflow actions mirror within each row while tab order remains explicit.
     assert positions[0][0] < positions[0][1]

@@ -45,6 +45,12 @@ def _application() -> QApplication:
     return QApplication([]) if existing is None else cast(QApplication, existing)
 
 
+def _assert_trace_fill_focus(window: PaperWorkShellWindow) -> None:
+    route = window.findChild(QPushButton, "traceWorkflow-fill")
+    assert route is not None and route.isVisible() and route.isEnabled()
+    assert QApplication.focusWidget() is route
+
+
 def _unused_backend() -> OrganizerBackend:
     raise AssertionError("this presentation test does not construct an organizer backend")
 
@@ -254,7 +260,7 @@ def test_window_shortcut_opens_dialog_and_cancel_releases_backend_before_focus_r
         worker.core_overlay_tools_cancelled.emit(cancel_operation_id)
         _application().processEvents()
         assert button.isEnabled()
-        assert button.hasFocus()
+        _assert_trace_fill_focus(window)
 
 
 def test_preview_refresh_timer_stays_stopped_while_overlay_editor_opens_and_is_active() -> None:
@@ -344,7 +350,8 @@ def test_window_routes_dialog_apply_and_closes_only_after_correlated_saved_state
 
         assert window._core_overlay_tools_dialog is None
         button = window.findChild(QPushButton, "editFormMarksButton")
-        assert button is not None and button.isEnabled() and button.hasFocus()
+        assert button is not None and button.isEnabled()
+        _assert_trace_fill_focus(window)
 
 
 def test_window_accepts_editor_after_begin_publishes_a_flushed_revision() -> None:

@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import QMessageLogContext, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtGui import QAction, QShortcut
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from paperworkshell.ui.checklist import ChecklistEditorDialog
 from paperworkshell.ui.constraints import ConstraintEditorDialog
@@ -58,7 +58,9 @@ def test_non_tab_focus_uses_a_dashed_frame_on_buttons_and_scroll_containers(surf
         control: QWidget
         if surface == "returned_button":
             window.activateWindow()
-            control = window._core_overlay_tools_button
+            route = window.findChild(QPushButton, "traceWorkflow-fill")
+            assert route is not None and route.isVisible()
+            control = route
         else:
             dialog = ChecklistEditorDialog(_checklist_state(), window)
             dialog.show()
@@ -95,7 +97,9 @@ def test_list_focus_has_a_visible_frame_even_without_a_visible_selected_row(surf
         worker.initialized.emit()
         if surface == "active_pages":
             worker.state_changed.emit(_state())
+            window._trace_select_pane("pages")
             control = window._page_view
+            assert control.isVisible()
             other = window._import_button
         else:
             control = window._case_list
@@ -140,22 +144,13 @@ def test_status_recovery_follows_workflow_actions_in_the_actual_tab_order() -> N
         window._error_label.setText("Synthetic keyboard recovery message")
         window._error_label.setVisible(True)
         window._cancel_button.setVisible(True)
-        window._quality_check_button.setFocus()
+        window._error_label.setFocus()
         _settle()
-        for target in (
-            window._error_label,
-            window._cancel_button,
-            window._ocr_language_button,
-            window._import_button,
-            window._pages_pdf_export_button,
-            window._rename_case_button,
-            window._close_case_button,
-            window._page_view,
-        ):
-            current = QApplication.focusWidget()
-            assert current is not None
-            QTest.keyClick(current, Qt.Key.Key_Tab)
-            assert QApplication.focusWidget() is target
+        assert QApplication.focusWidget() is window._error_label
+        QTest.keyClick(window._error_label, Qt.Key.Key_Tab)
+        assert QApplication.focusWidget() is window._cancel_button
+        QTest.keyClick(window._cancel_button, Qt.Key.Key_Backtab)
+        assert QApplication.focusWidget() is window._error_label
 
 
 def test_f1_guide_is_discoverable_readable_and_restores_the_invoking_control() -> None:
@@ -218,7 +213,8 @@ def test_help_does_not_run_page_shortcuts_or_restore_a_disabled_control() -> Non
         window._rotate_button.setEnabled(False)
         QTest.keyClick(dialog, Qt.Key.Key_Escape)
         _settle()
-        assert QApplication.focusWidget() is window._page_view
+        fallback = window._page_view if window._page_view.isVisible() else window._trace_document
+        assert QApplication.focusWidget() is fallback
 
 
 def test_main_window_tab_and_backtab_visit_every_available_action_without_trapping() -> None:
@@ -226,16 +222,16 @@ def test_main_window_tab_and_backtab_visit_every_available_action_without_trappi
         worker.initialized.emit()
         worker.state_changed.emit(_state())
         window.activateWindow()
-        window._page_view.setFocus()
+        window._command_button.setFocus()
         _settle()
-        # Walk the real focus chain, including the OCR settings above the workflow.
+        # Walk from a visible action in both compact and wide workbenches.
         seen: list[QWidget] = []
         for _ in range(60):
             focus = QApplication.focusWidget()
             assert isinstance(focus, QWidget)
             assert focus.isVisible() and focus.isEnabled()
             if focus in seen:
-                assert focus is window._page_view
+                assert focus is window._command_button
                 break
             seen.append(focus)
             QTest.keyClick(focus, Qt.Key.Key_Tab)

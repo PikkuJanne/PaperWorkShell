@@ -53,6 +53,12 @@ def _application() -> QApplication:
     return QApplication([]) if current is None else cast(QApplication, current)
 
 
+def _assert_trace_export_focus(window: PaperWorkShellWindow) -> None:
+    route = window.findChild(QPushButton, "traceWorkflow-export")
+    assert route is not None and route.isVisible() and route.isEnabled()
+    assert QApplication.focusWidget() is route
+
+
 def _unused_backend() -> OrganizerBackend:
     raise AssertionError("No backend is created by the presentation test.")
 
@@ -217,7 +223,7 @@ def test_cancelled_initial_inspection_discards_a_late_ready_signal_and_releases_
         worker.package_review_cancelled.emit(releases[0])
         _application().processEvents()
         assert window._package_export_button.isEnabled()
-        assert window._package_export_button.hasFocus()
+        _assert_trace_export_focus(window)
 
 
 def test_cancelled_refresh_clears_summary_and_retry_uses_a_new_cancellation_token() -> None:
@@ -267,7 +273,7 @@ def test_package_inspection_waits_for_preview_termination_and_queued_cancel_is_e
         if cancel_queued:
             assert requests == []
             assert window._package_export_button.isEnabled()
-            assert window._package_export_button.hasFocus()
+            _assert_trace_export_focus(window)
         else:
             assert len(requests) == 1
             assert window._active_operation is not None
@@ -289,7 +295,7 @@ def test_menu_keyboard_shortcut_and_close_hold_mutations_until_backend_release()
         worker.package_review_cancelled.emit(releases[0])
         _application().processEvents()
         assert imported.isEnabled()
-        assert window._package_export_button.hasFocus()
+        _assert_trace_export_focus(window)
 
 
 def test_destination_cancel_clears_acknowledgements_and_never_requests_export(

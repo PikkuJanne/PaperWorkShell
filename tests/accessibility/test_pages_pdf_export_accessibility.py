@@ -33,7 +33,7 @@ def test_export_shortcut_exposes_named_button_and_returns_focus_for_retry(
         interface = QAccessible.queryAccessibleInterface(button)
         assert interface is not None
         assert interface.role() is QAccessible.Role.Button
-        assert interface.text(QAccessible.Text.Name) == "Export PDF…"
+        assert interface.text(QAccessible.Text.Name) == "Export 1-page PDF…"
         assert "Ctrl+Shift+E" in interface.text(QAccessible.Text.Description)
         assert interface.state().focusable
         action = window.findChild(QAction, "pagesPdfExportMenuAction")

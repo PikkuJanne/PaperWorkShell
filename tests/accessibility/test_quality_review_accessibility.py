@@ -176,6 +176,9 @@ def test_doubled_text_keeps_every_quality_review_control_scroll_reachable() -> N
             app.processEvents()
             scroll = window.findChild(QScrollArea, "applicationScrollArea")
             assert scroll is not None and scroll.widgetResizable()
+            window._trace_split.select_pane("inspector")
+            window._trace_inspector_tabs.setCurrentIndex(1)
+            app.processEvents()
             controls = (
                 window._quality_summary,
                 window._quality_check_button,

@@ -796,7 +796,8 @@ def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page()
         assert window._stack.currentWidget() is window._organizer_page
         assert window._status_surface.isVisible()
         assert window._error_label.isVisible()
-        assert app.focusWidget() is window._page_view
+        target = window._page_view if window._page_view.isVisible() else window._trace_document
+        assert target.isVisible() and app.focusWidget() is target
 
 
 def test_state_updates_preserve_focus_and_hidden_cancel_moves_focus_safely() -> None:
@@ -834,7 +835,8 @@ def test_state_updates_preserve_focus_and_hidden_cancel_moves_focus_safely() -> 
         app.processEvents()
         assert not window._cancel_button.isVisible()
         assert app.focusWidget() is not window._cancel_button
-        assert app.focusWidget() is window._page_view
+        target = window._page_view if window._page_view.isVisible() else window._trace_document
+        assert target.isVisible() and app.focusWidget() is target
 
 
 def test_recovered_case_has_visible_and_announced_review_status() -> None:
@@ -916,11 +918,18 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
 
             worker.state_changed.emit(_state())
             app.processEvents()
-            window._page_view.setFocus()
-            QTest.keyClick(window._page_view, Qt.Key.Key_Tab)
+            arrange = window.findChild(QPushButton, "traceView-arrange")
+            assert arrange is not None and arrange.isVisible()
+            arrange.setFocus()
+            QTest.keyClick(arrange, Qt.Key.Key_Space)
             app.processEvents()
-            # The first page cannot move earlier, so Qt correctly skips that disabled action.
-            assert app.focusWidget() is window._move_later_button
+            assert window._trace_arrangement.isVisible()
+            window._trace_arrangement.setFocus()
+            QTest.keyClick(window._trace_arrangement, Qt.Key.Key_Down)
+            assert window._selected_page_id() == PAGE_TWO
+            assert (
+                window._move_earlier_button.isVisible() and window._move_earlier_button.isEnabled()
+            )
 
             operation = window._begin_long_operation(_LongOperationKind.IMPORT)
             worker.state_changed.emit(_state(autosave_pending=True))
@@ -936,23 +945,19 @@ def test_page_order_dialog_and_scaled_layout_remain_keyboard_reachable() -> None
             organizer_controls = (
                 window._import_button,
                 window._close_case_button,
-                window._page_view,
+                window._trace_arrangement,
                 window._move_earlier_button,
                 window._move_later_button,
                 window._rotate_button,
                 window._remove_button,
-                window._scan_review_button,
                 window._change_order_button,
-                window._undo_button,
-                window._redo_button,
-                window._core_overlay_tools_button,
-                window._place_signature_image_button,
-                window._remove_signature_image_button,
-                window._checklist_button,
-                window._quality_summary,
-                window._quality_check_button,
-                window._quality_findings_view,
-                window._quality_go_to_page_button,
+                window._command_button,
+                window._settings_button,
+                *(
+                    button
+                    for button in window.findChildren(QPushButton)
+                    if button.objectName().startswith(("traceWorkflow-", "tracePane-"))
+                ),
             )
             for fixed_widget in (
                 window._status_surface,

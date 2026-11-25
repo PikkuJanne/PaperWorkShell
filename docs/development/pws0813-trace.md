@@ -99,3 +99,55 @@ application surface, wrong mapping, invalid output or collision overwrite blocks
 passing rehearsal supplies candidate-specific evidence only for its actual scenarios. Include
 Ctrl+K and visible routes, keyboard focus, native accessible names and state, and a 200% display
 scaling inspection if available. No subjective preference currently needs a human session.
+
+## First TRACE engineering build
+
+The offline wheel, sdist, stage and Inno Setup compiler succeeded from
+`40b6c4558e920a26a6d046bf1c349540b4300cbd`. The resolved inventory matched all 336
+packaged application files to that Git revision. The unsigned installer is
+`PaperWorkShell-pws0813-trace-engineering-win-x64-UNSIGNED.exe` under the TRACE worktree's
+`output/pws0802/pws0813-trace-engineering/installer`. It is 512,949,494 bytes with SHA-256
+`f9ad6954ada73266090a45676f858d07943f9aed5cbcc5962a51271be44ad684`. The full receipt is under
+`output/pws0813/build-pws0813-trace-engineering` in the primary checkout.
+
+The bundle's six transfer hashes matched. Ruff, strict mypy, localization, schemas, task graph,
+docs and import and portfolio boundaries passed. The development headless run used the real
+isolated worker, exported the requested two pages in order and rotation, and refused an
+occupied destination. Independent PDF inspection and source and destination SHA-256 checks
+matched. The automation case was removed. A separate focused privacy, preview and assisted
+suite passed all 64 tests.
+
+The first source focus run showed five tests still asserting focus on controls now represented
+by TRACE menus. Verified replacement assertions identify the visible Fill and Export menus.
+The accessibility run stopped at 12 failures after 289 passes. Source inspection also confirmed
+two product defects. Dialog-start errors skipped visible menu proxies, and tab-order setup ran
+before some controls were parented. The successor uses native Tab traversal across the workbench and resolves available
+hidden editor actions to a visible action group. A passing focused run would justify
+that source change for the next private installer. The earlier accessibility results remain scoped
+to the first build.
+
+The packaged PowerShell script reached the backend on a separate byte-verified runtime copy
+and reported `PDF_EXPORT_DESTINATION_FAILED`. A destination-only publication using the same
+storage adapter and same parent will distinguish path admission from the full export pipeline.
+An adapter pass would move the investigation to export composition. A failure with the same
+sanitized code would identify the destination path or fixture setup as the next narrow check.
+The destination adapter committed a bounded synthetic payload in the same directory with
+both ASCII and Unicode filenames. That rules out the tested destination path and no-replace
+publisher. The next run captures closed adapter contexts through the full packaged export
+boundary. That run reached worker verification, then the destination publisher returned an
+uncommitted outcome. The original output directory also contained the protected runtime copy.
+Running the unchanged script in a sibling output directory tests whether that relationship
+caused the failure and determines whether a product repair is needed.
+That run passed under host PowerShell 7 with the exact staged runtime copied and verified
+against all 2,454 inventory members. The unchanged script created the expected 786-byte PDF.
+Independent page order, render dimensions, rotation and source-hash checks passed. The two
+failed attempts in the runtime-ancestor directory remain recorded. The ordinary output path
+required no automation code change.
+
+The focused successor run passed 157 tests covering page and command identity, visible menu
+focus, editor recoverability, RTL, review and export controls, and scaled layouts. The successor
+also displays the actual PDF destination during export and distinguishes unsaved changes after
+a failed save from a save in progress.
+
+The authorized origin is public. This local branch includes private candidate ancestry,
+so the private engineering work stays in the dedicated checkout.

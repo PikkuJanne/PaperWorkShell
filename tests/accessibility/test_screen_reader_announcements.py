@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 from PySide6.QtGui import QAccessible, QAccessibleAnnouncementEvent
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from paperworkshell.ui.announcements import ScreenReaderAnnouncer
 from paperworkshell.ui.backend import UiFailure, UiProgress
@@ -126,29 +126,31 @@ def test_error_name_tracks_different_recovery_surfaces() -> None:
 
 
 @pytest.mark.parametrize(
-    ("handler_name", "button_name"),
+    ("handler_name", "button_name", "route_name"),
     (
-        ("_show_core_overlay_tools_failure", "_core_overlay_tools_button"),
-        ("_show_redaction_tools_failure", "_redaction_tools_button"),
-        ("_show_checklist_failure", "_checklist_button"),
-        ("_show_portal_constraints_failure", "_portal_constraints_button"),
-        ("_show_scan_review_failure", "_scan_review_button"),
+        ("_show_core_overlay_tools_failure", "_core_overlay_tools_button", "traceWorkflow-fill"),
+        ("_show_redaction_tools_failure", "_redaction_tools_button", "traceWorkflow-protect"),
+        ("_show_checklist_failure", "_checklist_button", "traceWorkflow-fill"),
+        ("_show_portal_constraints_failure", "_portal_constraints_button", "traceWorkflow-check"),
+        ("_show_scan_review_failure", "_scan_review_button", "traceWorkflow-improve"),
     ),
 )
 def test_editor_start_error_focuses_actionable_recovery(
-    handler_name: str, button_name: str
+    handler_name: str, button_name: str, route_name: str
 ) -> None:
     with _window() as (window, _commands, worker):
         worker.initialized.emit()
         worker.state_changed.emit(_state())
         recovery = getattr(window, button_name)
+        route = window.findChild(QPushButton, route_name)
+        assert route is not None and route.isVisible()
         # The failure surface may be invoked before any document capability is
         # available. Exercise its available action and its disabled fallback.
         recovery.setEnabled(True)
         getattr(window, handler_name)(UiFailure("PWS_TEST_FAILURE", "Try this action again.", True))
-        assert recovery.hasFocus()
+        assert route.hasFocus()
         assert window._error_label.text() in window._error_label.accessibleName()
         recovery.setEnabled(False)
         getattr(window, handler_name)(UiFailure("PWS_TEST_FAILURE", "Try this action again.", True))
-        assert not recovery.hasFocus()
+        assert not route.hasFocus()
         assert window.focusWidget() is not window._error_label

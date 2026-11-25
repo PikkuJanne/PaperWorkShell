@@ -200,12 +200,24 @@ def test_status_and_keyboard_focus_follow_high_contrast_palette(dark: bool) -> N
         _settle()
 
 
-def test_existing_menus_and_buttons_follow_dark_then_light_palette_changes() -> None:
+def test_existing_menus_and_buttons_follow_dark_then_light_palette_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from paperworkshell.ui import trace_presentation
+
     app = _application()
     original_palette, original_font = QPalette(app.palette()), QFont(app.font())
     try:
         with _window() as (window, _commands, worker):
             worker.initialized.emit()
+            contrast_active = True
+            monkeypatch.setattr(
+                trace_presentation, "_windows_contrast_theme", lambda: contrast_active
+            )
+            controller = app.findChild(trace_presentation._TracePresentation)
+            assert controller is not None
+            controller.refresh()
+            _settle()
             menu_bar = window.menuBar()
             button = window._create_case_button
             original_style = app.style()
@@ -249,6 +261,10 @@ def test_existing_menus_and_buttons_follow_dark_then_light_palette_changes() -> 
                 assert app.style() is original_style
                 assert len(app.findChildren(AccessibleNativeStyle)) == style_count
     finally:
+        contrast_active = False
+        controller = app.findChild(trace_presentation._TracePresentation)
+        if controller is not None:
+            controller.refresh()
         app.setPalette(original_palette)
         _settle()
 

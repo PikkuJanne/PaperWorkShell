@@ -179,7 +179,9 @@ def test_begin_and_refresh_remain_responsive_and_keyboard_cancel_reaches_actiona
             assert status is not None and "cancelled" in status.text().lower()
         else:
             _wait_for(lambda: window._package_cancel_operation_id is None)
-            _wait_for(window._package_export_button.hasFocus)
+            export_route = window.findChild(QPushButton, "traceWorkflow-export")
+            assert export_route is not None and export_route.isVisible()
+            _wait_for(export_route.hasFocus)
             assert window._package_export_dialog is None
     finally:
         inspector.release.set()
