@@ -269,6 +269,78 @@ def test_existing_menus_and_buttons_follow_dark_then_light_palette_changes(
         _settle()
 
 
+def test_live_contrast_switch_releases_trace_palette_and_keeps_keyboard_focus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from paperworkshell.ui import trace_presentation
+
+    app = _application()
+    original_palette = QPalette(app.palette())
+    contrast_active = True
+    monkeypatch.setattr(trace_presentation, "_windows_contrast_theme", lambda: contrast_active)
+    try:
+        with _window() as (window, _commands, worker):
+            controller = app.findChild(trace_presentation._TracePresentation)
+            assert controller is not None
+            controller.refresh()
+            app.setPalette(QPalette())
+            native = QPalette(app.palette())
+            role = QPalette.ColorRole
+            contrast_active = False
+            controller.refresh()
+            worker.initialized.emit()
+            worker.state_changed.emit(_state())
+            window.activateWindow()
+            _settle()
+            page_list = window._page_view
+            page_list.setCurrentIndex(page_list.model().index(0, 0))
+            page_list.setFocus(Qt.FocusReason.TabFocusReason)
+            _settle()
+            assert page_list.hasFocus()
+            assert app.palette().color(role.Highlight) == QColor(trace_presentation.LIME)
+
+            # A theme change can refresh a native role while TRACE still owns the highlight.
+            mixed_palette = QPalette(app.palette())
+            mixed_palette.setColor(role.BrightText, QColor("magenta"))
+            app.setPalette(mixed_palette)
+            contrast_active = True
+            controller.refresh()
+            _settle()
+
+            assert trace_presentation.TRACE_STYLE not in app.styleSheet()
+            assert not app.palette().isBrushSet(QPalette.ColorGroup.Active, role.Highlight)
+            assert page_list.palette().color(role.Highlight) == native.color(role.Highlight)
+            assert page_list.palette().color(role.HighlightedText) == native.color(
+                role.HighlightedText
+            )
+            assert page_list.hasFocus()
+            assert page_list.currentIndex().row() == 0
+            status = window._status_label
+            status.setText("Synthetic operation complete.")
+            status.setFocus(Qt.FocusReason.TabFocusReason)
+            _settle()
+            assert status.hasFocus()
+            image = status.grab().toImage()
+            assert any(
+                image.pixelColor(x, y) == native.color(role.Highlight)
+                for x in range(image.width())
+                for y in range(min(3, image.height()))
+            ), "The focused status needs a visible platform highlight border."
+
+            contrast_active = False
+            controller.refresh()
+            _settle()
+            assert trace_presentation.TRACE_STYLE in app.styleSheet()
+            assert app.palette().color(role.Highlight) == QColor(trace_presentation.LIME)
+    finally:
+        contrast_active = False
+        controller = app.findChild(trace_presentation._TracePresentation)
+        if controller is not None:
+            controller.refresh()
+        app.setPalette(original_palette)
+        _settle()
+
+
 def test_checkbox_indicator_has_an_enlarged_clickable_target() -> None:
     app = _application()
     install_presentation_policy(app)

@@ -336,3 +336,19 @@ PWS-0813 stays in progress for the remaining contract scope. PWS-0808 remains de
 
 The authorized origin is public. This local branch includes private candidate ancestry,
 so the private engineering work stays in the dedicated checkout.
+
+## B5 native contrast follow-up
+
+B4 kept TRACE colors on some selected rows and keyboard focus borders in Windows Aquatic.
+TRACE compared the current palette with a newly derived palette after the theme change. A
+change to an inherited color could prevent that comparison from clearing the TRACE overrides.
+The new regression reproduces that mixed palette and verifies that an open workbench retains
+selection and focus while clearing the overrides. TRACE now gives Qt only the colors it owns and
+releases that palette when Windows contrast becomes active. Native focus styling still uses the
+current platform palette.
+
+Install the exact B5 candidate and repeat the B4 Aquatic selection and command palette checks
+at 96 DPI. Confirm that selection and focus use the Windows palette, then restore None and
+confirm that TRACE colors return in the same process. Preserve the before/after captures and the
+retained synthetic case and export hashes. If the installed colors still differ from the current
+Windows palette, retain the captures and leave native contrast verification open.

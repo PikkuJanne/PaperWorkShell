@@ -85,8 +85,8 @@ def _windows_contrast_theme() -> bool:
     return bool(value.flags & 1)
 
 
-def trace_palette(native: QPalette) -> QPalette:
-    palette = QPalette(native)
+def _trace_palette() -> QPalette:
+    palette = QPalette()
     role = QPalette.ColorRole
     for key, value in (
         (role.Window, INK),
@@ -131,20 +131,20 @@ class _TracePresentation(QObject):
         use_trace = not _windows_contrast_theme()
         if self._active is use_trace:
             return
-        previous = self._active
+        was_trace = self._active is True
         self._active = use_trace
         app = self._application
         base_style = app.styleSheet().replace(TRACE_STYLE, "")
-        native = app.style().standardPalette()
+        app.setStyleSheet(base_style + (TRACE_STYLE if use_trace else ""))
         if use_trace:
-            app.setPalette(trace_palette(native))
+            app.setPalette(_trace_palette())
             font = app.font()
             if 0 < font.pointSizeF() < 10.5:
                 font.setPointSizeF(10.5)
                 app.setFont(font)
-        elif previous is not None and app.palette() == trace_palette(native):
-            app.setPalette(native)
-        app.setStyleSheet(base_style + (TRACE_STYLE if use_trace else ""))
+        elif was_trace:
+            # An empty palette clears our overrides and resolves against the live OS theme.
+            app.setPalette(QPalette())
 
 
 def install_trace_presentation(application: QApplication) -> None:
