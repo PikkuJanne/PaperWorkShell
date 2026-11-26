@@ -40,7 +40,7 @@ not enable permanent redaction; independent PWS-0608 approval remains required.
   and OCR language data once admitted by their tasks.
 - Declarative templates, manifests, journals, RPC messages, generated derivatives, package
   summaries, and diagnostics.
-- Development/release dependencies, the optional future update channel, installer inputs, and
+- Development/release dependencies, optional authenticated update bundles, installer inputs, and
   migration artifacts.
 - Cancellation, crash, disk-full, low-memory, path-race, and partial-write behavior.
 
@@ -277,21 +277,24 @@ the review. Restart creates a fresh authority/admission attempt. See
 
 ### Optional application updates
 
-PWS-0803 treats the download source, package and accompanying metadata as untrusted until
-verification against a product- and channel-specific authority provided independently of the
-offer. The local verifier checks a detached signature over exact bounded bytes, validates the
-trusted channel and freshness policy, and checks the signed size and SHA-256 of the supplied
-package stream. It does not open local files, choose its trust authority, install an update or
-make a network request. The proposed installation flow adds Windows publisher verification and
-binds the verified bytes to what actually runs. [Update trust and recovery design](../adr/0022-authenticated-application-updates.md).
+PWS-0803 treats a user-selected offer, ZIP and accompanying metadata as untrusted until
+verification against an independently provisioned product and channel root. An offline root
+signs the trust record constraining the separate release-metadata key. Windows CNG verifies
+both bounded records. The update window reads local files and makes no network requests. It
+rejects offer folders under private PaperWorkShell storage and has no document, case or
+worker operations. The stable baseline and its trust root use the separately reviewed regular
+installer. [Update trust and recovery design](../adr/0022-authenticated-application-updates.md).
 
-A distributor may substitute or withhold an offer. A compromised signer may issue fresh-looking
-offers or try to establish a replacement key. The update must reject unauthorized signing keys,
-expired or forged metadata, incorrect channel/target and replay at or below the trusted sequence
-floor. A compromised key needs a separate recovery authority. The issuer must never learn case
-or document data. If the installer fails before, during or after switching versions, the exact
-working build must remain launchable or recoverable without losing case state or weakening
-normal downgrade policy. Those installation and recovery controls need native packaged evidence.
+A distributor may substitute or withhold an offer. An attacker with the current delegated key
+can forge offers until its authorization expires or a newer root-signed rotation or revocation
+is accepted. The updater rejects unauthorized keys and trust epochs, expired or forged metadata,
+the wrong channel or target, and replay at or below the durable release floor. The controller
+rechecks ZIP identity in private staging, validates the complete marked payload, and activates a
+fixed slot under the launcher's exclusive per-user file lease. The baseline and retained prior
+slot permit recovery without changing the accepted release floor or accessing case data. Only
+the same case schema and Microsoft recipient terms are eligible for runtime activation. Public
+bootstrap trust and installed interruption and recovery claims require exact native packaged
+evidence.
 
 ## Threat catalogue
 

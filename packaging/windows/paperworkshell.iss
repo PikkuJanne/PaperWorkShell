@@ -66,6 +66,11 @@ SignedUninstaller=no
 [Icons]
 Name: "{autoprograms}\PaperWorkShell"; Filename: "{app}\runtime\PaperWorkShell.exe"; WorkingDir: "{app}\runtime"; AppUserModelID: "io.github.pikkujanne.paperworkshell"
 Name: "{autoprograms}\PaperWorkShell notices"; Filename: "{app}\runtime\PaperWorkShell.exe"; Parameters: "--notices"; WorkingDir: "{app}\runtime"
+Name: "{autoprograms}\PaperWorkShell Updates"; Filename: "{app}\runtime\PaperWorkShell.exe"; Parameters: "--update"; WorkingDir: "{app}\runtime"
+
+[UninstallDelete]
+Type: files; Name: "{app}\update-state-v1"
+Type: files; Name: "{app}\update-state-pending-v1.tmp"
 
 [Code]
 const
@@ -84,6 +89,7 @@ type
 
 var
   LifecycleMutex: NativeInt;
+  InstallationLease: NativeInt;
 
 function FileAttributes(const FileName: String): LongWord;
   external 'GetFileAttributesW@{#PWSKernel32} stdcall';
@@ -102,17 +108,33 @@ function ReleaseLifecycleMutex(Handle: NativeInt): Boolean;
   external 'ReleaseMutex@{#PWSKernel32} stdcall';
 
 function AcquireLifecycle: Boolean;
+var
+  Information: FileInformation;
 begin
+  InstallationLease := -1;
   LifecycleMutex := CreateLifecycleMutex(0, True, 'Local\io.github.pikkujanne.paperworkshell.App');
   Result := (LifecycleMutex <> 0) and (LastSystemError <> 183);
   if not Result and (LifecycleMutex <> 0) then begin
     CloseAttributeHandle(LifecycleMutex);
     LifecycleMutex := 0;
   end;
+  if not Result then Exit;
+  InstallationLease := OpenAttributes(ExpandConstant('{localappdata}\PaperWorkShell.lifecycle-v1.lock'),
+    $C0000000, 0, 0, 4, $00200000, 0);
+  Result := (InstallationLease <> -1) and FileIdentity(InstallationLease, Information) and
+    (Information.NumberOfLinks = 1) and ((Information.Attributes and (ReparsePoint or $10)) = 0);
+  if not Result and (InstallationLease <> -1) then begin
+    CloseAttributeHandle(InstallationLease);
+    InstallationLease := -1;
+  end;
 end;
 
 procedure ReleaseLifecycle;
 begin
+  if InstallationLease > 0 then begin
+    CloseAttributeHandle(InstallationLease);
+    InstallationLease := -1;
+  end;
   if LifecycleMutex <> 0 then begin
     ReleaseLifecycleMutex(LifecycleMutex);
     CloseAttributeHandle(LifecycleMutex);
@@ -194,6 +216,19 @@ begin
   Result := False;
 #include PWSGeneratedChecks
   Result := True;
+end;
+
+function UpdateSlotsCleared: Boolean;
+var
+  Root: String;
+begin
+  Root := AddBackslash(FixedDirectory);
+  Result := SafeTarget(Root + 'update-state-v1') and
+    SafeTarget(Root + 'update-state-pending-v1.tmp') and
+    (FileAttributes(Root + 'update-transport') = InvalidAttributes) and
+    (FileAttributes(Root + 'update-slot-A') = InvalidAttributes) and
+    (FileAttributes(Root + 'update-slot-B') = InvalidAttributes) and
+    (FileAttributes(Root + 'update-slot-C') = InvalidAttributes);
 end;
 
 function ShowFailure(const Text: String): Boolean;
@@ -295,9 +330,13 @@ begin
     ShowFailure('PWS_REMOVE_OPTION: The removal scope is unavailable or unsupported. Application files and cases were preserved.');
     Exit;
   end;
+  if not UpdateSlotsCleared then begin
+    ShowFailure('PWS_REMOVE_UPDATES: Open PaperWorkShell Updates and remove installed updates before uninstalling PaperWorkShell. Your saved cases are kept separately.');
+    Exit;
+  end;
   if UninstallSilent then begin
     Result := AcquireLifecycle;
-    if Result then Result := SafePayload;
+    if Result then Result := SafePayload and UpdateSlotsCleared;
     if not Result then ShowFailure('PWS_REMOVE_BUSY: Close PaperWorkShell and try application removal again.');
     Exit;
   end;
@@ -308,7 +347,7 @@ begin
   end;
   if ExitStatus <> 0 then Exit;
   Result := AcquireLifecycle;
-  if Result then Result := SafePayload;
+  if Result then Result := SafePayload and UpdateSlotsCleared;
   if not Result then ShowFailure('PWS_REMOVE_BUSY: Close PaperWorkShell and try application removal again.');
 end;
 

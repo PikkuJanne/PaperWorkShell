@@ -43,6 +43,45 @@ in the prepared bundle. Record the launcher and receipt SHA-256 with the build i
 See the [PWS-0814 setup record](../docs/development/pws0814-automated-setup.md) for
 the tested build and observed scope.
 
+## Authenticated offline updates
+
+An update-capable installation with a configured channel root offers **PaperWorkShell
+Updates** in Start. Close the desktop app, open the updates window, then choose a folder on
+a fixed local drive containing `trust.json`, `trust.sig`, `release.json`, `release.sig`,
+and `runtime.zip`. Review the displayed version and candidate before selecting
+**Install update**. The normal PaperWorkShell shortcut opens the selected version.
+The updates window remains available from the original installation for
+**Restore previous version** and **Remove installed updates**. Remove update slots before
+using the ordinary uninstaller and its separate case-data choice.
+
+For a reviewed baseline build, supply `--update-anchor <path>` and
+`--update-anchor-sha256 <sha256>` together to the installer stage command. The public-only
+JSON file must be inside the build checkout's `output` tree. Its fields are
+`schema_version` (1), `channel` (the baseline marker's channel), `root_public_key`
+(lowercase hexadecimal P-256 x and y coordinates, 32 bytes each), `minimum_epoch`
+(positive 63-bit counter), and `release_sequence_floor` (nonnegative 63-bit counter).
+The builder records the original input and exact installed bytes. A build without those
+arguments has no authority to verify update offers.
+
+Build the update ZIP from the exact `payload` directory and `resolved-inventory.json`
+of the candidate to be offered. `tools.build_update_payload` checks the full inventory,
+including component ownership, notices and source obligations. The declared case schema
+must match the case schema supported by the target candidate.
+
+```powershell
+.venv\Scripts\python.exe -m tools.build_update_payload --inventory .\resolved-inventory.json --stage .\payload --output .\runtime.zip --channel engineering --case-schema-version 4
+```
+
+The builder reports the ZIP size and SHA-256 for the release record. The offline root
+signs the trust record and the authorized channel key signs the release record. Both bind
+their exact record bytes through distinct domain separators. Keep private keys outside
+the repository, installer, ZIP and ordinary tool output. The update ZIP must carry the
+same case-manifest schema and exact Microsoft recipient terms as the baseline. Use the
+regular installer for a trust-root change or different terms and qualify any schema
+transition separately. The ZIP leaves the fixed launcher and registration in place.
+Provisioning production trust and qualifying the public signed installer remain release
+work. [Trust, activation and recovery design](../docs/adr/0022-authenticated-application-updates.md).
+
 ## Packaging inputs
 
 Windows packaging configuration and reviewed release inputs belong in this directory. PWS-0801

@@ -83,6 +83,12 @@ def _engineering(path: Path, root: Path) -> tuple[dict[str, Any], dict[str, Any]
         if _digest(candidate / item["path"]) != item["sha256"]:
             _fail("SIGNING_ENGINEERING_GENERATED")
     validate_data(inventory, root=root)
+    try:
+        build.verify_build_update_anchor(
+            candidate, inventory, plan.get("update_anchor_sha256"), root=root
+        )
+    except build.WindowsInstallerError:
+        _fail("SIGNING_UPDATE_ANCHOR_BINDING")
     for item in inventory["review_inputs"]:
         if _digest(root / safe_relative(item["path"])) != item["sha256"]:
             _fail("SIGNING_ENGINEERING_RECIPE")

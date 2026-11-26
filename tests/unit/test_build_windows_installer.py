@@ -6,6 +6,7 @@ import copy
 import hashlib
 import io
 import json
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -17,6 +18,123 @@ import pytest
 from tools import build_windows_installer as build
 from tools.release_artifacts import ReleaseArtifactError
 from tools.release_staging import inventory_files
+
+_P256_GENERATOR = (
+    "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"
+    "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+)
+
+
+def _anchor(**changes: object) -> bytes:
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "channel": "engineering",
+            "root_public_key": _P256_GENERATOR,
+            "minimum_epoch": 1,
+            "release_sequence_floor": 17,
+            **changes,
+        }
+    ).encode()
+
+
+def _write_anchor(root: Path, raw: bytes) -> tuple[Path, str]:
+    path = root / "output" / "anchor.json"
+    path.parent.mkdir()
+    path.write_bytes(raw)
+    return path, hashlib.sha256(raw).hexdigest()
+
+
+def test_update_anchor_requires_a_build_scoped_input_and_exact_hash_pair(tmp_path: Path) -> None:
+    path, digest = _write_anchor(tmp_path, _anchor())
+    assert build.update_anchor_input(None, None, channel="engineering", root=tmp_path) is None
+    for value, sha in ((path, None), (None, digest), (path, digest.upper())):
+        with pytest.raises(build.WindowsInstallerError, match="INSTALLER_UPDATE_ANCHOR_PAIR"):
+            build.update_anchor_input(value, sha, channel="engineering", root=tmp_path)
+    with pytest.raises(build.WindowsInstallerError, match="INSTALLER_INPUT_SCOPE"):
+        build.update_anchor_input(
+            tmp_path / "user.json", digest, channel="engineering", root=tmp_path
+        )
+    with pytest.raises(build.WindowsInstallerError, match="INSTALLER_UPDATE_ANCHOR_HASH"):
+        build.update_anchor_input(path, "b" * 64, channel="engineering", root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        _anchor(schema_version=True),
+        _anchor(channel="stable"),
+        _anchor(root_public_key="0" * 128),
+        _anchor(root_public_key=_P256_GENERATOR.upper()),
+        _anchor(minimum_epoch=0),
+        _anchor(release_sequence_floor=False),
+        _anchor(release_sequence_floor=2**63),
+        _anchor(unknown="private-path-canary"),
+        _anchor().replace(b'"minimum_epoch": 1', b'"minimum_epoch": 1, "minimum_epoch": 2'),
+        b"\xff",
+    ],
+)
+def test_update_anchor_refuses_invalid_json_channel_key_and_policy(
+    tmp_path: Path, raw: bytes
+) -> None:
+    path, digest = _write_anchor(tmp_path, raw)
+    with pytest.raises(build.WindowsInstallerError, match="^INSTALLER_UPDATE_ANCHOR_FORMAT$"):
+        build.update_anchor_input(path, digest, channel="engineering", root=tmp_path)
+
+
+def test_update_anchor_size_is_bounded(tmp_path: Path) -> None:
+    path, digest = _write_anchor(tmp_path, b"a" * (build.MAX_UPDATE_ANCHOR_BYTES + 1))
+    with pytest.raises(build.WindowsInstallerError, match="INSTALLER_UPDATE_ANCHOR_SIZE"):
+        build.update_anchor_input(path, digest, channel="engineering", root=tmp_path)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Uses Windows CNG public point validation.")
+def test_build_plan_binds_public_anchor_bytes_and_filename_to_ownership(tmp_path: Path) -> None:
+    original = _anchor(release_sequence_floor=0)
+    path, digest = _write_anchor(tmp_path, original)
+    assert build.update_anchor_input(path, digest, channel="engineering", root=tmp_path) == original
+    candidate = tmp_path / "output/pws0802/candidate"
+    payload = candidate / "payload" / build.UPDATE_ANCHOR_PAYLOAD_PATH
+    source = candidate / "artifacts" / build.UPDATE_ANCHOR_FILENAME
+    for target in (payload, source):
+        target.parent.mkdir(parents=True)
+        target.write_bytes(original)
+    inventory = {
+        "files": [
+            {
+                "path": build.UPDATE_ANCHOR_PAYLOAD_PATH,
+                "component_id": "paperworkshell",
+                "sha256": digest,
+                "size_bytes": len(original),
+            }
+        ],
+        "input_artifacts": [
+            {
+                "name": build.UPDATE_ANCHOR_FILENAME,
+                "sha256": digest,
+                "size_bytes": len(original),
+                "origin": "local-build",
+                "recipe_path": "tools/build_windows_installer.py",
+                "scope": "runtime",
+                "url": None,
+            }
+        ],
+    }
+    build.verify_build_update_anchor(
+        candidate, {"files": [], "input_artifacts": []}, None, channel="engineering", root=tmp_path
+    )
+    build.verify_build_update_anchor(
+        candidate, inventory, digest, channel="engineering", root=tmp_path
+    )
+    with pytest.raises(build.WindowsInstallerError, match="INSTALLER_UPDATE_ANCHOR_BINDING"):
+        build.verify_build_update_anchor(
+            candidate, inventory, None, channel="engineering", root=tmp_path
+        )
+    source.write_bytes(_anchor())
+    with pytest.raises(build.WindowsInstallerError, match="INSTALLER_UPDATE_ANCHOR_HASH"):
+        build.verify_build_update_anchor(
+            candidate, inventory, digest, channel="engineering", root=tmp_path
+        )
 
 
 def _product(root: Path) -> dict[str, Any]:

@@ -450,8 +450,8 @@
     },
     {
       "path": "packaging/README.md",
-      "bytes": 26226,
-      "sha256": "68843067da40f5cdf91886bf83733bad78352400c728e20f5c93a95d9f8d56dc"
+      "bytes": 28864,
+      "sha256": "313b00910c7f2c6e4762fe6280f5fe0ee7d891d5e47de26474e190bb2b85c351"
     },
     {
       "path": "docs/adr/0018-windows-installer-and-release-identity.md",
@@ -480,8 +480,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 750,
-      "sha256": "0e0b957afeb2f9755f4b549efb85043dab908adc58ee28bfa25b170eafbcf559"
+      "bytes": 752,
+      "sha256": "e5d0a9595525dacaf83c4347e3414be4465d6af014f9eae71974716aca1aa6b8"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -635,8 +635,8 @@
     },
     {
       "path": "docs/adr/0022-authenticated-application-updates.md",
-      "bytes": 9655,
-      "sha256": "627dceed72c131ee80318fb08de243e7cce6cbe7d4198b1c070dd66142e4c764"
+      "bytes": 7955,
+      "sha256": "b05c7be792a632273e007ec720884a56d3e8de5841d1830c655c294c4f8c333c"
     },
     {
       "path": "docs/development/pws0803-authenticated-updates.md",

@@ -759,32 +759,36 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
 - Run packaged-build dependency/SBOM/signature, install/update/migration/uninstall, constrained
   resource/low-disk, and residual-case matrices. Optional device observations do not replace the
   automated budget gate and do not certify an HDD or other physical configuration.
-- Capture update traffic to prove no case/document fields leave the machine.
+- Exercise updates with networking unavailable. If a future online check is enabled, capture its
+  requests to confirm the approved fields and absence of case or document data.
 
 ## PWS-0803 update verification
 
-The [update design](../adr/0022-authenticated-application-updates.md) applies ST-003 and ST-015
-in stages. Each result describes its actual trust source, package and installed scope.
+The [update design](../adr/0022-authenticated-application-updates.md) applies ST-003 and ST-015.
+Each result identifies its actual trust source, ZIP and installed scope.
 
-- For the local verifier, generate isolated test signing keys in memory. Verify an authentic
-  metadata record with its exact package bytes. Reject a missing or wrong signature, modified
-  metadata, wrong product/target/channel, malformed records, expired or future offers, replay,
-  incorrect lengths or digests, excessive inputs and an interrupted package read. Evaluate using
-  an injected UTC time and trusted sequence floor without contacting a server.
-- Before enabling installation, exercise unknown, revoked and rotated release keys, including
-  failed recovery attempts signed only by the suspect key. Verify independent metadata authority
-  and required Windows publisher approval for the exact bytes that are about to execute. Exercise
-  package swapping and redirection with the existing installation available. Test user consent
-  and cancellation before launch of the installer. Prove the updater has no case access and
-  document workers still have no network access. If an online check is enabled, inspect controlled
-  request captures for allowlisted fields and absence of private case or device fields.
-- On the exact supported packaged build, test different-candidate update, concurrent attempts,
-  normal close, interrupted staging and activation, low space, launch failure, restart recovery,
-  and previous-build recovery. Reopen the prior/updated launch path and check the reconciled
-  runtime inventory, registration, audit record, sequence floor and synthetic case hashes. Test
-  any affected case migration and rollback compatibility. Verify keyboard access and screen-reader
-  announcements for consent, cancellation, errors and recovery. PWS-0807/PWS-0808 retain the
-  exact production-signed candidate verification.
+- Generate isolated test signing keys. Verify authentic trust and release records under Windows
+  CNG and validate the exact ZIP in private staging. Reject missing or wrong signatures,
+  unauthorized or rolled-back trust, expired or future records, the wrong product/target/channel,
+  duplicate or unknown fields, replay, bad sizes or hashes, redirected sources and interrupted
+  reads. Rotation and revocation require the separate root. Preserve the verified trust checkpoint
+  when an offered update fails.
+- Validate ZIP limits, signatures, paths, exact inventory membership and ownership, runtime
+  marker identity, unchanged case schema and exact Microsoft recipient terms. Exercise case
+  aliases, alternate streams, device names, links, missing and extra members, disk failure and
+  cancellation. Verify that partially staged files remain unselected and retained slots can be
+  authenticated before recovery.
+- Test the normal launch, updates shortcut, installer and removal lease, including competing
+  sessions for the same Windows user. Test installation, cancellation, interruption before
+  activation, restart, attempted launch with an unusable slot, explicit recovery and uninstall
+  after removing updates. Check the original and active inventory, launch and uninstall
+  registration, activation and audit record, sequence floor, and unchanged synthetic case hashes.
+  Verify keyboard access and screen-reader announcements for review, cancellation, errors and
+  recovery. Exercise ordinary offline processing after a successful update.
+- On the exact supported public candidate establish the configured root's provenance, required
+  Windows publisher and timestamp verification for the regular installer and packaged update and
+  recovery evidence under PWS-0807/PWS-0808. If a future online check is added, inspect controlled
+  request captures for approved fields and absence of private case or device fields.
 
 ## Failure report requirements
 

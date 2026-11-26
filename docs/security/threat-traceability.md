@@ -91,9 +91,9 @@ Its [coverage index](../development/image-intake-coverage.md) and
 - PWS-0608 is the independent permanent-redaction release gate; no earlier task may substitute for
   it.
 - PWS-0707 reviews shared-computer, accessibility, retention, and deletion behavior.
-- PWS-0803 verifies signed metadata and exact package bytes locally under TM-020 and TM-021.
-  The proposed update transport maps to TM-004 and TM-021. Installer execution must bind the
-  verified package to the launched file under TM-021 and TM-023. See the
+- PWS-0803 verifies root-authorized metadata and exact runtime ZIP bytes locally under TM-020
+  and TM-021. Private staging, exact slot identity and the launch lease address TM-021 and
+  TM-023. Offline update operation and separate worker egress policy address TM-004. See the
   [update verification plan](security-test-plan.md#pws-0803-update-verification).
 - PWS-0808 reviews dependencies, installer/update, migrations, diagnostics, and packaged artifacts.
 

@@ -1,131 +1,106 @@
 # ADR 0022 — Authenticated PaperWorkShell updates
 
-- Status: Proposed update and recovery design. The first engineering increment verifies local bytes.
+- Status: Implemented for offline update engineering. Public candidate qualification remains separate.
 - Date: 2026-11-26
 - Task: PWS-0803
 - Decisions preserved: PWS-D005, PWS-D013, PWS-D027, PWS-D034, PWS-D042, PWS-D043
 
 ## Installed baseline
 
-PaperWorkShell uses the per-user Inno Setup installation, application ID
-`io.github.pikkujanne.paperworkshell`, and upgrade ID
-`{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. The installer holds the lifecycle guard,
-checks the fixed destination and payload paths, and allows same-candidate repair only when
-the installed marker has the exact expected digest. `PrepareToInstall` refuses a different
-candidate or an existing unmarked folder. Keep that refusal while authenticated replacement
-has no qualified entry point. The current lifecycle guard is session-local. Replacement
-also needs per-installation exclusion across sessions for the same Windows user.
-[Installer identity and recovery policy](0018-windows-installer-and-release-identity.md).
+PaperWorkShell uses per-user Inno Setup, application ID `io.github.pikkujanne.paperworkshell`,
+and upgrade ID `{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. The installer checks its own fixed
+layout and continues to refuse a different candidate or an existing unmarked installation
+folder. The original installed launcher, baseline runtime, Start menu entries, and uninstall
+registration stay at their fixed locations when applying a runtime update. An older build
+that lacks the update-capable launcher requires regular installation through the documented
+case-preserving replacement procedure. [Installer identity and recovery policy](0018-windows-installer-and-release-identity.md).
 
-The prepared TRACE B8 setup reads a receipt whose digest comes from a trusted delivery
-source. It verifies the installer and installed payload, repairs the same candidate when
-needed, and launches the verified installation. The disconnected Windows 11 x64 run proved
-same-build repair, reuse, and an ordinary PDF workflow as a standard user. It used an unsigned
-engineering installer and did not exercise an upgrade. A receipt binds bytes to an expected
-hash. Origin authentication requires a separate trust authority.
-[TRACE B8 setup evidence](../development/pws0814-automated-setup.md).
+TRACE B8's prepared setup proved same-build repair, reuse, and an offline ordinary PDF
+workflow as a standard user against exact unsigned engineering bytes. That work supplied
+neither an upgrade result nor release trust. [TRACE B8 setup evidence](../development/pws0814-automated-setup.md).
 
-## Proposed update channel
+## Offline package and trust authority
 
-Distribute complete PaperWorkShell packages through a product-owned channel. Begin with
-explicit verification of a locally obtained package, which permits offline update and
-leaves the ordinary offline workflow independent of distribution availability. A future
-online check requires explicit user action and a channel-specific allowlist of request data.
-Connection metadata may be visible to the distribution service. No case directory, document,
-filename, path, identifier, digest, OCR text, template, diagnostic, device identifier, or
-account field belongs in an update request. The updater must have no case access or worker
-RPC route, and document workers retain their existing network denial.
+The **PaperWorkShell Updates** Start menu entry opens a separate window from the baseline
+runtime. The user selects a local folder holding `trust.json`, `trust.sig`, `release.json`,
+`release.sig`, and `runtime.zip`. The window displays the signed offer and current installed
+version before explicit review and installation. The update uses a fixed local Windows 11 x64
+folder and requires no network. It has no case or document processing route, rejects package
+folders inside private PaperWorkShell storage, and never launches a document worker. The
+worker network-denial policy for ordinary document processing stays in effect.
 
-The first increment is a verifier for a bounded, versioned JSON record and a separate
-installer byte stream. Its inputs include the configured channel, a trusted UTC evaluation
-time, and the release-sequence floor for that channel. A signature verifier supplied by the
-caller checks the domain separator `PaperWorkShell update metadata v1` followed by one zero
-byte and the exact received UTF-8 JSON bytes. Engineering tests use isolated Ed25519 keys
-and detached 64-byte signatures. The verifier has no production key source or transport.
-The current reviewed `cryptography` distribution is restricted to its existing worker use.
-The test adapter uses the pinned dependency. Production use in another process needs its
-own dependency and packaging-boundary review. [Ed25519 verification API](https://cryptography.io/en/50.0.0/hazmat/primitives/asymmetric/ed25519/).
+A reviewed regular installer can provision an independent, channel-specific public root in
+the baseline runtime. The build verifies the supplied SHA-256 and records the exact public
+input and its installation destination in the resolved inventory. The versioned anchor
+contains the channel, P-256 public coordinates, a minimum trust epoch, and the baseline's
+release sequence floor. An installation needs a provisioned anchor to accept an offer. A
+runtime package cannot change the installed root. Root replacement uses a separately
+approved and verified regular installer. Public installer signing and timestamp evidence
+remain part of PWS-0802 and the release gates. [Windows release signing procedure](0018-windows-installer-and-release-identity.md#signing-and-exact-output-identity).
 
-The signed record contains `schema_version`, `application_id`, `platform`, `channel`, `version`,
-`candidate_id`, `sequence`, `issued_at`, `expires_at`, `package_size`, and `package_sha256`.
-The platform is `win-x64`. The sequence orders releases within a channel, including engineering
-candidates that share a display version. The verifier requires a sequence above the supplied floor.
-An expired or not-yet-valid record, a wrong product, channel or
-platform, an unknown schema, a malformed record, a failed signature, or a package length or
-digest mismatch fails before any installation is possible. The engineering limits are 4 KiB
-of metadata and 1 GiB of package bytes. The verifier streams the package and hands back a
-verification result. The verdict applies to the byte stream it read.
+The update verifier uses Windows CNG ECDSA P-256 with SHA-256. Public points and detached
+signatures use fixed 64-byte big-endian coordinate and scalar pairs. The root authorizes a
+separate release-metadata key or a channel revocation in a versioned trust record. The root
+signs the `PaperWorkShell update trust v1` domain separator, one zero byte, and the exact UTF-8
+record. The delegated key signs the `PaperWorkShell update metadata v1` domain separator,
+one zero byte, and the exact UTF-8 release record. The delegated key cannot authorize its own
+successor. The Windows verifier requires no additional cryptographic distribution.
+[Windows CNG](https://learn.microsoft.com/en-us/windows/win32/seccng/cng-features).
 
-## Production trust and consent
+The verified trust epoch, record digest and release floor are retained locally even when a
+verified revocation or an offered update stops further processing. A higher authenticated
+trust epoch can rotate the delegated key. An old epoch or conflicting record at the same
+epoch is refused. Release metadata binds the PaperWorkShell application ID, `win-x64` target,
+channel, version, candidate ID, monotonically increasing sequence, UTC validity window, and
+exact ZIP size and SHA-256. The offered sequence must exceed the recorded baseline, trust and
+installed floors. Metadata before its issue time or at or after expiry is rejected. A machine
+that cannot verify freshness can continue ordinary document work. Withholding a bundle can
+prevent clients from learning about new releases or revocations. [Emergency key recovery policy](../development/emergency-security-updates.md#5-handle-compromised-trust-material-explicitly).
 
-Before an install path is enabled, establish release trust independently of offered metadata.
-Bind metadata key authority to the exact product and channel. An offered package or key
-cannot bootstrap its own authority. Establish a separate trusted recovery authority for
-revoking or rotating compromised keys and recovering clients across missed rotations. Reject
-expired, untrusted, or rolled-back trust records, including a replacement authorized only by
-the suspect key. Define usable recovery instructions for clients that cannot advance their
-trust securely. Review any network distribution and key hierarchy against established update
-security practices before activation. Define a maximum offer lifetime and clock behavior, and
-bind release sequences to the reviewed build and channel in the signing pipeline. A withheld
-update or invalid clock can make it impossible to determine freshness. Leave the installed
-application usable and report that update
-verification is unavailable. [Emergency key recovery policy](../development/emergency-security-updates.md#5-handle-compromised-trust-material-explicitly).
-[The Update Framework specification](https://theupdateframework.github.io/specification/v1.0.36/).
+## Activation and recovery
 
-Production installation requires both the exact authenticated installer bytes and approval
-under the release's Windows Authenticode publisher and timestamp policy. A valid signature
-from another publisher cannot substitute for that approval. The existing release signing
-tools supply build-time evidence. Runtime verification, signer rotation and offline
-revocation behavior require their own tests before installation is enabled.
-[Windows release signing procedure](0018-windows-installer-and-release-identity.md#signing-and-exact-output-identity).
+The native launcher and update-capable installer hold an exclusive local file lease for this
+user across Windows sessions. The launcher passes the lease to the update window under its
+controlled process start. Normal launch, update, installer and removal operations use the same
+lease. Close PaperWorkShell before opening the updates window. The lease is under
+`%LOCALAPPDATA%`, while update state and payloads are owned by the fixed application root under
+`%LOCALAPPDATA%\Programs\PaperWorkShell`.
 
-Present the verified channel, current and offered versions, and the planned installation
-action in an accessible review. Install only with explicit confirmation while retaining
-required exact recipient-term consent. Support canceling verification and leaving the current
-installation in place. An optional online check can discover an offer only. There is no
-automatic install, worker or engine self-update, or release coupling to ThirdLife. Keep
-application, engine and language versions attached to the exact installed release inventory.
-Record bounded local audit events with version, channel, candidate identifier, outcome and
-stable error code. Exclude user paths, raw metadata and private content from routine logs.
+The controller copies the offered ZIP into private fixed-volume staging and verifies its exact
+signed size and SHA-256. It extracts into an unused application slot among A, B and C, preserving
+the active and retained previous builds. The versioned payload manifest binds every relative
+file path, size, SHA-256 and component owner to the original resolved inventory digest and
+records component versions. The archive carries the complete runtime and its packaged notices,
+sources and evidence. Linked, redirected, duplicate, missing, extra, oversized, or mismatched
+members fail admission. The signed identity must match the payload manifest and staged runtime
+marker. [Windows packaging](../../packaging/README.md#authenticated-offline-updates).
 
-## Replacement and failure recovery
+Only updates declaring the current case-manifest schema and carrying exactly the same Microsoft
+runtime recipient terms as the baseline can activate through this route. Use the regular installer
+to review different terms. Case-schema transitions need their own migration and recovery
+qualification. Before committing an update the controller checks the staged runtime through a
+bounded installed-startup probe that opens no cases, then rechecks the trust and offer validity.
+It flushes and replaces one activation record containing the selected slot, previous slot,
+sequence floor and a bounded history of accepted releases with manifest and inventory digests.
+The stable launcher selects only the baseline or a fixed slot. Windows restarts and arbitrary
+power-loss durability require separate qualification.
 
-Keep the verified prior installation launchable until the replacement is ready. Stage verified
-bytes under an installer-owned local location separate from cases, with storage and time
-bounds. Check exact package identity at the execution boundary and protect against a path,
-link, or content swap between verification and use. Require normal close of the application
-and all lifecycle users before activation, use per-user privilege, and hold an exclusion
-guard for normal launch, repair and removal while changing launch authority. Keep existing
-installer refusal behavior for paths outside this controlled operation.
+Failure before activation leaves the prior selection in place. If the active build later cannot
+launch, **PaperWorkShell Updates** remains available from the baseline. **Restore previous
+version** verifies and selects the retained build or the original installation, while retaining
+the accepted release sequence floor. **Remove installed updates** returns to the original
+installation and removes the update slots, while keeping the floor. Uninstall requires removal
+of the update slots before the ordinary explicit case-data choice applies. These update
+recovery actions leave case data separate. An interrupted or unselected slot requires a
+successful activation record to become a launch target.
 
-Choose and prove either a separately staged application directory with a recoverable switch
-of stable launch and registration, or an equivalent installer transaction with exact prior
-build recovery. An ordinary Inno exit or `[Run]` launch alone cannot establish that guarantee.
-Before activation, reconcile the signed application, version, channel and candidate ID with the
-exact staged build marker and inventory. Verify the complete runtime against that authenticated
-inventory and run a health check that opens no user cases. An interrupted activation must
-resolve to the previous known-good installation or a clearly recoverable state using the exact
-previously established
-package and registration. Restoration of that specific prior build under the recorded
-recovery transaction grants no permission to install an arbitrary older update. Record the
-committed release sequence durably and advance it only with successful activation. An older
-version must never open cases changed by incompatible migration. Test compatibility or preserve
-verified recoverable case state before enabling such an update. Application recovery never
-calls the case-removal flow. [Installer recovery constraints](0018-windows-installer-and-release-identity.md#removal-reinstall-and-recovery).
+## Qualification and scope
 
-## Alternatives and qualification
-
-Transport-only trust and operator-supplied hashes alone cannot authenticate publisher origin.
-Incremental component downloads add a second code activation and audit path, so the proposal
-uses a whole installer and its inventory. An established update framework remains an option
-if PaperWorkShell enables an online repository. That decision would review the framework and
-runtime closure under PWS-D034. The scoped engineering verifier establishes a local trust
-check independently of the final distribution transport.
-
-The installed recovery transaction, production key and publisher policy, endpoint and
-transport, persistence, consent UI and component audit trail require later engineering
-evidence. The [security test plan](../security/security-test-plan.md#pws-0803-update-verification)
-separates the local verifier from installed and release checks. Public claims require the
-exact production-signed Windows 11 x64 matrix and release evidence. PaperWorkShell controls
-its own update channel, versions, case ownership and migrations. A ThirdLife compatibility
-claim requires the future B4 compatibility cut for the exact release or range.
+The engineering verification and the exact public-candidate matrix have different artifact and
+trust prerequisites. The [security test plan](../security/security-test-plan.md#pws-0803-update-verification)
+identifies the local admission, installed update, recovery, accessibility and release checks.
+Public distribution requires trusted bootstrap signing, approved release and recovery keys,
+and current packaged-build evidence under PWS-0802, PWS-0807 and PWS-0808. The update protocol
+adds no automatic check, background task, remote endpoint, separate component self-updater or
+ThirdLife dependency. PaperWorkShell owns its channel, versions, case data and migrations. A
+ThirdLife compatibility claim requires a future B4 cut for the exact release or range.

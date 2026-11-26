@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import BinaryIO, Final, cast
 
-from paperworkshell.app.installed_runtime import INSTALLED_APPLICATION_ID
+from paperworkshell.domain.product_identity import INSTALLED_APPLICATION_ID
 
 SIGNATURE_PREFIX: Final = b"PaperWorkShell update metadata v1\x00"
 MAX_METADATA_BYTES: Final = 4096
@@ -95,11 +95,35 @@ def verify_update_bundle(
 ) -> UpdateMetadata:
     """Verify signed metadata and read the exact package bytes from the current position.
 
-    The caller supplies trusted policy and an Ed25519 verifier bound to trusted key
-    material. It returns True only after verifying the domain-prefixed message
-    and detached signature, and translates signature rejection to False.
     The caller owns the stream and its lifetime. The result identifies the verified
     bytes; it grants no authority to open a path or execute a package later.
+    """
+    metadata = verify_update_metadata(
+        metadata_bytes,
+        signature,
+        verify_signature=verify_signature,
+        expected_channel=expected_channel,
+        sequence_floor=sequence_floor,
+        now=now,
+    )
+    _verify_package(package, metadata)
+    return metadata
+
+
+def verify_update_metadata(
+    metadata_bytes: bytes,
+    signature: bytes,
+    *,
+    verify_signature: Callable[[bytes, bytes], bool],
+    expected_channel: str,
+    sequence_floor: int,
+    now: datetime,
+) -> UpdateMetadata:
+    """Authenticate the offer before inspecting any package content.
+
+    The caller supplies trusted policy and a verifier bound to trusted key
+    material. It returns True only after verifying the domain-prefixed message
+    and detached signature, and translates signature rejection to False.
     """
     if (
         _CHANNEL.fullmatch(expected_channel) is None
@@ -122,7 +146,6 @@ def verify_update_bundle(
     if metadata.sequence <= sequence_floor:
         raise UpdateVerificationError(UpdateErrorCode.ROLLBACK_FORBIDDEN)
 
-    _verify_package(package, metadata)
     return metadata
 
 

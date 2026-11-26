@@ -15,7 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Never
 
-INSTALLED_APPLICATION_ID: Final = "io.github.pikkujanne.paperworkshell"
+from paperworkshell.domain.product_identity import (
+    INSTALLED_APPLICATION_ID as INSTALLED_APPLICATION_ID,
+)
+
 INSTALLED_MARKER_NAME: Final = "paperworkshell-installed-v1.json"
 INSTALLED_GUI_EXECUTABLE_NAME: Final = "PaperWorkShellDesktop.exe"
 MAX_INSTALLED_MARKER_BYTES: Final = 4096

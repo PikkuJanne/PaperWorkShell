@@ -42,17 +42,43 @@ PROBE_SOURCE = r"""
 static wchar_t value[32768], system_path[32768], module_path[32768], directory[32768];
 static const GUID folder_program_data = {0x62ab5d82,0xfdc1,0x4dc3,{0xa9,0xdd,0x07,0x0d,0x1d,0x49,0x5d,0x97}};
 static int equal(const wchar_t *a, const wchar_t *b) { while (*a && *a == *b) { ++a; ++b; } return *a == *b; }
+static BOOL has_update_lease(void) {
+    ULONG_PTR inherited = 0;
+    DWORD i, digits, length, root_length;
+    BY_HANDLE_FILE_INFORMATION info;
+    HANDLE lease;
+    digits = GetEnvironmentVariableW(L"PWS_UPDATE_LEASE", value, 32768);
+    if (!digits || digits > sizeof(inherited) * 2) return FALSE;
+    for (i = 0; i < digits; ++i) {
+        wchar_t digit = value[i];
+        if (digit >= L'0' && digit <= L'9') inherited = (inherited << 4) + digit - L'0';
+        else if (digit >= L'a' && digit <= L'f') inherited = (inherited << 4) + digit - L'a' + 10;
+        else return FALSE;
+    }
+    lease = (HANDLE)inherited;
+    if (!lease || GetFileType(lease) != FILE_TYPE_DISK ||
+        !GetFileInformationByHandle(lease, &info) || info.nNumberOfLinks != 1 ||
+        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) return FALSE;
+    length = GetFinalPathNameByHandleW(lease, system_path, 32768, FILE_NAME_NORMALIZED);
+    root_length = GetEnvironmentVariableW(L"LOCALAPPDATA", value, 32768);
+    return length > 4 && length < 32768 && root_length && root_length < length - 4 &&
+        system_path[0] == L'\\' && system_path[1] == L'\\' && system_path[2] == L'?' &&
+        system_path[3] == L'\\' &&
+        CompareStringOrdinal(system_path + 4, root_length, value, root_length, TRUE) == CSTR_EQUAL &&
+        equal(system_path + 4 + root_length, L"\\PaperWorkShell.lifecycle-v1.lock");
+}
 void WINAPI probe_entry(void) {
     int count = 0;
     wchar_t **args = CommandLineToArgvW(GetCommandLineW(), &count);
     DWORD flags = 0, size = 0;
     BOOL review = count == 5 && equal(args[4], L"paperworkshell.ui.uninstall_review");
     BOOL notices = count == 5 && equal(args[4], L"paperworkshell.ui.notices");
+    BOOL update = count == 5 && equal(args[4], L"paperworkshell.ui.update_dialog");
     HANDLE file, ready, release;
     DWORD pid = GetCurrentProcessId();
     DWORD folder_flags = 0;
     PWSTR program_data = NULL;
-    if (count != 5 || !equal(args[1], L"-I") || !equal(args[2], L"-B") || !equal(args[3], L"-m") || (!review && !notices && !equal(args[4], L"paperworkshell"))) flags |= 1;
+    if (count != 5 || !equal(args[1], L"-I") || !equal(args[2], L"-B") || !equal(args[3], L"-m") || (!review && !notices && !update && !equal(args[4], L"paperworkshell"))) flags |= 1;
     LocalFree(args);
     if (GetEnvironmentVariableW(L"PWS_QPDF_EXECUTABLE", value, 32768) || GetEnvironmentVariableW(L"PWS_TESSERACT_EXECUTABLE", value, 32768) || GetEnvironmentVariableW(L"PYTHONPATH", value, 32768) || GetEnvironmentVariableW(L"QT_PLUGIN_PATH", value, 32768)) flags |= 2;
     GetSystemDirectoryW(system_path, 32768);
@@ -68,6 +94,14 @@ void WINAPI probe_entry(void) {
     if (!equal(directory, module_path)) flags |= 16;
     if (!GetEnvironmentVariableW(L"USERPROFILE", value, 32768) || equal(value, L"PRIVATE_TOKEN")) flags |= 32;
     if ((GetErrorMode() & (SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX)) != (SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX)) flags |= 64;
+    if (update) {
+        DWORD proof = has_update_lease() ? 1 : 0;
+        if (!proof) flags |= 128;
+        file = CreateFileW(L"launcher-update-lease.bin", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (file == INVALID_HANDLE_VALUE) ExitProcess(3);
+        WriteFile(file, &proof, sizeof(proof), &size, NULL);
+        CloseHandle(file);
+    } else if (GetEnvironmentVariableW(L"PWS_UPDATE_LEASE", value, 32768)) flags |= 128;
     size = GetSystemWindowsDirectoryW(system_path, 32768);
     if (size < 2 || size >= 32768 || !GetEnvironmentVariableW(L"SystemDrive", value, 32768) || value[0] != system_path[0] || value[1] != L':' || value[2]) folder_flags |= 1;
     if (FAILED(SHGetKnownFolderPath(&folder_program_data, 0, NULL, &program_data)) || !program_data) folder_flags |= 2;
@@ -513,3 +547,61 @@ def test_native_notices_mode_keeps_child_job_until_natural_exit_or_launcher_term
             process.wait(timeout=5)
         if child:
             kernel.CloseHandle(child)
+
+
+def test_native_update_keeps_bootstrap_and_inherits_the_live_installation_lease(
+    native_launcher: Build,
+) -> None:
+    base = native_launcher.executable.parent
+    slot = native_launcher.root / "update-slot-A" / "runtime"
+    selector = native_launcher.root / "update-state-v1"
+    base_proof = base / "launcher-probe.bin"
+    active_proof = slot / "launcher-probe.bin"
+    lease_proof = base / "launcher-update-lease.bin"
+    prior_proof = base_proof.read_bytes() if base_proof.exists() else b""
+    assert not selector.exists() and not lease_proof.exists()
+    slot.mkdir(parents=True)
+    shutil.copyfile(base / "PaperWorkShellDesktop.exe", slot / "PaperWorkShellDesktop.exe")
+    selector.write_bytes(b"A\n{}")
+    kernel = _kernel()
+    kernel.ResetEvent(native_launcher.ready)
+    kernel.SetEvent(native_launcher.release)
+    environment = {**os.environ, "PWS_UPDATE_LEASE": "PRIVATE_TOKEN"}
+    update = None
+    try:
+        active = subprocess.Popen(
+            [str(native_launcher.executable)], cwd=native_launcher.root, env=environment
+        )
+        assert _wait(active) == (0, "")
+        selected = active_proof.read_bytes()
+        assert len(selected) == 8 and selected[:4] == bytes(4)
+        assert (base_proof.read_bytes() if base_proof.exists() else b"") == prior_proof
+        assert not (slot / lease_proof.name).exists() and not lease_proof.exists()
+
+        kernel.ResetEvent(native_launcher.ready)
+        kernel.ResetEvent(native_launcher.release)
+        update = subprocess.Popen(
+            [str(native_launcher.executable), "--update"],
+            cwd=native_launcher.root,
+            env=environment,
+        )
+        assert kernel.WaitForSingleObject(native_launcher.ready, 10_000) == 0
+        assert lease_proof.read_bytes() == (1).to_bytes(4, "little")
+        assert base_proof.read_bytes()[:4] == bytes(4)
+        assert active_proof.read_bytes() == selected
+        blocked = subprocess.Popen(
+            [str(native_launcher.executable), "--update"], cwd=native_launcher.root
+        )
+        code, message = _wait(blocked)
+        assert code == 2 and "LAUNCHER_APPLICATION_BUSY" in message
+        assert "PRIVATE_TOKEN" not in message
+        kernel.SetEvent(native_launcher.release)
+        assert _wait(update) == (0, "")
+        ordinary = subprocess.Popen([str(native_launcher.executable)], cwd=native_launcher.root)
+        assert _wait(ordinary) == (0, "")
+    finally:
+        kernel.SetEvent(native_launcher.release)
+        if update is not None and update.poll() is None:
+            update.kill()
+            update.wait(timeout=5)
+        selector.unlink()

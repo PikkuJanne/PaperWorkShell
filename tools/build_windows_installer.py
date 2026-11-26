@@ -25,6 +25,7 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import Any, Final, NoReturn
 
+from paperworkshell.storage._update_cng import is_p256_public_key
 from tools.release_artifacts import (
     MAX_STAGE_BYTES,
     Artifact,
@@ -53,6 +54,9 @@ MICROSOFT_TERMS: Final = "notices/Microsoft-runtime-recipient-terms.txt"
 MICROSOFT_COMPONENT: Final = "microsoft-vc14-x64-community2022"
 MICROSOFT_REVIEW: Final = "packaging/release-reviews/microsoft-community2022-v1.json"
 MICROSOFT_ASSET_DIRECTORY: Final = "packaging/licenses/release-native/microsoft-msvc-runtime"
+UPDATE_ANCHOR_FILENAME: Final = "paperworkshell-update-anchor-v1.json"
+UPDATE_ANCHOR_PAYLOAD_PATH: Final = "runtime/" + UPDATE_ANCHOR_FILENAME
+MAX_UPDATE_ANCHOR_BYTES: Final = 4096
 MICROSOFT_ASSETS: Final = {
     "COMMUNITY-2022-FULL-TERMS.txt": "cbfa92f37dc9cc11735952457c4c68df6f6aec0dfdb895e31c15c1adc0ed7963",
     "COMMUNITY-2022-RECIPIENT-TERMS.txt": "a5cdf1136b18611fc5235c657b7ad113a9ac338abe6c1af3c299205d9492c718",
@@ -125,6 +129,131 @@ def marker(configuration: Mapping[str, Any]) -> bytes:
         {k: configuration[k] for k in ("application_id", "version", "channel", "candidate_id")}
         | {"schema_version": 1}
     )
+
+
+def _unique_anchor_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        if name in result:
+            fail("INSTALLER_UPDATE_ANCHOR_FORMAT")
+        result[name] = value
+    return result
+
+
+def update_anchor_input(
+    path: Path | None, expected_sha256: str | None, *, channel: str, root: Path = PROJECT_ROOT
+) -> bytes | None:
+    """Authenticate a build-owned public trust anchor before any installer output."""
+    if path is None and expected_sha256 is None:
+        return None
+    if (
+        path is None
+        or expected_sha256 is None
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+    ):
+        fail("INSTALLER_UPDATE_ANCHOR_PAIR")
+    plain_path(path)
+    scoped_root = (root / "output").resolve()
+    if path.absolute().resolve() == scoped_root or not path.absolute().resolve().is_relative_to(
+        scoped_root
+    ):
+        fail("INSTALLER_INPUT_SCOPE")
+    info = path.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or not 0 < info.st_size <= MAX_UPDATE_ANCHOR_BYTES
+    ):
+        fail("INSTALLER_UPDATE_ANCHOR_SIZE")
+    with path.open("rb") as source:
+        raw = source.read(MAX_UPDATE_ANCHOR_BYTES + 1)
+    if len(raw) != info.st_size or hashlib.sha256(raw).hexdigest() != expected_sha256:
+        fail("INSTALLER_UPDATE_ANCHOR_HASH")
+    try:
+        record = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_anchor_fields)
+    except ValueError, RecursionError:
+        fail("INSTALLER_UPDATE_ANCHOR_FORMAT")
+    if not isinstance(record, dict) or record.keys() != {
+        "schema_version",
+        "channel",
+        "root_public_key",
+        "minimum_epoch",
+        "release_sequence_floor",
+    }:
+        fail("INSTALLER_UPDATE_ANCHOR_FORMAT")
+    key = record["root_public_key"]
+    epoch = record["minimum_epoch"]
+    sequence = record["release_sequence_floor"]
+    if (
+        type(record["schema_version"]) is not int
+        or record["schema_version"] != 1
+        or record["channel"] != channel
+        or type(key) is not str
+        or re.fullmatch(r"[0-9a-f]{128}", key) is None
+        or not is_p256_public_key(bytes.fromhex(key))
+        or type(epoch) is not int
+        or not 1 <= epoch < (1 << 63)
+        or type(sequence) is not int
+        or not 0 <= sequence < (1 << 63)
+    ):
+        fail("INSTALLER_UPDATE_ANCHOR_FORMAT")
+    return raw
+
+
+def verify_build_update_anchor(
+    candidate: Path,
+    inventory: Mapping[str, Any],
+    expected_sha256: object,
+    *,
+    channel: str | None = None,
+    root: Path = PROJECT_ROOT,
+) -> None:
+    """Reconcile the staged trust authority, local input and build plan."""
+    records = [
+        item for item in inventory["files"] if item["path"].casefold() == UPDATE_ANCHOR_PAYLOAD_PATH
+    ]
+    inputs = [
+        item
+        for item in inventory.get("input_artifacts", ())
+        if item["name"].casefold() == UPDATE_ANCHOR_FILENAME
+    ]
+    if expected_sha256 is None and not records and not inputs:
+        return
+    if (
+        type(expected_sha256) is not str
+        or len(records) != 1
+        or len(inputs) != 1
+        or records[0]["path"] != UPDATE_ANCHOR_PAYLOAD_PATH
+        or records[0]["component_id"] != "paperworkshell"
+        or records[0]["sha256"] != expected_sha256
+        or inputs[0]["name"] != UPDATE_ANCHOR_FILENAME
+        or inputs[0]["sha256"] != expected_sha256
+        or inputs[0].get("origin") != "local-build"
+        or inputs[0].get("recipe_path") != "tools/build_windows_installer.py"
+        or inputs[0]["scope"] != "runtime"
+        or inputs[0]["url"] is not None
+    ):
+        fail("INSTALLER_UPDATE_ANCHOR_BINDING")
+    selected_channel = product(root)["channel"] if channel is None else channel
+    staged = update_anchor_input(
+        candidate / "payload" / UPDATE_ANCHOR_PAYLOAD_PATH,
+        expected_sha256,
+        channel=selected_channel,
+        root=root,
+    )
+    original = update_anchor_input(
+        candidate / "artifacts" / UPDATE_ANCHOR_FILENAME,
+        expected_sha256,
+        channel=selected_channel,
+        root=root,
+    )
+    if (
+        staged is None
+        or staged != original
+        or records[0]["size_bytes"] != len(staged)
+        or inputs[0]["size_bytes"] != len(staged)
+    ):
+        fail("INSTALLER_UPDATE_ANCHOR_BINDING")
 
 
 def _write(path: Path, raw: bytes) -> None:
@@ -671,8 +800,13 @@ def assemble(
     root: Path = PROJECT_ROOT,
     microsoft_overlay: Path | None = None,
     microsoft_overlay_receipt_sha256: str | None = None,
+    update_anchor: Path | None = None,
+    update_anchor_sha256: str | None = None,
 ) -> dict[str, Any]:
     configuration = product(root)
+    anchor = update_anchor_input(
+        update_anchor, update_anchor_sha256, channel=configuration["channel"], root=root
+    )
     microsoft = microsoft_runtime_input(
         microsoft_overlay, microsoft_overlay_receipt_sha256, root=root
     )
@@ -696,6 +830,10 @@ def assemble(
         fail("INSTALLER_BASE_IDENTITY")
     base = load_json(base_inventory)
     validate_data(base, root=root)
+    if any(item["path"].casefold() == UPDATE_ANCHOR_PAYLOAD_PATH for item in base["files"]) or any(
+        item["name"].casefold() == UPDATE_ANCHOR_FILENAME for item in base["input_artifacts"]
+    ):
+        fail("INSTALLER_BASE_UPDATE_ANCHOR")
     verify_files(base_stage, base["files"])
     review = verify_compiler(compiler, root=root)
     from tools.build_windows_launcher import verify_launcher
@@ -803,6 +941,13 @@ def assemble(
         ),
         "evidence/pws0801-base-inventory.json": base_inventory.read_bytes(),
     }
+    if anchor is not None:
+        anchor_artifact = artifacts / UPDATE_ANCHOR_FILENAME
+        _write(anchor_artifact, anchor)
+        current_inputs.append(
+            _input(anchor_artifact, "runtime", "tools/build_windows_installer.py")
+        )
+        first_party[UPDATE_ANCHOR_PAYLOAD_PATH] = anchor
     for name, raw in first_party.items():
         _write(payload / name, raw)
         owners[name] = "paperworkshell"
@@ -930,6 +1075,9 @@ def assemble(
     owners["notices/COMPONENTS.txt"] = "paperworkshell"
     result["files"] = inventory_files(payload, owners)
     validate_data(result, root=root)
+    verify_build_update_anchor(
+        output, result, update_anchor_sha256, channel=configuration["channel"], root=root
+    )
     for name, digest in (recipe_bindings | source_bindings).items():
         if file_hashes(root / name)[1] != digest:
             fail("INSTALLER_SOURCE_CHANGED")
@@ -962,6 +1110,7 @@ def assemble(
         else None,
         "base_inventory_sha256": BASE_SHA256,
         "inventory_sha256": file_hashes(output / "resolved-inventory.json")[1],
+        "update_anchor_sha256": update_anchor_sha256,
         "compiler_review_sha256": file_hashes(root / COMPILER_REVIEW)[1],
         "script_sha256": file_hashes(root / SCRIPT)[1],
         "product_sha256": file_hashes(root / PRODUCT)[1],
@@ -997,6 +1146,12 @@ def compile_installer(
     if file_hashes(candidate / "resolved-inventory.json")[1] != plan["inventory_sha256"]:
         fail("INSTALLER_INVENTORY_CHANGED")
     inventory = load_json(candidate / "resolved-inventory.json")
+    verify_build_update_anchor(
+        candidate,
+        inventory,
+        plan.get("update_anchor_sha256"),
+        root=root,
+    )
     generated = plan.get("generated_inputs")
     if (
         not isinstance(generated, list)
@@ -1076,6 +1231,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     stage.add_argument("--launcher-receipt-sha256", required=True)
     stage.add_argument("--microsoft-overlay", type=Path)
     stage.add_argument("--microsoft-overlay-receipt-sha256")
+    stage.add_argument("--update-anchor", type=Path)
+    stage.add_argument("--update-anchor-sha256")
     compile_action = actions.add_parser("compile")
     compile_action.add_argument("--candidate", type=Path, required=True)
     compile_action.add_argument("--compiler", type=Path, required=True)
@@ -1098,6 +1255,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.compiler,
                 microsoft_overlay=args.microsoft_overlay,
                 microsoft_overlay_receipt_sha256=args.microsoft_overlay_receipt_sha256,
+                update_anchor=args.update_anchor,
+                update_anchor_sha256=args.update_anchor_sha256,
             )
         else:
             result = compile_installer(args.candidate, args.compiler)

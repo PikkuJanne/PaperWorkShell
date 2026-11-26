@@ -14,7 +14,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from paperworkshell.app.installed_runtime import INSTALLED_APPLICATION_ID
-from paperworkshell.app.update_verification import (
+from paperworkshell.domain.update_verification import (
     MAX_METADATA_BYTES,
     SIGNATURE_PREFIX,
     UpdateErrorCode,
