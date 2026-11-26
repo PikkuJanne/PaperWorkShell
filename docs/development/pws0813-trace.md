@@ -621,3 +621,42 @@ The Windows checkout now follows the existing LF policy for the affected sources
 Explicit checkout attributes preserve the reviewed upstream notice and provenance
 bytes. Earlier checkout work and installed evidence are still available at their
 original locations.
+
+### Repository checks on Windows 11 Pro x64
+
+The reconciled source checkpoint is `d168db80b93164eb05312bff8adcefce3f3ba0bc`.
+The B8 installer rehashed to the recorded SHA-256 and remained read-only. Comparing
+the application source with the installer source shows only CRLF-to-LF changes.
+
+- `py -3.14 tools/dev.py bootstrap` and `uv sync --locked --group renderer-evaluation`
+  passed with CPython 3.14.6.
+- `py -3.14 tools/dev.py check` passed formatting, lint, import boundaries and
+  strict typing, then stopped at the unit suite. That suite began before the
+  evidence commit and finished with 8,076 passes, two capability skips and three
+  failures. The failures were the historical PWS-0207 source binding and two
+  `PREVIEW_STORAGE_CAPACITY` contract checks in image normalization and searchable
+  export. The three tests were repeated on the frozen source checkpoint. The
+  documented PWS-0207 candidate receipt passed its assertion and the two capacity
+  failures reproduced. The historical receipt remains available for its revision.
+- The registered integration, security and accessibility lanes ran serially on
+  the frozen checkpoint. Integration passed 732 tests with 43 skips. Security
+  passed 1,329 with six link-capability skips. All 360 accessibility tests passed.
+- The registered schemas, localization, dependency and release inventories, task
+  graph, Pillow runtime, documentation, portfolio boundary, M1 report, PWS-0208
+  workload, renderer benchmark and negative self-test checks passed.
+- The shared Git repository failed `validate-fixtures` and `scan-secrets` at the
+  existing 512 MiB logical-work limit. In a fresh single-branch clone of the
+  reconciled checkpoint, `validate-fixtures` passed and `scan-secrets` reached the
+  same limit. An isolated clone of `0919421e` also reached that limit during
+  `scan-secrets`, which establishes that the failure predates reconciliation.
+
+The command logs and the PWS-0207 candidate receipt are in
+`output/pws0813/development-baseline-checks` in the primary checkout. The baseline
+branch is clean. Shared promotion is pending because required checks failed.
+Local `main` and `origin/main` remain at `060cc36`. PWS-0813 retains its private
+installed closure and PWS-0811 remains in review.
+
+The next bounded baseline step is to diagnose the unchanged scan-work limit
+against the retained full repository using ADR 0021. Preserve its coverage,
+history and limits. Record the result in this continuation and rerun the affected
+checks if a narrow correction is found.

@@ -9,8 +9,8 @@ as history; do not create a mandatory ARM task or describe that history as a pas
 The approved rationale is [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
 This does not waive any in-scope signing, security, privacy, accessibility or resource gate.
 
-**Development baseline (2026-11-26):** Start new PaperWorkShell development from
-the reconciled TRACE B8 baseline described in the
+**Development baseline (2026-11-26):** The reconciled TRACE B8 candidate, repository
+check results and promotion status are recorded in the
 [TRACE continuation](docs/development/pws0813-trace.md#development-baseline-reconciliation).
 PWS-0813 closed with the private B8 build. Follow the task graph for subsequent work.
 
