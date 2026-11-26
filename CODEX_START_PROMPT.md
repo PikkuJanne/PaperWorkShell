@@ -4,6 +4,9 @@ Use these prompts with the current [operating policy](AGENTS.md). The repository
 [task graph](TASKS.yaml) and linked records track current work and evidence. Earlier
 evidence and handoffs describe their recorded candidates and conditions.
 
+Each handover ends with a **Next step** in plain English. Record it in the current task
+or evidence record so the next session can pick up the first concrete action.
+
 ## Continue current work
 
 ```text

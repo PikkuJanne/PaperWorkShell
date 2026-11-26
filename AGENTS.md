@@ -90,6 +90,8 @@ unproved release facts `TBD`.
 - Keep affected docs, schemas, and task evidence current. Close tasks after their actual
   prerequisites and acceptance are evidenced. Release gates require their specified evidence,
   with unresolved failures and unverified observations recorded accurately.
-- In handoff, identify the task IDs, changed locations, verification results, remaining
-  limitations and affected operations, and the commit or review artifact. Include exact
-  continuation details when further work needs a separate session.
+- In every handover, identify the task IDs, changed locations, verification results, remaining
+  limitations and affected operations, and the commit or review artifact. End with a
+  **Next step** in plain English. Name the task ID when applicable and the first concrete
+  action Codex should take. If progress requires an external action, name the smallest
+  action needed and who can take it. If the work has no follow-up, say so explicitly.

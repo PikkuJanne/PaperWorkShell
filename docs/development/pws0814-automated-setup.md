@@ -82,3 +82,11 @@ Public signing and public-release qualification retain their own criteria and ev
 This run covers same-build repair and reuse, standard-user launch and an offline ordinary
 PDF workflow for TRACE B8. The [task graph](../../TASKS.yaml) records the independent
 prerequisites for broader release operations.
+
+## Next step
+
+Begin PWS-0803, authenticated updates. Codex should first inspect the existing install,
+repair, and replacement paths and document how an update proves its origin and leaves a
+working installation after a failure. Use isolated test signing keys to verify that the
+mechanism rejects untrusted updates. The prerequisites for this engineering work are
+complete. Production signing is needed for public release qualification.

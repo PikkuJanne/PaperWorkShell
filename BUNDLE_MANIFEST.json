@@ -40,13 +40,13 @@
     },
     {
       "path": "AGENTS.md",
-      "bytes": 6812,
-      "sha256": "c9c9d696e996d406c6f7c52dc4b4d9dddd2023a63baa4a87d8eaa0663c9b033b"
+      "bytes": 7012,
+      "sha256": "8d5a6b850ebb1394203614351d8e5fdd5b92ff2b5e9b63bf8cc45b4095ca6854"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 2550,
-      "sha256": "fe84c9d7aca52d08de8b9e58321fb0264a14110d20b7c7dbe29705b70bc8d669"
+      "bytes": 2717,
+      "sha256": "fa2e3f85a05cff14996319a4bd85218a851ffa6fe0952d8a34bd5849376b7b02"
     },
     {
       "path": "README.md",
@@ -630,8 +630,8 @@
     },
     {
       "path": "docs/development/pws0814-automated-setup.md",
-      "bytes": 5466,
-      "sha256": "c306ca8e0fb37049ab21287efb9ad57d5cd2868828d42a793340a427062a7f9c"
+      "bytes": 5903,
+      "sha256": "9580f7e39a3e414cd3ddecf050ba3d86cdc541aa2271cdd3567547745cf87998"
     }
   ],
   "validation": {
