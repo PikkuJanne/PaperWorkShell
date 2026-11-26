@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 540427,
-      "sha256": "4d0cb0137b693d6e166f7a96c3bbc119553a9f4291a2ae4031a26c1557feec7c"
+      "bytes": 541596,
+      "sha256": "7d6ff58075b59674579840c04f047633e1d1a352ef8cd50192204d93ea1b0caf"
     },
     {
       "path": "TASKS.schema.json",
@@ -50,8 +50,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 39987,
-      "sha256": "c11e38a95516a0b060348159e63a15921db65aa84901700c22ebbdeb0aeedfe2"
+      "bytes": 40242,
+      "sha256": "0795b5db7af32839a2294c9196ad8ef49ea21b72c6bfbb9ce5c8fe91875f21bf"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
@@ -65,18 +65,18 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 34026,
-      "sha256": "f79b6c1b0b8bed778b93971a6c65a30d4a9e53f03293df6a5f100472c770704c"
+      "bytes": 35811,
+      "sha256": "180e1ff6b2224f382d4eb80e4768c3bb2511a5c3ed6311e473b609456a9195a5"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 20795,
-      "sha256": "afa64d5a9252097f4cdbf10d5d62bf63586a8674a322d8a8d5a444f137034d08"
+      "bytes": 21128,
+      "sha256": "e7550f9e0ec12b88aff2eab3bf898779751d18398796ac6f20e3de4490180f8f"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 11075,
-      "sha256": "4408a9cdf9051a388674475aa6c088be54835f38267ffac6b7f3764d49add06c"
+      "bytes": 11432,
+      "sha256": "572856f3c987a9c9aaa36b0fbfc1cee6740335b4097e1b38dd01579527744a14"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 8129,
-      "sha256": "00d55f6c3d0116efe45dc0ef7bc5f7857fe62fa7a439a5c2d8e0187e930fee67"
+      "bytes": 9114,
+      "sha256": "9a6fdea2a7df614b5d832dc4fbdc5fc5bc06b8b35a02943e86a44f70d46f3536"
     },
     {
       "path": "LOW_SPEC.md",
@@ -642,6 +642,26 @@
       "path": "docs/development/pws0803-authenticated-updates.md",
       "bytes": 7347,
       "sha256": "16d4409f04b42835109a3fd816cd8076fc716424fd245640563aa283cee09d51"
+    },
+    {
+      "path": "SECURITY.md",
+      "bytes": 3487,
+      "sha256": "e5cee13bfba3c371bdb3a42187ba4c59e5430fee91f0b22d8c03517c38ea50b8"
+    },
+    {
+      "path": "docs/user/USER_GUIDE.md",
+      "bytes": 12174,
+      "sha256": "db6d0a25534348227eab6e908d5d6e756c40903995e97b7a008275334f87a447"
+    },
+    {
+      "path": "docs/user/CARE_AND_RECOVERY.md",
+      "bytes": 16008,
+      "sha256": "89b335d838407af7d30bde1d78faaae962c28527923f6dbf0db1c86558643825"
+    },
+    {
+      "path": "docs/development/pws0806-documentation.md",
+      "bytes": 3914,
+      "sha256": "43499e07d33da2795d0f8b1a3bc6b23f420fefdd7c70aa9dc8fbeefc9fd08cd6"
     }
   ],
   "validation": {
@@ -651,9 +671,7 @@
     "dependency_edge_count": 258,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "ready_tasks": [
-      "PWS-0806"
-    ]
+    "ready_tasks": []
   },
   "notes": [
     "2026-11-26 owner directive: AGENTS.md governs engineering choices and sequencing. TASKS.yaml records current prerequisites and status, including PWS-0814 automated setup. The remaining entries describe historical evidence and the decisions recorded at the time.",

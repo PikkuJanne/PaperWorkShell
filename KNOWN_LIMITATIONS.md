@@ -105,12 +105,25 @@ This describes the current development checkout, not a packaged release.
 
 ## Release and acceptance status
 
-The repository has no completed installer or packaged release claim. Native binary
-redistribution, notices, corresponding source, final SBOM, and final product licence
-remain subject to PWS-0801 and the release gates. The
-[release interface](docs/release/RELEASE_INTERFACE.md) retains its existing `TBD` facts.
+PaperWorkShell targets Windows 11 x64. Available engineering installers and prepared setup
+bundles carry their own build-specific evidence. TRACE B8 has standard-user same-build repair,
+reuse, and offline ordinary PDF observations. A separate engineering bootstrap and runtime ZIP
+exercise authenticated offline update, recovery, and replay refusal using isolated test signing.
+Production signing, production update trust, supported release editions/builds, and the final
+packaged release matrix are pending. [Setup evidence](docs/development/pws0814-automated-setup.md),
+[update evidence](docs/development/pws0803-authenticated-updates.md), and [release interface](docs/release/RELEASE_INTERFACE.md).
+
+Public supported versions, a maintenance commitment, and a private vulnerability-reporting route
+are pending. Internal recipients can ask the maintainer who supplied their build through their
+existing private channel. [Security and reporting draft](SECURITY.md).
+
+The Milestone 6 source gate covers a narrow permanent-removal workflow for one affected active
+PDF page. Availability and claims for installed builds depend on the exact build and its release
+evidence. [User guide](docs/user/USER_GUIDE.md) and [Milestone 6 source gate](docs/gates/m6-permanent-redaction-gate.md).
+
 The maintainer accepted the existing PWS-0408 walkthrough on 2026-09-30; see the
 [acceptance record](docs/development/pws0408-result.md#maintainer-acceptance).
 The [PWS-0409 source-tree v0.1 pilot gate](docs/gates/m4-pilot-gate.md) passed on
-2026-09-30 within its recorded scope. Packaged-release work remains pending.
-ThirdLife and sibling applications are not required and no compatibility cut is claimed.
+2026-09-30 within its recorded scope.
+PaperWorkShell runs and versions independently. The current release work includes no app-to-app
+ThirdLife integration or compatibility claim.

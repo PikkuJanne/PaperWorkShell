@@ -6264,7 +6264,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0804
@@ -6315,8 +6315,21 @@ tasks:
   evidence:
     completed_at: null
     revision: null
-    commands: []
-    notes: []
+    commands:
+    - Get-FileHash with byte counts for the TRACE B8 installer, PWS-0803 R1 installer, and
+      PWS-0803 R2 runtime ZIP - all matched their recorded engineering identities.
+    - Focused accessibility and security pytest selection - 175 passed, including keyboard,
+      support-bundle privacy, assisted use, uninstall review, and update trust rejection.
+    - Documentation, task and portfolio validator pytest selection - 89 passed and 145 subtests passed.
+    - Windows support-bundle and update-installation integration pytest selection - 23 passed.
+    - 'Canonical tools/dev.py format-check, lint, typecheck, validate-docs, validate-task-graph,
+      validate-schemas, and validate-portfolio-boundary - passed; scoped terminology, privacy,
+      claims, draft state, and git diff --check passed.'
+    notes:
+    - docs/development/pws0806-documentation.md records the draft guides, exact predecessor
+      and artifact scope, validation, and remaining novice and support-person walkthroughs.
+    - Public release fields remain draft. Test-signed update evidence does not establish
+      production trust, and public reporting contact and supported versions remain pending.
 - id: PWS-0807
   milestone: M8
   title: Run release-candidate matrix, performance, uninstall, and recovery validation

@@ -2,6 +2,10 @@
 
 PaperWorkShell is a local-first desktop application for organizing PDFs and images, reviewing configured packaging rules, and exporting document packages. Users review the content and submit the resulting files themselves.
 
+Start with the [user guide](docs/user/USER_GUIDE.md). For shared-computer use, recovery, safe
+diagnostics, updates, or uninstall, see [care and recovery](docs/user/CARE_AND_RECOVERY.md).
+For vulnerability reports, see the [security policy](SECURITY.md).
+
 ## Windows setup
 
 Use the [automated setup instructions](packaging/README.md) for an identified prepared

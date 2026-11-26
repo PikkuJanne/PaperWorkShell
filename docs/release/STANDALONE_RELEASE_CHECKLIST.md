@@ -29,6 +29,11 @@ The retained R7 installer remains 512,713,704 bytes, SHA-256
 embedded build metadata. R6 clean and R7 instrumented-guest evidence retain their
 original scopes; exact public version, signed artifact and signer remain unproved.
 
+The [user guide](../user/USER_GUIDE.md), [care and recovery guide](../user/CARE_AND_RECOVERY.md),
+and [security policy](../../SECURITY.md) describe current behavior. The [evidence index](RELEASE_EVIDENCE.md)
+links the separate TRACE B8 setup and PWS-0803 offline update rehearsals. Each checklist item
+requires public-candidate evidence for its own scope.
+
 ## 1. Product boundary and independence
 
 - [ ] The primary document-package journey works without ThirdLife, sibling applications, a mandatory account, or a project-controlled server.

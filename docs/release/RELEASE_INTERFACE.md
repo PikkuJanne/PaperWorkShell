@@ -24,6 +24,9 @@ workspace transfer, association, CLI, URI, or RPC only to fill this sheet. See t
 Current source-tree facts appear only as clearly labeled context. Project metadata `0.0.0` is a
 pre-alpha development value, not the product version for this sheet.
 
+For the current workflow and its limits, see the [user guide](../user/USER_GUIDE.md),
+[care and recovery guide](../user/CARE_AND_RECOVERY.md), and [security policy](../../SECURITY.md).
+
 ## 1. Product identity
 
 | Item | Release value |
@@ -95,13 +98,27 @@ remain unproved.
 | Supported silent installation options | **TBD or not supported with reason** |
 | Default install location | **TBD** |
 | Restart requirement | **TBD** |
-| Update mechanism | **TBD; core document work remains usable offline** |
+| Update mechanism | Development implementation: the **PaperWorkShell Updates** Start menu shortcut verifies a local signed update folder and waits for explicit confirmation. Public bootstrap, trust and distribution **TBD**. |
 | Repair behavior | **TBD or not supported with reason** |
-| Rollback behavior and limits | **TBD** |
+| Rollback behavior and limits | Development implementation: **Restore previous version** selects a verified retained runtime or the original installation. The accepted update sequence stays in force. Public candidate result **TBD**. |
 | Normal uninstall path or UI | **TBD** |
 | User choice about cases during uninstall | **TBD; separate explicit choice required** |
 | Data remaining after uninstall | **TBD by category** |
 | Machine-wide services or scheduled tasks | None unless independently necessary and separately approved; **verify candidate** |
+
+The exact TRACE B8 engineering package supplies standard-user same-build repair and reuse
+evidence. PWS-0803 tested offline activation, an ordinary PDF export, previous-runtime restoration
+and replay refusal using an unsigned engineering bootstrap and an isolated test-signed successor.
+See the separate [TRACE B8 setup record](../development/pws0814-automated-setup.md) and
+[offline update record](../development/pws0803-authenticated-updates.md).
+
+The update-capable installer and runtime share a per-user lifecycle lock. Close PaperWorkShell
+before opening Updates. Local update packages must use the installed case schema and Microsoft
+runtime terms. A legacy installation needs the case-preserving replacement route to acquire the
+update-capable launcher. Before uninstalling an updated installation, use **Remove installed
+updates**, then make the separate case-data choice during removal. See the
+[care and recovery guide](../user/CARE_AND_RECOVERY.md) and
+[update design](../adr/0022-authenticated-application-updates.md).
 
 ThirdLife may later invoke documented product mechanisms. It may not replace PaperWorkShell's
 installer, updater, migration, or uninstall logic.
@@ -118,12 +135,11 @@ installer, updater, migration, or uninstall logic.
 | Open user-selected JPEG/PNG through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
 | Open portable PaperWorkShell workspace/project | **Not currently supported; no portable project-transfer format is frozen** |
 | Multiple-file operating-system opening | **Not currently supported** |
-| Independently useful CLI options | **Not currently supported beyond development launch entry points** |
+| Independently useful CLI options | TRACE supports bounded local recipe replay for ordinary PDF export. Exact public candidate scope and evidence **TBD**. |
 | ThirdLife-specific CLI/URI/RPC | **Not supported** |
 
-The source tree has a development console entry point used to start the interactive application.
-That is not a packaged CLI contract. Opening a file or workspace must never bypass visible consent,
-silently upload content, start hidden destructive processing, or transfer data ownership.
+The local recipe route takes an explicitly selected source and replays supported page selection,
+order and quarter-turn rotations. See the [TRACE implementation and scoped installed evidence](../development/pws0813-trace.md).
 
 ## 5. Data locations and retention
 
@@ -131,19 +147,10 @@ Exact release paths and every retention/deletion rule must be verified on the pa
 Public documentation uses known-folder notation and never contains a real username or private
 machine path.
 
-| Data category | Current contract / release value | Retention and deletion behavior |
-|---|---|---|
-| Application configuration | **TBD** | **TBD** |
-| Case/workspace roots | Implemented convention: `<current-user-profile>\AppData\Local\PaperWorkShell\Cases\<case-uuid>\`; **verify candidate** | Explicit case deletion exists; retention and uninstall policy **TBD** |
-| Immutable imported originals | Random `.bin` objects under a case's `originals\` directory | Preserved unless the user explicitly deletes the case under product policy |
-| Authoritative case records | `manifest.json`, `journal\`, and `export-history.json` inside the authenticated case | Atomic/recoverable behavior is implemented; release migration/retention **TBD** |
-| Derived final outputs | User-selected external destination for supported export | Product never overwrites an imported original; exact release behavior **TBD** |
-| Thumbnail/preview caches | Case-scoped `cache\thumbnails\` and `cache\previews\` | Disposable and bounded; packaged cleanup behavior **TBD** |
-| Temporary processing data | Case-scoped `temp\` plus restricted worker-private temporary storage | Authenticated cleanup/recovery is implemented; packaged residue tests **TBD** |
-| OCR language data / optional engines | Source contract: built-in English plus exact optional German `tessdata_fast` 4.1.0 data; exact packaged path/inclusion **TBD for PWS-0801/PWS-0802** | Close/restart after a local pack change; exact installer/elevation/removal/notices **TBD for PWS-0802** |
-| Persistent logs | **TBD; current diagnostic logger is bounded and structured rather than a release log store** | Sanitized; retention **TBD** |
-| Support bundles | Implemented at a user-selected local destination; packaged release qualification pending | Created only after exact preview and explicit consent; user-controlled deletion |
-| Migration/rollback backups | Source implementation: bounded exact original `journal/migration-source-v1.json` or `migration-source-v2.json`; [contract](../architecture/case-migration.md) | Create-only backups retained inside the case; no automatic downgrade that could discard later edits; packaged release qualification remains pending |
+The [care and recovery guide](../user/CARE_AND_RECOVERY.md) records current location classes,
+retention, deletion and uninstall behavior by category. Exact public candidate paths, permissions,
+cleanup and uninstall residue remain **TBD**. Record verified values for each category and link the
+matching [data-location evidence](RELEASE_EVIDENCE.md#4-data-location-and-preservation-evidence).
 
 PaperWorkShell owns responsibility for its configuration and workspace formats, lifecycle, and
 migrations; users retain control of their local configuration and workspace content. ThirdLife may
@@ -193,10 +200,10 @@ silently replaced.
 | Mandatory account | None |
 | Project-controlled server required for core workflow | None |
 | Worker network access during document processing | Denied by product design and current Windows tests; **verify packaged release** |
-| Optional downloads | OCR language packs are never downloaded by the application or worker; update/other component behavior **TBD** |
-| Data transmitted by optional features | **TBD; disclose before transmission** |
-| Offline installation path | PWS-0205 supports verified local prestaging only; exact release path, package UI, and elevation **TBD for PWS-0802** |
-| Interrupted download behavior | Not applicable to OCR language discovery or processing because those perform no download; **TBD where later update downloads exist** |
+| Optional downloads | The app discovers local OCR language packs. The offline updater reads a local folder and has no automatic check. Any public artifact acquisition route is **TBD**. |
+| Data transmitted by optional features | The implemented updater and support-bundle creation operate locally. Exact public candidate verification **TBD**. |
+| Offline installation path | TRACE B8 exercised the prepared per-user setup route. Exact public release media, package UI and privileges **TBD**. |
+| Interrupted download behavior | In-app download is unsupported because the OCR pack and update routes use local files. Public acquisition and recovery instructions **TBD**. |
 
 ## 9. Resource behavior
 
@@ -222,7 +229,7 @@ It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, 
 | Untrusted inputs | PDF, JPEG, PNG, templates, and any future project/engine package as applicable |
 | Document processing isolation | Restricted worker; exact packaged controls **TBD** |
 | Network during processing | Denied; **verify candidate** |
-| Update provenance | **TBD** |
+| Update provenance | The offline updater verifies channel authority, signed release metadata, freshness and exact package bytes against a provisioned trust root. Production trust and exact release checks **TBD**. |
 | Secrets handling | No secrets or sensitive document content in arguments, routine logs, crash reports, or support bundles |
 | Telemetry | Off by default |
 | Original preservation | Immutable imported copy and hash; candidate verification **TBD** |
@@ -238,7 +245,7 @@ release-grade packaged qualification remains separate.
 
 | Item | Release value |
 |---|---|
-| Creation path | Source implementation: Help → Create support bundle; exact packaged release verification pending |
+| Creation path | Current TRACE interface: **Settings → Create support bundle…**. Exact packaged release verification pending. |
 | User preview before creation | Required |
 | Default destination | Explicit user-selected local file; no automatic submission |
 | Included categories | Exact preview of `summary.txt` and `allowlist.txt`; numeric versions by default, other closed typed diagnostic fields only when actually recorded; no file collector |
@@ -280,6 +287,7 @@ Product-level limitations already fixed by local authority include:
 
 Exact unsupported behavior, migrations, rollback constraints, accessibility limits, resource
 limits, and untested environments remain **TBD for each release**.
+See the [current known limitations](../../KNOWN_LIMITATIONS.md).
 
 ## 14. Release contact and maintenance
 
@@ -291,6 +299,9 @@ limits, and untested environments remain **TBD for each release**.
 | Maintenance status | **TBD — Development, Preview, Stable, or bounded maintenance** |
 | End-of-support policy | **TBD** |
 | Mandatory user account for support | None implied or required by this sheet |
+
+The [security policy](../../SECURITY.md) describes how to prepare a report that protects case
+contents. Publication and exact release support commitments require the applicable release evidence.
 
 ## 15. ThirdLife compatibility interpretation
 

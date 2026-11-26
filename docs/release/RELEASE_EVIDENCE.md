@@ -207,6 +207,20 @@ development context, but they do not make a packaged-candidate row pass. See the
 [release interface](RELEASE_INTERFACE.md), [standalone checklist](STANDALONE_RELEASE_CHECKLIST.md),
 and [portfolio boundary](../../THIRDLIFE_ALIGNMENT.md).
 
+### Current setup and update engineering evidence
+
+Both rehearsals used the disconnected Windows 11 Pro x64 26300.9711 guest with a standard-user
+desktop. The following results are scoped to their specific packages and trust configuration.
+
+| Candidate or pair | Installed result | Evidence |
+|---|---|---|
+| Unsigned `pws0813-trace-engineering-b8` | Same-build repair and reuse, standard-user launch, and one offline ordinary PDF export. Existing case files matched their prior hashes. | [PWS-0814 setup record and artifact identities](../development/pws0814-automated-setup.md) |
+| Unsigned `pws0803-updates-engineering-r1` bootstrap and isolated test-signed `pws0803-updates-engineering-r2` runtime ZIP | Local authenticated offer and explicit consent, activation, offline ordinary PDF export, restoration of R1 and refusal to replay the accepted R2 offer. All 353 pre-existing synthetic case files matched their prior hashes. | [PWS-0803 update record and artifact identities](../development/pws0803-authenticated-updates.md) |
+
+The release matrix still needs exact public-candidate evidence for installed update behavior,
+production trust, Authenticode signatures, failure recovery, and setup and removal. The public
+release identity and status fields remain draft.
+
 ## Current development evidence available for later reconciliation
 
 The following evidence is real but is not a completed M8 release package:
@@ -221,7 +235,7 @@ The following evidence is real but is not a completed M8 release package:
 | Accessibility | [PWS-0111 human keyboard/NVDA record](../accessibility/pws-0111-nvda-smoke.md) and [PWS-0203 agent scan-review record](../accessibility/pws-0203-scan-review-smoke.md) | The complete packaged M7/M8 keyboard/NVDA matrix is still required |
 | Synthetic corpus | [Public synthetic fixture index](../../tests/fixtures/synthetic/v1/index.json) and [fixture policy](../development/synthetic-fixture-policy.md) | M8 must freeze a representative release subset, expected outputs, behavior notes, and hashes |
 | Dependencies | [Reviewed policy baseline](../../packaging/README.md), [dependency inventory](../../packaging/dependency-inventory-v1.json), [OCR language-pack catalog](../../packaging/tesseract-language-pack-catalog-v1.json), and [PWS-0801 redistribution audit](../development/pws0801-result.md) | PWS-0801 replaces the JBIG-dependent TIFF library and applies the exact approved lxml omission; its internal dependency stage has separate resolved evidence. Final public-package approval remains pending |
-| Diagnostics | [Structured diagnostic baseline](../architecture/startup-recovery-and-diagnostics.md) | No user-authorized support bundle exists yet; PWS-0805 owns it |
+| Diagnostics | [PWS-0805 previewable support bundle](../architecture/support-bundle.md) and [synthetic sample](../../tests/fixtures/diagnostics/v1/README.md) | Verify creation, privacy and safe failure on the public candidate |
 
 At adoption, the repository is a pre-alpha source tree with project metadata `0.0.0`; no installer,
 signed package, stable application ID, frozen release sample package, or M8 release candidate
@@ -352,6 +366,10 @@ notation rather than real usernames or private absolute paths.
 
 ## 4. Data-location and preservation evidence
 
+The [care and recovery guide](../user/CARE_AND_RECOVERY.md) is the source reference for locations,
+retention, deletion and uninstall behavior. Record the packaged result and receipt for each
+category on the public candidate.
+
 - Configuration location and permissions: **TBD**
 - Case/workspace location and permissions: implemented architectural convention; packaged result
   **TBD**
@@ -481,6 +499,8 @@ case-schema migration does not imply a portable handoff format.
 
 ## 13. Licence, provenance, and maintenance evidence
 
+See the [security policy](../../SECURITY.md) for development-stage reporting guidance.
+
 - Final packaged dependency inventory and SBOM: **TBD**
 - Bundled engine/model/template/font licences and notices: **TBD**
 - Release input hashes and provenance: **TBD**
@@ -493,6 +513,9 @@ case-schema migration does not imply a portable handoff format.
 ## 14. Known limitations
 
 Exact release limitations document: **TBD**.
+
+The [user guide](../user/USER_GUIDE.md) and [known limitations](../../KNOWN_LIMITATIONS.md)
+describe the current workflow and its limits.
 
 At minimum, record unsupported formats, forms/signatures, redaction status, OS/file opening and
 project-transfer status, rollback constraints, accessibility and resource limitations, and every
