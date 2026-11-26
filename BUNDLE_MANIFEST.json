@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 539097,
-      "sha256": "d58691d6599a7b92f588c4779836c268717e55386ab35989c58206c7ca03d0a9"
+      "bytes": 539462,
+      "sha256": "cad5237ef8dd4f19eaaddf03d69e0b467e9aefc56a98b7c7eb57c1dc6c81f1d3"
     },
     {
       "path": "TASKS.schema.json",
@@ -632,6 +632,16 @@
       "path": "docs/development/pws0814-automated-setup.md",
       "bytes": 5903,
       "sha256": "9580f7e39a3e414cd3ddecf050ba3d86cdc541aa2271cdd3567547745cf87998"
+    },
+    {
+      "path": "docs/adr/0022-authenticated-application-updates.md",
+      "bytes": 9655,
+      "sha256": "627dceed72c131ee80318fb08de243e7cce6cbe7d4198b1c070dd66142e4c764"
+    },
+    {
+      "path": "docs/development/pws0803-authenticated-updates.md",
+      "bytes": 3085,
+      "sha256": "06d09568e127a8ee600bad8690506e3e1fff0b67f0f29bf984d1c8aae6a4876a"
     }
   ],
   "validation": {
@@ -642,7 +652,6 @@
     "milestone_count": 9,
     "gate_task_count": 9,
     "ready_tasks": [
-      "PWS-0803",
       "PWS-0806"
     ]
   },

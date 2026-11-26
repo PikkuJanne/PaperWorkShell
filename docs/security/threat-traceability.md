@@ -45,7 +45,7 @@ Its [coverage index](../development/image-intake-coverage.md) and
 | TM-018 | PWS-D027, PWS-D039 | PWS-0113, PWS-0805 | Safe summary baseline; later exact inventory preview, opt-in, local-only bundle, and canary scan |
 | TM-019 | PWS-D028, PWS-D031, PWS-D037 | PWS-0101, PWS-0102, PWS-0113, PWS-0705, PWS-0706 | Case-ID scoping, invalid-case isolation, partial failure, erasure wording, restart |
 | TM-020 | PWS-D034 | PWS-0005, PWS-0204, PWS-0207, PWS-0303, PWS-0801, PWS-0802, PWS-0803, PWS-0808 | OCR and overlay font/render runtime-closure admission, font/data identity and licensing, session-latched review composition, pin/hash/signature, license inventory, SBOM, artifact match |
-| TM-021 | PWS-D005, PWS-D013, PWS-D034 | PWS-0803, PWS-0807, PWS-0808 | Tamper/expiry/channel/rollback/offline/interruption/privacy tests |
+| TM-021 | PWS-D005, PWS-D013, PWS-D027, PWS-D034, PWS-D042, PWS-D043 | PWS-0803, PWS-0807, PWS-0808 | Offline signature and exact-byte verification, trust rotation, expiry/channel/rollback, package-swap rejection, installed interruption and recovery, and privacy capture |
 | TM-022 | PWS-D012, PWS-D013, PWS-D027, PWS-D038 | PWS-0008, PWS-0105, PWS-0107, PWS-0113, PWS-0202, PWS-0203, PWS-0204, PWS-0206, PWS-0207, PWS-0401 | Closed typed result/frame/template-snapshot validation, UUID/transform/review/OCR/searchable/quality correlation, hostile counts, discarded pixels/text/tool output, sanitized exceptions, fail-closed ACL recovery |
 | TM-023 | PWS-D009, PWS-D029 | PWS-0103, PWS-0104, PWS-0105, PWS-0108, PWS-0112, PWS-0202, PWS-0203, PWS-0204, PWS-0206, PWS-0207, PWS-0401, PWS-0407 | Source handle identity/digest/reopen; result/operation/review-generation and quality case/revision/page-tuple correlation; OCR volatile-output and searchable page-status authentication; cache/preview/destination/template alias, snapshot, race, and terminal recheck tests |
 | TM-024 | PWS-D026, PWS-D032, PWS-D033, PWS-D037 | PWS-0203, PWS-0204, PWS-0206, PWS-0207, PWS-0403, PWS-0404, PWS-0408, PWS-0409 | Tentative scan suggestions require explicit previewed Apply; OCR candidate/final text-presence separation, per-page review outcomes, deterministic review signals, confirmation ownership, and prohibited-claim/wording checks |
@@ -91,6 +91,10 @@ Its [coverage index](../development/image-intake-coverage.md) and
 - PWS-0608 is the independent permanent-redaction release gate; no earlier task may substitute for
   it.
 - PWS-0707 reviews shared-computer, accessibility, retention, and deletion behavior.
+- PWS-0803 verifies signed metadata and exact package bytes locally under TM-020 and TM-021.
+  The proposed update transport maps to TM-004 and TM-021. Installer execution must bind the
+  verified package to the launched file under TM-021 and TM-023. See the
+  [update verification plan](security-test-plan.md#pws-0803-update-verification).
 - PWS-0808 reviews dependencies, installer/update, migrations, diagnostics, and packaged artifacts.
 
 When a task changes threat ownership, update the threat model, this table, the test plan, and the

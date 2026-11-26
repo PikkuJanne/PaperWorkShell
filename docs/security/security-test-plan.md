@@ -761,6 +761,31 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
   automated budget gate and do not certify an HDD or other physical configuration.
 - Capture update traffic to prove no case/document fields leave the machine.
 
+## PWS-0803 update verification
+
+The [update design](../adr/0022-authenticated-application-updates.md) applies ST-003 and ST-015
+in stages. Each result describes its actual trust source, package and installed scope.
+
+- For the local verifier, generate isolated test signing keys in memory. Verify an authentic
+  metadata record with its exact package bytes. Reject a missing or wrong signature, modified
+  metadata, wrong product/target/channel, malformed records, expired or future offers, replay,
+  incorrect lengths or digests, excessive inputs and an interrupted package read. Evaluate using
+  an injected UTC time and trusted sequence floor without contacting a server.
+- Before enabling installation, exercise unknown, revoked and rotated release keys, including
+  failed recovery attempts signed only by the suspect key. Verify independent metadata authority
+  and required Windows publisher approval for the exact bytes that are about to execute. Exercise
+  package swapping and redirection with the existing installation available. Test user consent
+  and cancellation before launch of the installer. Prove the updater has no case access and
+  document workers still have no network access. If an online check is enabled, inspect controlled
+  request captures for allowlisted fields and absence of private case or device fields.
+- On the exact supported packaged build, test different-candidate update, concurrent attempts,
+  normal close, interrupted staging and activation, low space, launch failure, restart recovery,
+  and previous-build recovery. Reopen the prior/updated launch path and check the reconciled
+  runtime inventory, registration, audit record, sequence floor and synthetic case hashes. Test
+  any affected case migration and rollback compatibility. Verify keyboard access and screen-reader
+  announcements for consent, cancellation, errors and recovery. PWS-0807/PWS-0808 retain the
+  exact production-signed candidate verification.
+
 ## Failure report requirements
 
 A failing automated or manual scenario records only:

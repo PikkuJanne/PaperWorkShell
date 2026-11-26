@@ -6079,7 +6079,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: ready
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0005
@@ -6125,6 +6125,10 @@ tasks:
     - Use the installed package identity and repair contract with test-only trust
       fixtures in isolation to develop and verify the authenticated update mechanism.
       Qualify production-signed update bytes in the public release matrix.
+    - The first engineering increment verifies exact signed local metadata and package bytes
+      against supplied channel, UTC time and release-sequence policy. Isolated Ed25519 tests
+      exercise rejection without installing. The proposed trust and recovery design and next
+      action are recorded in docs/development/pws0803-authenticated-updates.md.
 - id: PWS-0804
   milestone: M8
   title: Implement case migration and release-to-release recovery tests

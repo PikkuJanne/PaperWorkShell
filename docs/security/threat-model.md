@@ -131,7 +131,7 @@ unrestricted same-account case outside this guarantee.
 | TB-06 | Export staging to external destination | Classify destination policy, commit exact verified bytes through a destination-local temporary file, verify size/digest, reject original/prior-output aliases, then atomically replace only that new derivative name |
 | TB-07 | Diagnostics collector to user-selected bundle destination | Freeze an allowlisted snapshot/entry manifest, preview and confirm that exact snapshot, then write it locally without recollection or implicit attachment/upload |
 | TB-08 | Template store to template loader | Opaque catalog key and same-handle fixed-local byte snapshot; external exact-size/SHA/signature status before strict data-only version/schema/semantic/lifecycle validation; explicit claim/trust display; no template path, imports, expressions, commands, case writer, or file/network dereference |
-| TB-09 | Optional updater to network/install boundary | Separate from document worker; no case data; authenticated metadata/package; channel and rollback policy |
+| TB-09 | Optional updater to package acquisition and installation | No document worker or case access, independently trusted metadata and exact package bytes, freshness and channel policy, user consent and recoverable activation |
 | TB-10 | Case storage to other local users/processes | Random internal names, restrictive permissions, lock/retention policy, no promise against account/admin compromise |
 
 The [dependency-boundary policy](../architecture/dependency-boundaries.md) enforces code-level
@@ -275,6 +275,24 @@ the review. Restart creates a fresh authority/admission attempt. See
 10. Authenticate shipped code and updates: pin, inventory, hash/sign, review licenses, prevent
     rollback where policy requires it, and keep update networking separate from processing.
 
+### Optional application updates
+
+PWS-0803 treats the download source, package and accompanying metadata as untrusted until
+verification against a product- and channel-specific authority provided independently of the
+offer. The local verifier checks a detached signature over exact bounded bytes, validates the
+trusted channel and freshness policy, and checks the signed size and SHA-256 of the supplied
+package stream. It does not open local files, choose its trust authority, install an update or
+make a network request. The proposed installation flow adds Windows publisher verification and
+binds the verified bytes to what actually runs. [Update trust and recovery design](../adr/0022-authenticated-application-updates.md).
+
+A distributor may substitute or withhold an offer. A compromised signer may issue fresh-looking
+offers or try to establish a replacement key. The update must reject unauthorized signing keys,
+expired or forged metadata, incorrect channel/target and replay at or below the trusted sequence
+floor. A compromised key needs a separate recovery authority. The issuer must never learn case
+or document data. If the installer fails before, during or after switching versions, the exact
+working build must remain launchable or recoverable without losing case state or weakening
+normal downgrade policy. Those installation and recovery controls need native packaged evidence.
+
 ## Threat catalogue
 
 Impact describes the worst credible confidentiality, integrity, availability, or user-safety
@@ -303,7 +321,7 @@ effect before mitigations. Every threat is mapped in
 | TM-018 | A diagnostic bundle includes prohibited content, changes after preview, or is created/uploaded without informed opt-in | High | Freeze and digest the exact allowlisted entry snapshot, preview/confirm it, write only that snapshot locally, and scan produced bundles for canaries |
 | TM-019 | Deletion removes data outside one case, reports false forensic erasure, or leaves an ambiguous partial state | High | Resolve by internal case ID, inventory/confirm scope, report partial failure, and state erasure limitations |
 | TM-020 | A dependency, CI/build action, executable, font, language pack, build input, or release artifact is compromised | High | Admission, pinning, hashes/signatures, licensing, inventory, SBOM, provenance, and release verification are gated |
-| TM-021 | An update is tampered, expired, from the wrong channel, rolled back, interrupted, or leaks case data | High | Optional updater authenticates before install, sends no case data, enforces policy, and preserves recoverability |
+| TM-021 | An update is unsigned, tampered, stale, for the wrong channel or product, replayed, raced, interrupted, signed with a compromised key, or leaks case data | High | Verify independently trusted metadata and exact package bytes, separate update trust from cases, require a separate revocation/recovery authority, enforce freshness and version policy, and preserve a working installation on failure |
 | TM-022 | Worker/tool output or raw third-party exceptions corrupt state, steer paths, or leak hostile values to UI/logs | High | Typed result validation and stable sanitized error mapping precede any display or mutation |
 | TM-023 | A source, case/cache file, template, preview, or destination changes or aliases protected data between validation, reading, hashing, display, and commit | High | Same-handle file-identity/digest checks, hardlink/reparse defenses, immutable snapshots, transactional staging, and terminal rechecks detect races |
 | TM-024 | Automation or wording silently marks requirements complete or overclaims OCR, validity, privacy, or acceptance | Medium | User confirmation and concrete limited claims remain authoritative; heuristic results say “Needs review” |
