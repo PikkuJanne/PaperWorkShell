@@ -61,6 +61,11 @@ the actual defect or observation and the evidence for any later retest.
   Starting with an empty filename selected the intended path and produced a
   reopened ZIP matching the reviewed digest and exact file inventory. The
   source fix and regression passed. [Diagnostics investigation](pws0807-diagnostics-investigation.md)
+- Unsigned R1, built from commit e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec,
+  passed the installed standard-user support ZIP scenario with a synthetic
+  case open. The native picker honored the submitted filename, the reopened
+  archive matched the preview and the occupied ZIP stayed byte-for-byte intact.
+  Signed-candidate diagnostics remain pending. [Packaged R1 verification](pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1)
 - The existing canonical installer smoke ran the exact B8 installed runtime on
   the disconnected Pro guest under constrained-v1. The separate launch receipt
   qualifies the standard-user token and session. The component smoke imported

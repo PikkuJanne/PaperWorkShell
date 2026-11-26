@@ -128,6 +128,55 @@ It failed on the old prefilled filename. After the change, all 37 focused
 diagnostics dialog, archive, Windows publication, privacy and accessibility
 tests passed, including the existing no-overwrite and cleanup cases.
 
+## Packaged verification on unsigned R1
+
+On 2026-11-26, the source fix and regression were committed on
+`codex/pws-0806-documentation` at
+`e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec`. The canonical offline wheel,
+stage and compiler built a fresh engineering installer. All 345 packaged
+application files matched the exact committed Git bytes before and after
+compilation.
+
+| Artifact | Verified identity |
+| --- | --- |
+| Candidate | `pws0807-diagnostics-engineering-r1` |
+| Installer | `PaperWorkShell-pws0807-diagnostics-engineering-r1-win-x64-UNSIGNED.exe`, 513,022,419 bytes, Authenticode NotSigned |
+| Installer SHA-256 | `a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8` |
+| Installer receipt SHA-256 | `875894759adf79cd580c69a81018ca06c8a734e52f0fbd1754d2ec51bbd3220f` |
+| Resolved inventory SHA-256 | `8a9e3202d479c11e4e678adb0c25e31eab1cd1718f036187e500a7dc44566420` |
+| Installed marker SHA-256 | `c01268636ea37745e065516c82f892fc40fae418fdafaeae22cf814599bf6736` |
+
+On the disconnected Windows 11 Pro x64 26300.9711 guest, the interactive
+standard user removed B8 through **Keep cases** and installed R1. Setup
+returned 0. All 3,219 installed payload files matched the inventory, the
+normal Start shortcut resolved to the verified launcher, and all 353 case-file
+hashes matched after removal and installation.
+
+The normal shortcut opened the exact R1 desktop without elevation. In a new
+synthetic case with one imported page, Save was disabled before consent.
+Windows UI Automation read the actual preview's ZIP and member hashes. The
+native picker honored the submitted absolute filename, and the app announced
+a successful local save. The reopened 1,567-byte ZIP matched preview SHA-256
+`d1038d872639c6f9ab31c3cfc0ec7d668ada47f8d1712730a6a7d90a613a10e8` and
+the exact two-member inventory, sizes and digests. CRCs passed, the allowlist
+matched the checked-in fixture and the summary omitted the checked synthetic
+path, account, case and filename tokens.
+
+The same preview was submitted to a distinct occupied ZIP. The app reported
+“A file already exists there. Choose a new support bundle filename.” The
+occupied ZIP retained SHA-256
+`4f5bb7b36f1b58f36901f31c18b721a6875a44bc731fb8da3779e39b77662304`.
+The selected ZIP remained unchanged. The scratch folder had exactly the two
+expected ZIP files and zero staging files. The synthetic source hash matched
+and the installed runtime contained no default support ZIP. No debugger or
+in-memory product changes were used in this run.
+
+The build, identity, UI and archive receipts are under
+`output/pws0807/packaged-r1` in the repository root. After retaining the
+evidence and closing the synthetic case and application, the owned pre-test
+checkpoint was restored. The B8 installed marker and all 353 baseline
+case-file hashes matched.
+
 ## Next step
 
 On the signed candidate built with this fix, exercise the same filename entry

@@ -234,8 +234,17 @@ PWS-0807 isolated the native picker retaining its suggested ZIP filename in the 
 directory. With a temporary in-memory change to start at the user's home folder with an empty
 filename, the same accessibility edit selected the requested path. The installed B8 writer
 committed the exact reviewed two-file ZIP. The same change is in source and passed the focused
-regression. Candidate diagnostics verification remains pending.
+regression.
 [TRACE B8 diagnostics investigation](../development/pws0807-diagnostics-investigation.md).
+
+The exact unsigned PWS-0807 R1 installer was built from
+`e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec` and has SHA-256
+`a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8`.
+The offline standard-user desktop saved the exact preview to the selected
+filename, refused an occupied ZIP, and left zero staging files. Verified
+replacement preserved all 353 baseline case files. Signed-candidate
+diagnostics verification remains pending.
+[Packaged R1 verification](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1).
 
 The [PWS-0807 matrix](../development/pws0807-rc-matrix.md) records the environment inventory,
 existing engineering results, synthetic rehearsal sample, and prerequisites for the signed-candidate

@@ -6426,6 +6426,10 @@ tasks:
       verified output, OCR, unavailable-input and no-overwrite checks, and preservation.
       The receipt records final case/cache sizes and zero temporary residue. Peak resource
       measurements, slow I/O, disk exhaustion, and signed release qualification remain pending.
+    - Exact unsigned R1 from e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec passed the offline
+      standard-user native picker save, preview SHA-256 and member checks, and occupied ZIP refusal
+      with an open synthetic case. All 3219 installed payload files matched. The 353 baseline case
+      files matched after replacement and restore. See docs/development/pws0807-diagnostics-investigation.md.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 release gate

@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 543908,
-      "sha256": "5a0ba9e524051fff1435724ef91d9965890aff09bc34d585d0271cea3f02e853"
+      "bytes": 544306,
+      "sha256": "9f87369c6ce3416b2ef4166453d9147530bd4149b6137c34826a442c7c38c8e6"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 37169,
-      "sha256": "dfb994a8003f3385bd5ba300097b08a2e6bd5351f115e3143614d33726351075"
+      "bytes": 37676,
+      "sha256": "b4b0ff5949e4b98719f5af89bf045fcbf14c92bea05dcc47d4f6ba151f806b79"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -665,13 +665,13 @@
     },
     {
       "path": "docs/development/pws0807-diagnostics-investigation.md",
-      "bytes": 9211,
-      "sha256": "0933aa07d57ee2507f86d1c652c3a2f9b88965cbf735924f1c632b6947eebaeb"
+      "bytes": 12024,
+      "sha256": "d768c8c736c4ace5a4fdba568711e7703efc5987b82f05737da42bc463c09769"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 17558,
-      "sha256": "97ca9241b944b46168bccefc279eb3133deee173f07f9ea216fe9698d51e2436"
+      "bytes": 18013,
+      "sha256": "cdd55dc20a56b0e74309c6fbdef057048b007898d5eabeb593fc46417257ec15"
     }
   ],
   "validation": {
