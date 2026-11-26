@@ -7257,7 +7257,7 @@ tasks:
       Poppler and strict pikepdf checks verified all four pages, digital text, 90-degree blue-page
       rotation and invisible OCR on both scans. Actual order is form, blue PDF, PNG, PDF scan;
       the guide requested PNG second. Each scan retains PAGE 206 and raw SCAM PAGE 206.
-      Approximately ten initial Add file errors remain an unresolved T01/T11 intake finding.
+      Approximately ten initial Add file errors were recorded at the time as a T01/T11 intake finding.
       The error message is not remembered and the failure cause is unproved. Page scrolling discoverability is recorded in the historical feedback. The later TRACE
       decision and installed verification are tracked under PWS-0813. Receiving runtime/environment and offline
       status were not independently collected. T05/HT-06 remain partial and PWS-0811 stays in
@@ -7269,7 +7269,12 @@ tasks:
       03-scan.png and ocr-scan.pdf on their first submissions in a fresh case. UI completions,
       revisions 0 through 4, four active pages in order and matching original and case-copy
       SHA-256 values are recorded in output/pws0811/b8-cold-import-20261126 and the canonical
-      continuation. The original V12 Add file finding stays open under T01/T11 and HT-07/HT-16.
+      continuation. The V12 Add file error did not reproduce in that B8 rehearsal.
+    - >-
+      On 2026-11-26 the maintainer closed the unreproduced second-PC Add file report under
+      T01/T11 and HT-07/HT-16 and directed that no further PWS-0811 human testing be done.
+      The original V12 observations remain recorded. The cause is unknown. Separate
+      T05/HT-06 and final-candidate evidence requirements keep PWS-0811 in review.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
