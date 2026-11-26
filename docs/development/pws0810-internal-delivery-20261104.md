@@ -7,6 +7,9 @@ qualified public release.
 
 ## Authority and scope
 
+This section records the November 4 delivery assignment. Current sequencing and
+prerequisites are in [AGENTS.md](../../AGENTS.md) and [TASKS.yaml](../../TASKS.yaml).
+
 The local branch is `codex/pws-0607-redaction-export` at HEAD `2e70ec0`;
 extensive pre-existing uncommitted work was preserved, with no reset, staging,
 commit or sibling-repository access. This checkout provenance is separate from

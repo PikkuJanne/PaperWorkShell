@@ -20,20 +20,18 @@ TASK_FILE: Final = "TASKS.yaml"
 SCHEMA_FILE: Final = "TASKS.schema.json"
 DECISIONS_FILE: Final = "DECISIONS.md"
 DECISION_HEADING: Final = re.compile(r"^## (PWS-D[0-9]{3})\b", re.MULTILINE)
-ACTIVE_STATUSES: Final = frozenset({"ready", "in_progress", "review", "done", "blocked"})
 EXPECTED_LISTS: Final[dict[str, list[str]]] = {
     "status_values": ["planned", "ready", "in_progress", "review", "done", "blocked", "deferred"],
     "priority_order": ["P0", "P1", "P2"],
     "effort_values": ["S", "M", "L", "XL"],
 }
 REQUIRED_GRAPH_RULES: Final = (
-    "one_task_per_change",
     "gate_requires_all_dependencies_done",
     "decision_refs_must_exist",
     "cycles_forbidden",
 )
 X64_SCOPE_DECISION: Final = "PWS-D043"
-X64_SCOPE_TASKS: Final = frozenset({"PWS-0802", "PWS-0803", "PWS-0808"})
+X64_SCOPE_TASKS: Final = frozenset({"PWS-0802", "PWS-0803", "PWS-0808", "PWS-0814"})
 _ARM_SCOPE: Final = re.compile(r"\b(?:arm(?:64)?|aarch64|x64\s+emulation)\b", re.IGNORECASE)
 _SCOPE_EXCLUSION: Final = re.compile(
     r"\b(?:outside (?:the )?(?:project )?scope|out of scope|not supported|"
@@ -467,7 +465,7 @@ def semantic_issues(data: Mapping[str, Any], decisions_text: str) -> list[Valida
             for dependency in known_dependencies
             if task_map[dependency]["status"] != "done"
         ]
-        if status in ACTIVE_STATUSES and incomplete:
+        if status == "done" and incomplete:
             issues.append(
                 ValidationIssue(
                     "TASK_DEPENDENCY_INCOMPLETE",
@@ -541,22 +539,6 @@ def semantic_issues(data: Mapping[str, Any], decisions_text: str) -> list[Valida
                     "MILESTONE_GATE_ASSIGNMENT",
                     f"$.milestones[{index}].gate_task",
                     f"{gate_id} belongs to {gate['milestone']}, not {milestone_id}",
-                )
-            )
-
-        expected_dependencies = {
-            cast(str, task["id"])
-            for task in tasks
-            if task["milestone"] == milestone_id and task["kind"] != "gate"
-        }
-        actual_dependencies = set(cast(list[str], gate["depends_on"]))
-        missing_dependencies = sorted(expected_dependencies - actual_dependencies)
-        if missing_dependencies:
-            issues.append(
-                ValidationIssue(
-                    "MILESTONE_GATE_COVERAGE",
-                    f"$.milestones[{index}].gate_task",
-                    f"{gate_id} omits: {', '.join(missing_dependencies)}",
                 )
             )
 

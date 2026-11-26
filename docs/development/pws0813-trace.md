@@ -2,6 +2,12 @@
 
 ## Scope and current baseline
 
+TRACE is the approved default native interface. The record below preserves its
+implementation and installed B8 evidence. For future work use the maintained
+source, [AGENTS.md](../../AGENTS.md) and current [task entries](../../TASKS.yaml).
+PWS-0814 tracks automated setup separately from prior candidate evidence and
+public signing.
+
 On 25 November 2026 the maintainer approved TRACE as PaperWorkShell's default native design and
 authorized implementation through private build, installed verification and delivery. The approval
 supersedes the proposal-only sequencing, a permanent optional shell and the old-interface human
@@ -750,6 +756,6 @@ The integration job passed 734 tests with 40 capability or fixture skips and
 failed the final temporary-storage completeness check in the native sanitization
 recovery test. The earlier cancellation, timeout, termination, output-bound,
 verified retry, and memory checks passed in that test. The incomplete
-measurement remains a failed gate. The follow-up uses the same hosted suites
-and requires both jobs to pass before `main` advances. Evidence is under
+measurement remains a failed gate for that run. The next action recorded at that
+checkpoint was to rerun the two hosted jobs on a corrected baseline. Evidence is under
 `output/pws0813/development-baseline-checks/promotion-a6feb93`.

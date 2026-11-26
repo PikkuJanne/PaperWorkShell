@@ -1,6 +1,6 @@
 schema_version: 1
 project: PaperWorkShell
-task_graph_version: 0.4.0
+task_graph_version: 0.4.1
 frozen_at: '2026-11-04'
 roadmap_file: ROADMAP.md
 decision_file: DECISIONS.md
@@ -33,23 +33,20 @@ effort_values:
 - L
 - XL
 graph_rules:
-  dependency_semantics: A task may start only when every task in depends_on has status done.
-  default_selection:
-  - lowest incomplete milestone
-  - highest priority using P0, P1, P2
-  - critical_path true before false
-  - ascending task id
-  one_task_per_change: true
+  dependency_semantics: >-
+    Completion requires every listed prerequisite to be done. Scheduling follows the real
+    prerequisites of each operation. Independent preparation can proceed while a prerequisite
+    is pending, and milestone labels and priorities guide planning.
   gate_requires_all_dependencies_done: true
   decision_refs_must_exist: true
   cycles_forbidden: true
-definition_of_done_ref: AGENTS.md#16-definition-of-done-checklist
+definition_of_done_ref: AGENTS.md#definition-of-done
 milestones:
 - id: M0
   name: Product contract and foundation
   release_target: development baseline
   objective: Establish a reproducible repository, architecture boundaries, schemas, threat model, dependency policy,
-    and synthetic corpus before feature work.
+    and a synthetic corpus.
   gate_task: PWS-0010
 - id: M1
   name: Reliable end-to-end vertical slice
@@ -625,7 +622,8 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0010
+  - PWS-0001
+  - PWS-0004
   decision_refs:
   - PWS-D009
   - PWS-D010
@@ -1516,7 +1514,9 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0114
+  - PWS-0104
+  - PWS-0107
+  - PWS-0115
   decision_refs:
   - PWS-D007
   - PWS-D009
@@ -2202,7 +2202,6 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0209
   - PWS-0006
   decision_refs:
   - PWS-D011
@@ -2984,7 +2983,6 @@ tasks:
   critical_path: true
   depends_on:
   - PWS-0007
-  - PWS-0308
   decision_refs:
   - PWS-D025
   - PWS-D033
@@ -3706,6 +3704,10 @@ tasks:
   status: done
   critical_path: true
   depends_on:
+  - PWS-0010
+  - PWS-0114
+  - PWS-0209
+  - PWS-0308
   - PWS-0401
   - PWS-0402
   - PWS-0403
@@ -3789,8 +3791,8 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0409
   - PWS-0105
+  - PWS-0404
   decision_refs:
   - PWS-D015
   - PWS-D019
@@ -4354,7 +4356,6 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0507
   - PWS-0004
   - PWS-0009
   decision_refs:
@@ -5130,7 +5131,9 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0608
+  - PWS-0408
+  - PWS-0505
+  - PWS-0607
   decision_refs:
   - PWS-D030
   objective: Ensure every primary workflow action has a complete keyboard path, logical focus order, visible focus,
@@ -5741,7 +5744,6 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0707
   - PWS-0005
   decision_refs:
   - PWS-D034
@@ -5921,26 +5923,10 @@ tasks:
   - windows
   - release
   blocker:
-    reason: Public-release phase deferred by the maintainer's 2026-11-04 internal-delivery reset;
-      this blocker concerns the original signed public outcome only and does not block PWS-0810.
-      Trusted public signing is not connected. R7 remains the exact preserved accepted baseline.
-      Corrected R9 is built, unsigned/internal, and its independent app-local runtime/rights/source
-      audit passes. Fresh genuine-standard-account x64 native GUI input/edit/quality-OCR/export,
-      Notices, interactive repair, refusal mechanics, review Cancel, confirmed synthetic deletion
-      with a reproducible locked-case failure, and default-preserve removal pass at their recorded
-      scope. R6 full OCR/reopen/reinstall and exact interruption/recovery remain accepted only within
-      the independently audited unchanged boundary; the original R7 GUI failure remains unexplained.
-      Finite A9 full-error and A11 inventory/confirmation/partial-result NVDA reading now pass
-      with disclosed taskbar/caption/native-menu pointer activation followed by keyboard controls;
-      initial context gaps and both failed review supplements remain historical, not relabelled.
-      Strict V3 collection62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c
-      verifies natural install0/review1/preserve0/reader0, all closed/no fallback and exact retained data.
-      Corrected removed record40868e40202cb432850f7577d8afe0ea2e58598d6b3ff43d00b444e5ac036e15
-      and independent case/work archive reviews pass; the disposable guest was retired after backups.
-      Actual bounded packaged low-disk qualification remains unrun. A fresh current-guest probe
-      7339733454b669dc6b048aa510a6cbadafbd0fc4940c2a335584cdea18ae8a2b confirms no usable
-      quota/partition capability. No universal reader reliability, broader Windows build matrix,
-      trusted signature or public-release pass is claimed.
+    reason: Trusted public signing is unavailable. It prevents signing and signature
+      qualification of the public installer and downstream PWS-0807/PWS-0808 public
+      release checks that require signed bytes. The existing private installer and
+      reviewed runtime support independent packaging, setup and document checks.
     evidence:
     - docs/development/pws0802-community-runtime-20261103.md retains the accepted R6/R7 installer,
       complete runtime, final Microsoft-only terms, observed interruption/recovery, direct keyboard GUI,
@@ -5955,13 +5941,12 @@ tasks:
     - packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt
       is the final local agreement covering five unique Microsoft DLLs at nine inventoried destinations;
       the earlier proposal and old-route notices are retained as historical evidence.
-    requested_action: Public-distribution work is deferred by the maintainer's 2026-11-04 reset;
-      no owner action is requested during internal delivery. Trusted signing and the original signed-release
-      requirements remain pending for later explicit resumption. Prior SignPath contact permission is exhausted;
-      no further contact, enrollment, submission, upload or agreement is authorized. The unavailable real
-      system-volume disk-full test is not performed and deferred to later release qualification; do not ask
-      for its VM again or fill a real working volume. Accepted Microsoft terms are complete. Active internal
-      delivery and functional repairs proceed independently through PWS-0810.
+    requested_action: When public distribution is resumed, connect an approved signing route
+      and qualify the exact signed installer. The separate real system-volume low-disk
+      observation requires an authorized isolated target with an enforceable quota or
+      bounded volume. No provider contact, enrollment, upload or agreement is authorized
+      by this task record. Continue internal setup, update implementation and release
+      preparation using the existing authorized inputs.
   evidence:
     completed_at: null
     revision: candidate:pws0802-internal-20261103-r7
@@ -6064,19 +6049,41 @@ tasks:
       actual standard account. Sandbox Windows 11 Enterprise 26100.9711 AMD64 is now available and operated
       by Codex with a proven fresh standard-account logon. Partial guest passes remain distinct from the
       full qualification still pending. ARM64 x64 emulation remains disabled and unqualified.
-    - PWS-0804 and PWS-0805 remain done with their exact accepted evidence. No other dependency-ready
-      task remains; PWS-0803 is not unblocked. Accepted source/UI evidence is reused only where unchanged.
+    - Historical internal-delivery disposition before the 2026-11-26 owner directive.
+      Public-release phase deferred by the maintainer's 2026-11-04 internal-delivery reset;
+      this blocker concerns the original signed public outcome only and does not block PWS-0810.
+      Trusted public signing is not connected. R7 remains the exact preserved accepted baseline.
+      Corrected R9 is built, unsigned/internal, and its independent app-local runtime/rights/source
+      audit passes. Fresh genuine-standard-account x64 native GUI input/edit/quality-OCR/export,
+      Notices, interactive repair, refusal mechanics, review Cancel, confirmed synthetic deletion
+      with a reproducible locked-case failure, and default-preserve removal pass at their recorded
+      scope. R6 full OCR/reopen/reinstall and exact interruption/recovery remain accepted only within
+      the independently audited unchanged boundary; the original R7 GUI failure remains unexplained.
+      Finite A9 full-error and A11 inventory/confirmation/partial-result NVDA reading now pass
+      with disclosed taskbar/caption/native-menu pointer activation followed by keyboard controls;
+      initial context gaps and both failed review supplements remain historical, not relabelled.
+      Strict V3 collection62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c
+      verifies natural install0/review1/preserve0/reader0, all closed/no fallback and exact retained data.
+      Corrected removed record40868e40202cb432850f7577d8afe0ea2e58598d6b3ff43d00b444e5ac036e15
+      and independent case/work archive reviews pass; the disposable guest was retired after backups.
+      Actual bounded packaged low-disk qualification remains unrun. A fresh current-guest probe
+      7339733454b669dc6b048aa510a6cbadafbd0fc4940c2a335584cdea18ae8a2b confirms no usable
+      quota/partition capability. No universal reader reliability, broader Windows build matrix,
+      trusted signature or public-release pass is claimed.
+    - PWS-0804 and PWS-0805 retain their accepted evidence. The private installer
+      supports independent PWS-0803 implementation and PWS-0814 setup proof.
+
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
-  - PWS-0801
-  - PWS-0802
+  - PWS-0005
+  - PWS-0810
   decision_refs:
   - PWS-D005
   - PWS-D013
@@ -6115,8 +6122,9 @@ tasks:
     revision: null
     commands: []
     notes:
-    - 'Maintainer scope decision 2026-11-04: Windows 11 x64 only under PWS-D043. The PWS-0802
-      dependency remains required; out-of-scope platform qualification creates no prerequisite.'
+    - Use the installed package identity and repair contract with test-only trust
+      fixtures in isolation to develop and verify the authenticated update mechanism.
+      Qualify production-signed update bytes in the public release matrix.
 - id: PWS-0804
   milestone: M8
   title: Implement case migration and release-to-release recovery tests
@@ -6126,7 +6134,6 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0801
   - PWS-0109
   decision_refs:
   - PWS-D009
@@ -6177,7 +6184,7 @@ tasks:
     - Every applicable source-feature acceptance criterion is met. Public packaged release/matrix
       qualification remains with PWS-0802 and its release gates; no clean-machine or signing claim.
     - Original failed source/metadata/preparation observations and accepted earlier evidence are retained.
-      No further dependency-ready task exists while PWS-0802 remains blocked; PWS-0803 stays planned.
+      At that historical review, the then-current sequence still put PWS-0803 after PWS-0802.
 
 - id: PWS-0805
   milestone: M8
@@ -6189,7 +6196,6 @@ tasks:
   critical_path: false
   depends_on:
   - PWS-0113
-  - PWS-0801
   decision_refs:
   - PWS-D027
   - PWS-D039
@@ -6235,20 +6241,20 @@ tasks:
     - Every applicable source-feature acceptance criterion is met. Public packaged release/matrix
       qualification remains with PWS-0802 and its release gates; no clean-machine or signing claim.
     - Original failed source/metadata/preparation observations and accepted earlier evidence are retained.
-      No further dependency-ready task exists while PWS-0802 remains blocked; PWS-0803 stays planned.
+      At that historical review, the then-current sequence still put PWS-0803 after PWS-0802.
 
 - id: PWS-0806
   milestone: M8
-  title: Publish user, support, security, and vulnerability-handling documentation
+  title: Prepare user, support, security, and vulnerability-handling documentation
   kind: implementation
   priority: P0
   effort: L
-  status: planned
+  status: ready
   critical_path: false
   depends_on:
-  - PWS-0803
   - PWS-0804
   - PWS-0805
+  - PWS-0813
   decision_refs:
   - PWS-D020
   - PWS-D022
@@ -6346,7 +6352,8 @@ tasks:
     deliberately synthetic cleared fixture text and its synthetic expected-output evidence remain permitted.
   - No release-blocking defect remains open.
   verification:
-  - Run the full packaged-build test matrix on clean environments.
+  - Run the full packaged-build test matrix on clean environments. Verify applicable installed
+    fixes, offline operation and resource behavior against the exact release candidate.
   - Perform manual accessibility, compatibility, redaction, update, migration, and uninstall scenarios.
   - Run black-box launch/open/offline/preserve/reinstall/remove-data/association scenarios against the frozen synthetic
     sample package and reconcile results and hashes with `docs/release/RELEASE_EVIDENCE.md`.
@@ -6360,7 +6367,12 @@ tasks:
     completed_at: null
     revision: null
     commands: []
-    notes: []
+    notes:
+    - The exact signed candidate is needed for final signed-package results. Prepare the
+      matrix and fixtures, and exercise independent checks with suitable internal builds.
+    - The previously tested guest lacked a bounded quota or test partition for the packaged
+      low-disk observation. Obtain an authorized isolated environment with that capability
+      for the affected check and continue the remaining matrix work independently.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 release gate
@@ -6370,6 +6382,10 @@ tasks:
   status: planned
   critical_path: true
   depends_on:
+  - PWS-0409
+  - PWS-0507
+  - PWS-0608
+  - PWS-0707
   - PWS-0801
   - PWS-0802
   - PWS-0803
@@ -6378,9 +6394,6 @@ tasks:
   - PWS-0806
   - PWS-0807
   - PWS-0809
-  - PWS-0810
-  - PWS-0811
-  - PWS-0812
   - PWS-0813
   decision_refs:
   - PWS-D003
@@ -6441,8 +6454,7 @@ tasks:
   effort: M
   status: done
   critical_path: false
-  depends_on:
-  - PWS-0010
+  depends_on: []
   decision_refs:
   - PWS-D001
   - PWS-D003
@@ -6536,7 +6548,7 @@ tasks:
   status: done
   critical_path: true
   depends_on:
-  - PWS-0707
+  - PWS-0705
   - PWS-0801
   - PWS-0804
   - PWS-0805
@@ -6555,7 +6567,7 @@ tasks:
   - PWS-D043
   objective: Deliver a usable unsigned internal Windows 11 x64 application from the current local
     checkout and verified R9 candidate, independently of deferred public signing and release-only
-    qualification. Repair concrete functional defects and stop after the usable internal handoff.
+    qualification. Repair concrete functional defects and deliver the usable internal handoff.
   deliverables:
   - Exact installable candidate identity and normal installed shortcut/executable location
   - Finite installed core-workflow check with applicable reused evidence and plainly stated limitations
@@ -6662,7 +6674,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: review
+  status: done
   critical_path: true
   depends_on:
   - PWS-0810
@@ -6726,9 +6738,23 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-11-26'
+    revision: candidate:pws0811-engineering-image-preview-v12
     commands:
+    - >-
+      Exact V12 registered tools/dev.py test-security and test-accessibility passed
+      1329 checks with six link-capability skips and 359 checks respectively. The
+      2188-file frozen source inventory matched before and after.
+    - >-
+      Maintained source 2cfe80e28a27368e3d2059ab38c6855ade4b10f1 passed the hosted
+      Windows core and integration suites (run 45811484139). The separate exact V12
+      unit rerun stopped before verdict. Two reproduced preview-storage test
+      failures passed with test-only corrections in a disposable exact-V12 source copy.
+    - >-
+      The original check_completion.py audit exited 1 with T05 and HT-06 partial.
+      All 12 V12 delivery files, seven transfer ZIP members and the original R9
+      installer matched preserved hashes. The maintainer accepted the documented
+      timing limitation for this internal closure.
     - "Offline uv build --wheel --sdist; tools.build_windows_installer stage and compile all exited 0 (exact arguments in build-execution-r16/result.json)."
     - "Frozen R16 registered check driver, phases static/security/integration: precheck and 16 static passed; security 1329 passed/6 skipped; core integration 699 passed/25 skipped/1 failed (test double)."
     - "Focused corrected active test module (offscreen): 3 passed; scoped Ruff format/lint and registered tools/dev.py typecheck passed. All 325 active application files matched frozen R16; no full corrected integration rerun."
@@ -7274,7 +7300,17 @@ tasks:
       On 2026-11-26 the maintainer closed the unreproduced second-PC Add file report under
       T01/T11 and HT-07/HT-16 and directed that no further PWS-0811 human testing be done.
       The original V12 observations remain recorded. The cause is unknown. Separate
-      T05/HT-06 and final-candidate evidence requirements keep PWS-0811 in review.
+      T05/HT-06 and final-candidate evidence requirements kept PWS-0811 in review at that point.
+    - >-
+      On 2026-11-26 the maintainer accepted exact V12 for internal delivery with
+      the documented timing limitation. The source is 28c254b8a472184ae0817c28a223c7f9a1aa91e8
+      and unsigned Setup SHA-256 is
+      581997b97904b0aa71813da230fd1240dddc5d86e70f1c7735e5b1aa690bc7ed.
+      The 2000 ms target, measured V12 warm PNG miss (2088.3596 to 2118.9843 ms),
+      inconclusive sample and partial T05/HT-06 verdicts remain recorded. TRACE B8
+      timing preparation ended before any timed import. PWS-0807 verifies applicable
+      installed behavior and performance against the exact public candidate. See
+      docs/development/pws0811-repairs-20261106.md for the original receipt locations.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline
@@ -7404,3 +7440,62 @@ tasks:
     - "The continuation records B6 reopen evidence, B7 package and batch evidence, the B7 narrow-pane failure, and exact B8 source, installer and native fix verification."
     - "The bounded offline console path was verified in the signed-in standard-user session. Logged-out batch admission was denied by the existing Windows account policy. The signed release and M8 release gate retain their separate prerequisites."
     - "The TRACE continuation records the separate baseline scan verification under the approved ADR 0021 amendment. Both registered scans passed in the complete linked repository with the 768 MiB development work cap, the 50,000-record cap, and full ref, index, and working-file coverage."
+
+- id: PWS-0814
+  milestone: M8
+  title: Automate and verify setup for the installed Windows application
+  kind: implementation
+  priority: P0
+  effort: L
+  status: done
+  critical_path: false
+  depends_on:
+  - PWS-0813
+  decision_refs:
+  - PWS-D003
+  - PWS-D005
+  - PWS-D009
+  - PWS-D013
+  - PWS-D028
+  - PWS-D029
+  - PWS-D034
+  - PWS-D042
+  - PWS-D043
+  objective: Install and verify an explicitly identified TRACE build from a prepared artifact
+    on an authorized Windows 11 x64 target using the supported per-user installation.
+  deliverables:
+  - One executable setup entry point and documented starting state.
+  - Evidence from the exact installed launcher, an offline synthetic import/export/reopen,
+    a safe repeat run, and a controlled recovery check.
+  acceptance_criteria:
+  - Setup checks the target environment, authenticates the intended installer against a
+    trusted digest, and supports the documented per-user scope and packaged runtime.
+  - Verification identifies the resulting installation and successful ordinary launch.
+  - Installed document processing works offline. A synthetic input stays byte-identical
+    and the newly exported PDF independently reopens with usable content.
+  - Setup can run again safely, reassesses actual state and reports precise recovery steps
+    for failures without deleting cases, forcing a restart or weakening execution policy.
+  verification:
+  - Run the focused setup and governance checks, including artifact-refusal coverage.
+  - Execute the documented entry point on the authorized target and record install, launch,
+    offline processing, output inspection, repeat behavior and controlled recovery.
+  risk_tags:
+  - installer
+  - recovery
+  - offline-processing
+  - data-integrity
+  blocker: null
+  evidence:
+    completed_at: '2026-11-26'
+    revision: 'candidate:pws0813-trace-engineering-b8'
+    commands:
+    - Setup-PaperWorkShell.exe --installer PaperWorkShell-pws0813-trace-engineering-b8-win-x64-UNSIGNED.exe --receipt installer-receipt.json --receipt-sha256 145d9efeb0ace1e24e43dd1543a48c0433dac2aad2f764fb4139238c4b4461bc --accept-microsoft-terms a5cdf1136b18611fc5235c657b7ad113a9ac338abe6c1af3c299205d9492c718 --repair
+    - Setup-PaperWorkShell.exe repeat with the same receipt and no --repair flag
+    - python -m pytest tests/integration/test_windows_automated_setup.py
+    - python tools/dev.py validate-task-graph
+    - python tools/dev.py validate-portfolio-boundary
+    notes:
+    - docs/development/pws0814-automated-setup.md records the exact launcher and package,
+      native per-user repair and launch, offline GUI import/export and independent PDF
+      reopening, early failure paths, and successful verification and reuse on repeat.
+    - Trusted signing remains a separate public-delivery prerequisite.

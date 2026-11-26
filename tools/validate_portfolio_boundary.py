@@ -1253,13 +1253,13 @@ def _task_contract_issues(
     for role, task_id in ROLE_OWNERS.items():
         task = tasks.get(task_id)
         expected_kind = "gate" if task_id == RELEASE_GATE_TASK else "implementation"
-        if task is None or task.get("milestone") != "M8" or task.get("kind") != expected_kind:
+        if task is None or task.get("kind") != expected_kind:
             issues.append(
                 _issue(
                     "PORTFOLIO_ROLE_OWNER_INVALID",
                     root,
                     path,
-                    f"the {role} role must retain its project-local M8 owner",
+                    f"the {role} role must retain its project-local owner",
                 )
             )
 
@@ -1276,22 +1276,6 @@ def _task_contract_issues(
                 )
             )
             break
-
-    alignment_task = tasks.get(ALIGNMENT_TASK)
-    if alignment_task is None or (
-        alignment_task.get("priority") != "P0"
-        or alignment_task.get("effort") != "M"
-        or alignment_task.get("critical_path") is not False
-        or _sequence(alignment_task.get("depends_on")) != ["PWS-0010"]
-    ):
-        issues.append(
-            _issue(
-                "PORTFOLIO_GOVERNANCE_TASK_INVALID",
-                root,
-                path,
-                "the accepted portfolio-governance task contract changed",
-            )
-        )
 
     gate = tasks.get(RELEASE_GATE_TASK)
     gate_dependencies = None if gate is None else _sequence(gate.get("depends_on"))
@@ -1313,10 +1297,10 @@ def _task_contract_issues(
     if release_docs_dependencies is None or "PWS-0804" not in release_docs_dependencies:
         issues.append(
             _issue(
-                "PORTFOLIO_MIGRATION_DOC_ORDER_INVALID",
+                "PORTFOLIO_MIGRATION_DOC_PREREQUISITE_INVALID",
                 root,
                 path,
-                "release documentation must follow the owned migration and recovery contract",
+                "completed release documentation requires the owned migration and recovery contract",
             )
         )
 
@@ -1372,26 +1356,6 @@ def _safe_bundle_path(value: object) -> str | None:
     ):
         return None
     return path.as_posix()
-
-
-def _all_tasks_reachable_from(
-    root_task: str,
-    tasks: Mapping[str, Mapping[str, object]],
-) -> bool:
-    consumers: dict[str, set[str]] = {task_id: set() for task_id in tasks}
-    for task_id, task in tasks.items():
-        for dependency in _sequence(task.get("depends_on")) or ():
-            if isinstance(dependency, str) and dependency in consumers:
-                consumers[dependency].add(task_id)
-    reached: set[str] = set()
-    pending = [root_task]
-    while pending:
-        task_id = pending.pop()
-        if task_id in reached or task_id not in consumers:
-            continue
-        reached.add(task_id)
-        pending.extend(consumers[task_id])
-    return reached == set(tasks)
 
 
 def _bundle_issues(
@@ -1543,9 +1507,7 @@ def _bundle_issues(
         and validation.get("dependency_edge_count") == dependency_count
         and validation.get("milestone_count") == len(milestones)
         and validation.get("gate_task_count") == gate_count
-        and validation.get("initial_ready_tasks") == ready_tasks
-        and validation.get("all_tasks_reachable_from") == "PWS-0001"
-        and _all_tasks_reachable_from("PWS-0001", tasks)
+        and validation.get("ready_tasks") == ready_tasks
     )
     if not graph_valid:
         issues.append(

@@ -86,12 +86,13 @@ class TaskValidationTests(unittest.TestCase):
 
         self.assertIn("TASK_DECISION_UNKNOWN", self.issue_codes(data))
 
-    def test_gate_must_cover_every_milestone_task(self) -> None:
+    def test_gate_allows_independent_work_in_its_milestone(self) -> None:
         data = copy.deepcopy(self.data)
-        gate = _task(data, "PWS-0010")
-        gate["depends_on"].remove("PWS-0009")
+        task = copy.deepcopy(_task(data, "PWS-0814"))
+        task.update(id="PWS-9999", depends_on=[], status="ready", blocker=None)
+        cast(list[dict[str, Any]], data["tasks"]).append(task)
 
-        self.assertIn("MILESTONE_GATE_COVERAGE", self.issue_codes(data))
+        self.assertEqual(set(), self.issue_codes(data))
 
     def test_gate_kind_must_match_milestone(self) -> None:
         data = copy.deepcopy(self.data)
@@ -105,12 +106,25 @@ class TaskValidationTests(unittest.TestCase):
 
         self.assertIn("RELEASE_GATE_MISMATCH", self.issue_codes(data))
 
-    def test_active_task_requires_completed_dependencies(self) -> None:
+    def test_pending_prerequisite_blocks_completion_only(self) -> None:
         data = copy.deepcopy(self.data)
-        _task(data, "PWS-0001")["status"] = "planned"
-        _task(data, "PWS-0002")["status"] = "ready"
+        prerequisite = copy.deepcopy(_task(data, "PWS-0001"))
+        prerequisite.update(id="PWS-9998", status="planned")
+        dependent = copy.deepcopy(prerequisite)
+        dependent.update(id="PWS-9999", depends_on=["PWS-9998"], status="in_progress")
+        cast(list[dict[str, Any]], data["tasks"]).extend((prerequisite, dependent))
 
-        self.assertIn("TASK_DEPENDENCY_INCOMPLETE", self.issue_codes(data))
+        self.assertEqual(set(), self.issue_codes(data))
+
+        dependent["status"] = "done"
+
+        self.assertEqual({"TASK_DEPENDENCY_INCOMPLETE"}, self.issue_codes(data))
+
+    def test_public_release_requires_the_independent_redaction_gate(self) -> None:
+        data = copy.deepcopy(self.data)
+        _task(data, "PWS-0808")["depends_on"].remove("PWS-0608")
+
+        self.assertIn("RELEASE_GATE_HISTORY_MISSING", self.issue_codes(data))
 
     def test_blocked_task_requires_blocker_record(self) -> None:
         data = copy.deepcopy(self.data)

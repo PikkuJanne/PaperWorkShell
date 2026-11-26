@@ -1,5 +1,50 @@
 # Windows packaging and dependency evidence
 
+## Automated per-user setup
+
+Use `Setup-PaperWorkShell.exe` from a prepared PaperWorkShell setup bundle on native
+Windows 11 x64. Run it in the intended user's interactive desktop without elevation.
+The bundle contains the existing Inno Setup installer and the exact build receipt and
+resolved inventory. The separately supplied receipt SHA-256 binds the installer and the
+runtime that setup verifies. Obtain the bundle and receipt SHA-256 from the trusted
+build or delivery source.
+
+```powershell
+.\Setup-PaperWorkShell.exe --installer .\PaperWorkShell-pws0813-trace-engineering-b8-win-x64-UNSIGNED.exe --receipt .\installer-receipt.json --receipt-sha256 145d9efeb0ace1e24e43dd1543a48c0433dac2aad2f764fb4139238c4b4461bc
+```
+
+This example installs the internal TRACE B8 build. Windows must allow the two supplied
+executables. The bundle includes the application runtime, local OCR components and
+recipient terms. Running setup requires no checkout, SDK, Python installation, PATH
+changes or network connection. Review and accept the Microsoft runtime terms in the
+native installer when it prompts. For unattended installation, review the exact included
+terms first and add `--accept-microsoft-terms <published-terms-sha256>` to record that
+acceptance explicitly.
+
+Run the same command again to recheck the actual installed payload and launch the
+verified application. To request same-build repair, close PaperWorkShell normally and
+append `--repair`. A different installed candidate requires its documented replacement
+route. If the result asks you to close an application, finish installer consent or restart,
+complete that action and rerun the same command. Setup reports an exit code and a concise
+result. Use `--result <new-json-path>` to retain that result for automation.
+
+To prepare the launcher on a Windows build machine, compile the
+[setup source](windows/Setup-PaperWorkShell.cs) with the Windows .NET Framework x64
+compiler:
+
+```powershell
+$framework = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
+& "$framework\csc.exe" /nologo /target:exe /platform:x64 /r:System.Web.Extensions.dll /r:System.Management.dll "/r:$framework\WPF\UIAutomationClient.dll" "/r:$framework\WPF\UIAutomationTypes.dll" /out:Setup-PaperWorkShell.exe packaging\windows\Setup-PaperWorkShell.cs
+```
+
+Place the launcher, exact installer, `installer-receipt.json`,
+`resolved-inventory.json` and `Microsoft-runtime-recipient-terms.txt` together
+in the prepared bundle. Record the launcher and receipt SHA-256 with the build identity.
+See the [PWS-0814 setup record](../docs/development/pws0814-automated-setup.md) for
+the tested build and observed scope.
+
+## Packaging inputs
+
 Windows packaging configuration and reviewed release inputs belong in this directory. PWS-0801
 implements an internal dependency-stage package and evidence pipeline. The selected installer,
 product terms, qualification, signing and public-release evidence belong to their Milestone 8 tasks.

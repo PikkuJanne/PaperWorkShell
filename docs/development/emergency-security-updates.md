@@ -48,9 +48,9 @@ local product/task decision process with accurate user guidance.
 The [dependency admission procedure](dependency-policy.md#adding-a-dependency) applies to an
 emergency replacement as well as an upgrade. No previously evaluated candidate, ambient system
 tool, unreviewed fallback, or distribution-altering component becomes approved through urgency.
-A frozen-decision change requires the explicit maintainer procedure in `DECISIONS.md`. Uncertain
-redistribution rights remain a blocker until resolved; a new SBOM or a license label is not
-clearance.
+Use the [decision change procedure](../../DECISIONS.md#change-procedure) for changes to an
+owner-approved product requirement. Uncertain redistribution rights block the affected
+distribution until resolved. Record the actual rights in addition to the SBOM and license label.
 
 ## 3. Freeze the replacement and its complete evidence
 

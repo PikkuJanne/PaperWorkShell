@@ -112,14 +112,15 @@ shipping a dependency in a new process is a new admission decision. A component 
 marked approved merely so a concrete candidate can be benchmarked. Once an exact candidate
 artifact has been selected for measurement, record it as `evaluated` with its version and integrity
 evidence, keep its packaging state `candidate`, leave active scopes empty, and put the measurements
-in the selecting task's evidence or ADR. Approval is a later explicit transition.
+in the selecting task's evidence or ADR. Admission follows review of the component and each intended scope. Codex owns
+ordinary component selections within the approved requirements under [AGENTS.md](../../AGENTS.md).
 
 ## Adding a dependency
 
 The dependency owner performs these steps before changing an import, lock, installer, workflow,
 or runtime executable list.
 
-1. **State the capability.** Explain why the capability is required by a dependency-ready task.
+1. **State the capability.** Explain the product or engineering need for the component.
    Record why the standard library, existing dependencies, or a smaller component cannot provide
    it. Convenience alone is insufficient.
 2. **Define the boundary.** Classify the component as direct, transitive, external, candidate, or

@@ -1,16 +1,14 @@
 # PWS-0802 — Windows 11 x64 continuation
 
-> **Superseding internal-delivery reset, 2026-11-04:**
-> [PWS-0810](pws0810-internal-delivery-20261104.md) now owns the usable unsigned
-> application handoff and concrete functional repairs. Public signing,
-> SignPath/onboarding/publication and remaining release-only qualification are
-> deferred; this document's earlier active plans remain historical evidence.
-> Earlier contact permission is exhausted; no further external contact or upload
-> is authorized. The real system-volume disk-full test is not performed and
-> deferred to later release qualification; no VM request is pending.
+> This record preserves the R7/R9 qualification and the 2026-11-04 internal-delivery
+> reset. See [AGENTS.md](../../AGENTS.md) for current sequencing and [TASKS.yaml](../../TASKS.yaml)
+> for status. Keep valid qualification evidence bound to its original candidate.
 
-**Status: active qualification; public trusted signing remains blocked.** The
-maintainer's 2026-11-04 direction is the authority for this continuation.
+**Status.** Public signing requires an approved trusted signing route. The actual
+system-volume disk-full observation requires a suitable disposable target.
+Unsigned packaging, authorized installation, normal launch, and work on the
+update mechanism can proceed with their own prerequisites. No additional external
+contact, enrollment, agreement or upload is authorized by this record.
 
 ## Applied product scope
 
@@ -149,10 +147,12 @@ unsigned candidate does not satisfy that requirement.
 
 ## Task state and evidence closure
 
-PWS-0802 remains blocked by the missing trusted signing route while independent
-x64 qualification continues. PWS-0803 retains its PWS-0802 dependency. PWS-0804
-and PWS-0805 remain complete with their accepted evidence. No sibling repository,
-runtime, service, private content access or synchronized release is introduced.
+PWS-0802 requires trusted signing for its signed-artifact acceptance. The missing
+signing route also prevents final checks that need signed bytes and public distribution.
+PWS-0803 development and verification with controlled test keys can proceed independently.
+PWS-0804 and PWS-0805 retain their accepted evidence. Current task states and next
+actions are in [TASKS.yaml](../../TASKS.yaml).
+
 
 Current scope checks and final document hashes are recorded separately after the
 affected files are final. The preserved R7 checks retain their original bytes and

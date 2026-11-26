@@ -41,7 +41,7 @@ pre-alpha development value, not the product version for this sheet.
 The architecture is selected by [PWS-D043 / ADR 0019](../adr/0019-windows-11-x64-only-scope.md),
 not inferred from dependency availability. No ARM environment, native/emulated result or
 future ARM task is a prerequisite for PWS-0802, PWS-0803 or public release. The
-[current continuation](../development/pws0802-x64-continuation-20261104.md) and
+[PWS-0802 qualification record](../development/pws0802-x64-continuation-20261104.md) and
 [finite x64 matrix](../development/pws0802-x64-qualification-20261104.md) distinguish
 the settled target from still-unproved edition/build and scenario coverage.
 

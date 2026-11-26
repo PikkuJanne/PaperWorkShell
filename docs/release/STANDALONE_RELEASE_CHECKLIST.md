@@ -18,7 +18,7 @@ Current application and release scope is **Windows 11 x64 only**, selected by
 and x64 emulation on ARM64 are outside project scope, with no release/update
 prerequisite or mandatory future task. Use the
 [support boundary](WINDOWS11_X64_SUPPORT.md),
-[current continuation](../development/pws0802-x64-continuation-20261104.md) and
+[PWS-0802 qualification record](../development/pws0802-x64-continuation-20261104.md) and
 [finite x64 qualification matrix](../development/pws0802-x64-qualification-20261104.md)
 to distinguish selected scope, accepted engineering evidence and missing checks.
 Scope selection does not check any scenario below or approve a public release.

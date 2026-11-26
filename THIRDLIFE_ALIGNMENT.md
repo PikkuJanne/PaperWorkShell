@@ -11,11 +11,11 @@
 
 ## Authority and provenance
 
-This document records maintainer-supplied portfolio steering that applies to PaperWorkShell. It does
-not outrank the repository's authority order: current maintainer instruction, `DECISIONS.md`,
-`ROADMAP.md`, the selected task in `TASKS.yaml`, and `AGENTS.md` remain controlling for local
-implementation. A conflict is resolved through PaperWorkShell's decision-change procedure, never
-by silently treating this file as permission to bypass a frozen decision.
+This document records maintainer-supplied portfolio steering. Current owner direction,
+the approved requirements in [DECISIONS.md](DECISIONS.md) and [ROADMAP.md](ROADMAP.md),
+and the operating policy in [AGENTS.md](AGENTS.md) govern local work. Use the product
+decision change procedure for changes to PaperWorkShell's standalone boundary.
+
 
 The binding local mirror is `PWS-D042`, adopted through
 [`docs/adr/0008-thirdlife-late-binding-portfolio.md`](docs/adr/0008-thirdlife-late-binding-portfolio.md).
@@ -46,7 +46,7 @@ Native ARM64 and x64 emulation on ARM64 are outside project scope and are not
 PWS-0802, PWS-0803 or public-release prerequisites. No future mandatory ARM task
 or sibling-platform dependency follows from portfolio assembly. The
 [support boundary](docs/release/WINDOWS11_X64_SUPPORT.md),
-[current continuation](docs/development/pws0802-x64-continuation-20261104.md) and
+[PWS-0802 qualification record](docs/development/pws0802-x64-continuation-20261104.md) and
 [finite x64 matrix](docs/development/pws0802-x64-qualification-20261104.md) keep
 edition/build and scenario evidence separate from this settled scope choice.
 

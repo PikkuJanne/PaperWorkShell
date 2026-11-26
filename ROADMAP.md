@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Roadmap version | 0.4.0 |
+| Roadmap version | 0.4.1 |
 | Status | **Binding** |
 | Product name | **PaperWorkShell** |
-| Planning model | Dependency-based milestones with explicit exit gates |
+| Planning model | Actual operation prerequisites and evidence-based delivery gates |
 | First pilot release | v0.1 after Milestone 4 |
 | Hardened public release target | v1.0 after Milestone 8 |
-| Last amended | 2026-11-04 |
+| Last amended | 2026-11-26 |
 
-This roadmap is the main execution contract for PaperWorkShell. It converts the product concept into a dependency-ordered implementation sequence. `TASKS.yaml` is the executable task graph; this document explains the intent, sequencing, gates, and non-negotiable outcomes behind that graph. `AGENTS.md` governs how related work is grouped in a session.
+This roadmap records PaperWorkShell's approved product requirements and release gates. [TASKS.yaml](TASKS.yaml) tracks implementation, actual prerequisites, and evidence. [AGENTS.md](AGENTS.md) governs engineering choices and sequencing.
 
 Normative terms are used deliberately:
 
@@ -19,7 +19,7 @@ Normative terms are used deliberately:
 - **SHOULD** means the default unless a documented technical constraint requires an exception.
 - **MAY** means optional behavior that does not alter frozen scope.
 
-Changes to binding scope, milestone order, or a frozen decision require the change process in `DECISIONS.md`. Routine implementation detail may evolve inside those boundaries.
+Use the change procedure in [DECISIONS.md](DECISIONS.md#change-procedure) for changes to owner-approved product requirements.
 
 ---
 
@@ -79,46 +79,28 @@ The v0.1 pilot MUST NOT advertise permanent redaction, digital signing, qualifie
 
 ### 1.5 v1.0 definition
 
-A hardened v1.0 requires completion of all milestones, including the redaction security gate, accessibility and assisted-mode gate, signed packaging, dependency inventory, migration tests, and release-candidate validation.
+A hardened v1.0 requires the approved release deliverables and gate evidence, including the redaction security gate, accessibility and assisted-mode gate, signed packaging, dependency inventory, migration tests, and release-candidate validation.
 
-### 1.5.1 Current internal-delivery sequence
+### 1.5.1 Current internal setup and delivery
 
-The **2026-11-25 TRACE approval** authorizes PWS-0813 to replace the normal native
-interface and proceed through private build and installed verification. The
-[TRACE continuation](docs/development/pws0813-trace.md) records parity and candidate
-evidence. Existing release criteria and PWS-0811 findings keep their original scope.
+The 2026-11-25 TRACE approval makes TRACE the default native interface.
+[PWS-0813](docs/development/pws0813-trace.md) records the implementation and installed
+parity evidence. [PWS-0811](docs/development/pws0811-repairs-20261106.md) retains the V12
+timing and candidate observations and the disposition of the second-PC report.
+[PWS-0810](docs/development/pws0810-internal-delivery-20261104.md) records the earlier R9
+internal delivery.
 
-The maintainer's **2026-11-06 repair assignment** makes **PWS-0811** the current
-internal task. Implement the supplied R9 feedback, measure and repair avoidable
-waiting, build a unique successor, and verify its installed interface and real
-exported files before another comparable human session. Preserve R9, all existing
-cases and accepted historical evidence. The seventeen issue groups and fourteen
-verification scenarios in the supplied repair bundle are coverage identifiers,
-not pre-existing repository tasks. This remains internal delivery, independently
-of the deferred public phase below.
+PWS-0814 provides the automated Windows 11 x64 setup route for an explicitly identified
+prepared candidate. Verification covers the intended package, per-user installation,
+normal launch, an offline synthetic file workflow, and a repeat run. Unsigned internal
+packaging and setup may proceed under the target machine's policy. Signed release
+qualification requires the exact trusted artifacts and applicable release evidence.
 
-The maintainer's earlier 2026-11-04 reset made **PWS-0810** the internal-delivery
-task: hand over a usable unsigned Windows 11 x64 installer, normal launch path,
-finite installed core-workflow evidence, concrete defect repairs and a short
-first-use guide. Reuse accepted evidence within its exact recorded scope. R9 is
-the starting candidate; preserve it and create a successor only for a concrete
-repair. Internal use and functional development do not depend on public signing
-or the remaining release-only environmental qualification.
-
-PWS-0802's original signed-artifact requirements and the public M8 gate remain
-pending for the deferred public-distribution phase. PWS-0803 is not the current
-objective. Trusted signing, SignPath eligibility/onboarding, public publication
-and final signed-release qualification resume only on later maintainer direction.
-No further provider contact, enrollment, upload or agreement is authorized.
-Preserve existing correspondence. The unavailable real system-volume disk-full
-test is **not performed and deferred to later release qualification**; do not
-request a VM again, provision one or fill a real working volume. Existing
-low-space and injected-failure evidence proves only its recorded limited behavior.
-
-This sequence changes no frozen product/security decision, public-release gate,
-source-preservation or export-verification requirement, data ownership, schema,
-licence or standalone boundary. An internal handoff is not a qualified public
-release and creates no ThirdLife dependency or compatibility claim.
+Trusted public signing, external provider enrollment, publication, and real
+system-volume disk-full qualification remain separate release operations. Additional
+provider contact, uploads, and agreements require their own authorization. Preserve
+existing correspondence, artifacts, existing cases, and the limits of earlier
+low-space and injected-failure evidence.
 
 ### 1.6 ThirdLife portfolio position and product boundary
 
@@ -132,19 +114,12 @@ The complete PaperWorkShell workflow MUST remain local and usable without ThirdL
 
 ---
 
-## 2. Source-of-truth order
+## 2. Product requirements and engineering policy
 
-For repository work, use this precedence:
-
-1. The maintainer's current explicit instruction
-2. `DECISIONS.md` frozen decisions
-3. This `ROADMAP.md`
-4. The selected task in `TASKS.yaml`
-5. `AGENTS.md` operating rules
-6. Tests and public interfaces already accepted into the repository
-7. Other documentation and comments
-
-A lower item MUST NOT silently override a higher item. A conflict is resolved by updating the higher-level artifact through the documented change process, not by coding around it.
+Use current owner direction and the approved requirements in [DECISIONS.md](DECISIONS.md)
+and this roadmap. Apply [AGENTS.md](AGENTS.md) to implementation, task sequencing, and
+verification. Keep tracking and tests aligned with the actual requirements and report
+any material product conflict.
 
 ---
 
@@ -161,7 +136,7 @@ A lower item MUST NOT silently override a higher item. A conflict is resolved by
 | Signatures | Signature-image placement with explicit terminology; detect cryptographic signatures | Creating or validating qualified signatures in v0.1 |
 | OCR | Local OCRmyPDF/Tesseract orchestration | Cloud OCR or AI-required recognition |
 | PDF layer | pikepdf/qpdf behind adapters | UI code manipulating low-level PDF objects directly |
-| Redaction | Designed and tested only in Milestone 6 | Shipping unverified visual covering as redaction |
+| Redaction | Separate Milestone 6 security gate and outside v0.1 scope | Shipping unverified visual covering as redaction |
 | AI | Not required | Automatic decisions about whether a requirement is satisfied |
 | Telemetry | Off by default; no content telemetry | Silent analytics or document upload |
 | Legal/eligibility | Packaging guidance only | Legal advice, entitlement decisions, acceptance guarantees |
@@ -372,11 +347,11 @@ These apply to every milestone:
 
 ---
 
-## 6. Release train and critical path
+## 6. Release milestones and gates
 
 | Milestone | Release meaning | Primary outcome | Gate task |
 |---|---|---|---|
-| M0 — Product contract and foundation | Development may begin safely | Toolchain, schemas, architecture boundaries, threat model, corpus | `PWS-0010` |
+| M0 — Product contract and foundation | Reproducible development baseline | Toolchain, schemas, architecture boundaries, threat model, corpus | `PWS-0010` |
 | M1 — Reliable vertical slice | Architectural proof | Case → import PDF → organize → export → reopen/verify → recover | `PWS-0114` |
 | M2 — Image intake and OCR | Mixed-document workflow | JPEG/PNG, cleanup, local OCR, quality warnings | `PWS-0209` |
 | M3 — Filling and overlays | Basic form completion | Reliable visual overlays and flattened output | `PWS-0308` |
@@ -386,17 +361,10 @@ These apply to every milestone:
 | M7 — Accessibility, localization, assisted mode | Inclusive pilot readiness | Keyboard, NVDA, scaling, consent, retention controls | `PWS-0707` |
 | M8 — Release hardening | **v1.0 candidate** | Signed standalone package, updates, SBOM, migrations, black-box release envelope, RC matrix | `PWS-0808` |
 
-The primary critical path is:
-
-```text
-PWS-0001 -> PWS-0002 -> PWS-0006/PWS-0008 -> PWS-0010
--> PWS-0107 -> PWS-0108 -> PWS-0111 -> PWS-0112 -> PWS-0115 -> PWS-0114
--> PWS-0204 -> PWS-0206 -> PWS-0209
--> PWS-0301 -> PWS-0303 -> PWS-0307 -> PWS-0308
--> PWS-0401 -> PWS-0404 -> PWS-0407 -> PWS-0408 -> PWS-0409
-```
-
-Milestones after M4 may be developed on separate branches, but no gate may be declared complete while a required dependency is incomplete or a security invariant is waived.
+Milestone labels group related outcomes. Consult the actual prerequisites recorded in
+[TASKS.yaml](TASKS.yaml) for the operation at hand. A gate can pass once its required
+deliverables and evidence are complete, including applicable security invariants.
+Independent implementation and verification may proceed while a gate is pending.
 
 ---
 
@@ -406,7 +374,7 @@ Milestones after M4 may be developed on separate branches, but no gate may be de
 
 ### Objective
 
-Create a repository that encodes architectural and security constraints before document-processing feature work starts.
+Establish the toolchain, architectural boundaries, and security checks needed for document processing.
 
 ### Workstreams
 
@@ -613,22 +581,10 @@ Produce a supportable, signed, updateable, migratable, and independently verifia
 
 ## 8. Global definition of done
 
-A task is complete only when all applicable items are true:
-
-1. Its dependencies are complete.
-2. Acceptance criteria in `TASKS.yaml` are demonstrably satisfied.
-3. Code follows the architecture and security invariants.
-4. New public behavior has tests at the lowest useful level plus integration coverage where boundaries are crossed.
-5. Error paths are tested, not only the happy path.
-6. No real personal document enters the repository, logs, screenshots, or fixtures.
-7. Static analysis, formatting, type checks, unit tests, and relevant integration/security tests pass.
-8. Documentation, schemas, and task state are updated in the same change.
-9. Generated or cached artifacts are not committed unless the repository policy explicitly requires them.
-10. The change is reviewable as one coherent task and does not mix unrelated refactoring.
-11. User-facing errors are plain-language while retaining stable internal error codes.
-12. A completion report identifies changed files, commands run, results, residual risks, and the next unblocked task.
-
-A milestone gate additionally requires every milestone task to be complete or explicitly waived through the frozen-decision change process, with a recorded gate report and no unresolved release-blocking defect.
+Use [AGENTS.md](AGENTS.md#definition-of-done) and the applicable acceptance criteria in
+[TASKS.yaml](TASKS.yaml). A gate report binds its required behavior and delivery evidence
+to the tested revision and environment and records unresolved release-blocking defects.
+Keep failed or unperformed observations visible within the scope they affect.
 
 ---
 
@@ -674,24 +630,12 @@ At minimum, automate:
 
 ---
 
-## 10. Initial execution order
+## 10. Engineering sequencing
 
-Codex should normally begin with `PWS-0001` and follow dependency readiness. A practical first sequence is:
-
-1. `PWS-0001` — Bootstrap repository and pin the development toolchain.
-2. `PWS-0002` — Establish source layout and dependency boundaries.
-3. `PWS-0003` — Add local quality gates and CI-equivalent commands.
-4. `PWS-0004` — Commit the threat model and data-flow model.
-5. `PWS-0005` — Establish dependency and licensing policy.
-6. `PWS-0006` — Define case manifest JSON Schema v1.
-7. `PWS-0007` — Define template schema v1.
-8. `PWS-0008` — Define worker RPC schema v1.
-9. `PWS-0009` — Add the synthetic fixture harness.
-10. `PWS-0010` — Run and record the M0 gate.
-11. `PWS-0101` — Implement secure case workspace conventions.
-12. `PWS-0102` — Implement case lifecycle service.
-
-Parallel work is permitted only when tasks have no incomplete dependencies and do not edit the same architectural surface. The default Codex behavior is one task per change.
+Review the operation's actual prerequisites and the affected product contracts. Begin
+available useful work, even when another release or qualification operation is pending.
+Reconcile task edges that encode obsolete sequencing. Coordinate shared edits and
+preserve valid evidence for affected artifacts.
 
 ---
 
@@ -709,21 +653,15 @@ Parallel work is permitted only when tasks have no incomplete dependencies and d
 | Packaging size and dependency friction | Poor adoption | Modular language packs, deliberate renderer choice, release packaging tests |
 | Portal templates become stale | Rejected uploads | Version, verification date, expiry, human-readable rules, no executable updates |
 | Logs leak content | Privacy breach | Stable IDs, prohibited-field tests, user-previewed diagnostics |
-| Scope expansion | Delayed core workflow | Enforce frozen non-goals and milestone gates |
+| Scope expansion | Delayed core workflow | Preserve approved scope and release gates |
 | Premature portfolio coupling | Privacy exposure, brittle releases, blocked standalone work | Project-local dependencies, frozen black-box artifacts, ordinary files first, and ThirdLife-owned optional adapters |
 
 ---
 
 ## 12. Change control
 
-A proposed change to this roadmap or `DECISIONS.md` must include:
-
-1. The decision or roadmap section affected.
-2. The user problem or technical evidence requiring the change.
-3. Security, privacy, accessibility, licensing, migration, and schedule consequences.
-4. Alternatives considered.
-5. Exact task-graph changes, including dependencies and gates.
-6. Migration or compatibility treatment for existing cases.
-7. Maintainer approval.
-
-After approval, update `DECISIONS.md`, this roadmap, `TASKS.yaml`, related schemas, and prompts in the same change. Never let code become the only record of a changed product boundary.
+Use the [decision change procedure](DECISIONS.md#change-procedure) for proposed
+changes to owner-approved requirements, with concrete user impact, alternatives,
+security, privacy, accessibility, licensing, migration and compatibility effects.
+Keep the applicable decisions, roadmap, tasks, schemas, and evidence aligned after
+approval. Codex owns ordinary engineering changes under [AGENTS.md](AGENTS.md).

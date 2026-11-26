@@ -1,10 +1,10 @@
 # Human testing
 
 This policy applies to all future PaperWorkShell human tests. It implements the
-testing contract in [AGENTS.md](../../AGENTS.md#92-required-test-behavior). It
-changes how evidence is gathered, without waiving acceptance criteria or changing
-the frozen decisions. Required security, accessibility and release-gate checks
-remain required.
+engineering authority in [AGENTS.md](../../AGENTS.md#engineering-authority).
+Codex prepares the work and gathers mechanical evidence. Use human participation
+for unavoidable interactions and meaningful usability judgments. Preserve required
+security, accessibility, and release coverage.
 
 Historical helpers follow this policy when next used: update or prefill their
 interaction before asking the person to use them. No bulk rewrite is required,

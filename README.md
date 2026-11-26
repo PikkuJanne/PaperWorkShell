@@ -1,16 +1,17 @@
-# PaperWorkShell Roadmap Bundle
-
-This bundle turns the initial PaperWorkShell product concept into a repository-ready execution contract for Codex and human maintainers.
+# PaperWorkShell
 
 PaperWorkShell is a local-first desktop application for organizing PDFs and images, reviewing configured packaging rules, and exporting document packages. Users review the content and submit the resulting files themselves.
 
-**Internal repairs in progress: PWS-0811.** The maintainer's 6 November 2026
-report requires repairs and current installed-app/output verification before a
-successor handoff. The [repair work log](docs/development/pws0811-repairs-20261106.md)
-records this work. [PWS-0810's earlier R9 observations](docs/development/pws0810-internal-delivery-20261104.md)
-remain historical evidence within their original scope. R9 and existing cases are
-preserved. Public signing, provider contact/publication and remaining release-only
-qualification remain deferred; an internal build is not a qualified public release.
+## Windows setup
+
+Use the [automated setup instructions](packaging/README.md) for an identified prepared
+Windows 11 x64 build. PWS-0814 tracks same-user installation, launch, and offline
+synthetic workflow verification. Developer preparation uses a separate environment.
+
+[PWS-0811's installed evidence](docs/development/pws0811-repairs-20261106.md) and
+[PWS-0810's R9 delivery](docs/development/pws0810-internal-delivery-20261104.md) retain
+their original candidate and test scope. Public distribution requires the applicable
+signed release artifacts and qualification.
 
 ## TRACE workbench
 
@@ -457,12 +458,12 @@ encrypted and complex-script/font fixtures remain explicitly assigned to their o
 
 | File | Purpose |
 |---|---|
-| `ROADMAP.md` | Main binding product, architecture, milestone, release, risk, and gate roadmap |
-| `DECISIONS.md` | Frozen product and engineering decisions that implementation must not silently change |
+| `ROADMAP.md` | Approved product requirements, delivery milestones, release gates, and risks |
+| `DECISIONS.md` | Approved product requirements and recorded technical decisions |
 | `TASKS.yaml` | Machine-readable dependency graph with task-level deliverables, acceptance criteria, and verification |
 | `TASKS.schema.json` | JSON Schema for validating the task graph after YAML-to-JSON parsing |
-| `AGENTS.md` | Codex operating contract: task selection, architecture, security, testing, state changes, and reporting |
-| `CODEX_START_PROMPT.md` | Copy-paste first-session prompt and reusable task, review, security, gate, and status prompts |
+| `AGENTS.md` | Codex operating policy, engineering authority, and safeguards |
+| `CODEX_START_PROMPT.md` | Reusable prompts for continuing, implementing, and reviewing work |
 | `THIRDLIFE_ALIGNMENT.md` | Standalone-product and late-binding ThirdLife portfolio boundary |
 | `README.md` | This guide |
 | `BUNDLE_MANIFEST.json` | Bundle version, file inventory, and checksums |
@@ -471,30 +472,12 @@ M8 release-interface/evidence/checklist templates are kept in
 [`docs/release/`](docs/release/README.md). Supplier traceability and explicitly non-gating future
 assembly observations are kept in [`docs/portfolio/`](docs/portfolio/SOURCE_TRACEABILITY.md).
 
-## Binding order
+## Repository operating policy
 
-When files conflict, use this order:
-
-1. Current explicit maintainer instruction
-2. `DECISIONS.md`
-3. `ROADMAP.md`
-4. The selected entry in `TASKS.yaml`
-5. `AGENTS.md`
-6. Accepted tests and public interfaces
-7. Other documentation
-
-The task graph is executable detail, but it may not weaken a frozen decision or roadmap gate.
-
-## First use
-
-1. Copy the bundle files into the root of the PaperWorkShell repository.
-2. Commit the planning bundle as the project baseline.
-3. Open `CODEX_START_PROMPT.md`.
-4. Paste **First repository session** into Codex.
-5. Let Codex execute only `PWS-0001`.
-6. Review the completion report and task-state update before starting another task.
-
-The first prompt intentionally prevents feature work before the toolchain, architecture boundaries, schemas, threat model, and test corpus have a stable home.
+[AGENTS.md](AGENTS.md) governs engineering choices, task sequencing, and verification
+within owner-approved requirements. [CODEX_START_PROMPT.md](CODEX_START_PROMPT.md)
+provides reusable prompts for this checkout. Current task status and linked evidence
+are maintained in [TASKS.yaml](TASKS.yaml).
 
 ## Task workflow
 
@@ -518,7 +501,7 @@ planned -> ready -> in_progress -> review -> done
                     +-> blocked <-+
 ```
 
-Codex should work on one dependency-ready task at a time. The selection algorithm is defined in `AGENTS.md`.
+Dependencies record actual prerequisites. Codex can revise stale sequencing, record blockers against the affected operations, and continue independent work.
 
 ## Release map
 
@@ -584,7 +567,7 @@ Graph validation must additionally confirm:
 - No task depends on itself.
 - The graph contains no cycles.
 - Every milestone gate exists.
-- A gate depends on the milestone's required work.
+- A gate has explicit prerequisites for its delivery obligations.
 - Every decision reference exists in `DECISIONS.md`.
 - Task IDs and milestone assignments are unique and valid.
 
@@ -605,24 +588,16 @@ evidence:
 
 Do not fabricate a commit hash before a commit exists. Use an empty value or a clear working-tree marker according to repository policy.
 
-When dependencies become complete, downstream tasks may be marked `ready`. A task marked `done` must satisfy `AGENTS.md` and every acceptance criterion, not merely have an implementation stub.
+Mark work ready when useful operations can proceed. A completed task requires its actual prerequisites and evidence for every acceptance criterion.
 
 ## Decision changes
 
-Codex must not rewrite frozen scope to make a task easier. A change requires:
+Use the [decision change procedure](DECISIONS.md#change-procedure) for owner-approved product
+requirements. Use [AGENTS.md](AGENTS.md) for ordinary implementation changes and their evidence.
 
-1. A proposed ADR
-2. Exact affected decision IDs
-3. Evidence and alternatives
-4. Security, privacy, accessibility, licensing, packaging, and migration analysis
-5. Maintainer approval
-6. Coordinated updates to decisions, roadmap, graph, schemas, prompts, and tests
+## Repository layout
 
-The procedure is defined in `DECISIONS.md`.
-
-## Recommended repository additions during M0
-
-The roadmap bundle is planning-only. Initial tasks should add:
+The repository uses these development locations:
 
 ```text
 pyproject.toml
@@ -639,17 +614,15 @@ Do not add real documents, signing keys, certificates, OCR language-data bundles
 
 ## Maintenance cadence
 
-- Update task state after every accepted task.
+- Keep task status and verification evidence current.
 - Run graph validation whenever dependencies or task IDs change.
 - Review decision pressure at milestone gates.
 - Update dependency licenses and hashes whenever dependencies change.
 - Preserve superseded decisions and schema fixtures for history and migration tests.
 - Regenerate `BUNDLE_MANIFEST.json` whenever the planning bundle itself changes.
 
-## Starting point
-
-The first task is `PWS-0001`. The first architectural proof is M1:
+## End-to-end document workflow
 
 > Create case → import PDFs → preview pages → organize non-destructively → export a new PDF → reopen and verify it → recover after interruption.
 
-OCR, overlays, templates, compression, and redaction build on that proof rather than bypassing it.
+OCR, overlays, templates, compression, and redaction build on this workflow.

@@ -72,10 +72,7 @@ def _bundle_validation(tasks_data: dict[str, Any]) -> dict[str, object]:
         "dependency_edge_count": sum(len(cast(list[object], task["depends_on"])) for task in tasks),
         "milestone_count": len(cast(list[object], tasks_data["milestones"])),
         "gate_task_count": sum(task["kind"] == "gate" for task in tasks),
-        "initial_ready_tasks": sorted(
-            cast(str, task["id"]) for task in tasks if task["status"] == "ready"
-        ),
-        "all_tasks_reachable_from": "PWS-0001",
+        "ready_tasks": sorted(cast(str, task["id"]) for task in tasks if task["status"] == "ready"),
     }
 
 
@@ -691,7 +688,7 @@ dependencies = ["safe@../suite-runtime"]
         self.assertFalse(_release_checklist_is_complete("- [ ] Verify candidate\n"))
         self.assertTrue(_release_checklist_is_complete("- [x] Verify candidate\n"))
 
-    def test_durable_task_ownership_and_order_are_enforced(self) -> None:
+    def test_release_ownership_and_actual_prerequisites_are_enforced(self) -> None:
         data = _load_tasks()
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -701,7 +698,7 @@ dependencies = ["safe@../suite-runtime"]
             changed = copy.deepcopy(data)
             cast(list[str], _task(changed, "PWS-0806")["depends_on"]).remove("PWS-0804")
             codes = _issue_codes(_task_contract_issues(root, changed))
-            self.assertIn("PORTFOLIO_MIGRATION_DOC_ORDER_INVALID", codes)
+            self.assertIn("PORTFOLIO_MIGRATION_DOC_PREREQUISITE_INVALID", codes)
 
             changed = copy.deepcopy(data)
             cast(list[str], _task(changed, "PWS-0809")["decision_refs"]).remove(ALIGNMENT_DECISION)
@@ -738,14 +735,14 @@ dependencies = ["safe@../suite-runtime"]
 
                 self.assertIn("PORTFOLIO_DECISION_CONTRACT_INVALID", codes)
 
-    def test_bundle_summary_is_dynamic_and_extra_files_are_allowed(self) -> None:
+    def test_bundle_summary_accepts_independent_tasks_and_extra_files(self) -> None:
         data = _load_tasks()
         added_task = copy.deepcopy(_task(data, "PWS-0809"))
         added_task.update(
             {
                 "id": "PWS-9999",
-                "depends_on": ["PWS-0001"],
-                "status": "planned",
+                "depends_on": [],
+                "status": "ready",
             }
         )
         cast(list[dict[str, Any]], data["tasks"]).append(added_task)

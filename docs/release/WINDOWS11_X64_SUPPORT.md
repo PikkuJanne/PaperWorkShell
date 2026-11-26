@@ -113,6 +113,6 @@ qualification are complete. Public release/version/signer fields stay unproved
 until that release exists. This is not a new architecture decision request or a
 requirement to acquire another architecture's environment.
 
-See the [current PWS-0802 continuation](../development/pws0802-x64-continuation-20261104.md),
+See the [PWS-0802 qualification record](../development/pws0802-x64-continuation-20261104.md),
 [finite x64 qualification record](../development/pws0802-x64-qualification-20261104.md)
 and [release interface](RELEASE_INTERFACE.md).

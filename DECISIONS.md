@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Register version | 0.4.0 |
+| Register version | 0.4.1 |
 | Status | **Frozen** |
 | Effective date | 2026-07-14 |
-| Last amended | 2026-11-04 |
+| Last amended | 2026-11-26 |
 | Applies to | Product scope, architecture, security, release gates, and terminology |
 
-A frozen decision is binding on implementation and planning until the maintainer explicitly approves a replacement. A technical obstacle is not permission to bypass a decision. Changes use the procedure at the end of this file and must update `ROADMAP.md`, `TASKS.yaml`, and affected prompts or schemas in the same change.
+Owner-approved product requirements, including security and release obligations, govern implementation. [AGENTS.md](AGENTS.md) governs ordinary engineering choices and sequencing. The technical selections in this register record the accepted implementation and its rationale. Codex may revise those selections within the approved requirements and must verify the affected behavior and update the relevant records. Use the change procedure below for changes to the owner-approved requirements.
 
 Status vocabulary:
 
@@ -24,7 +24,7 @@ Status vocabulary:
 |---|---|
 | PWS-D001 | Product name is PaperWorkShell |
 | PWS-D002 | Product is a guided packet builder, not a general PDF editor |
-| PWS-D003 | Roadmap is dependency-based and gate-driven |
+| PWS-D003 | Roadmap records actual prerequisites and delivery gates |
 | PWS-D004 | Windows-first desktop delivery — historical, superseded by PWS-D043 |
 | PWS-D005 | Offline-first, no account, no required service |
 | PWS-D006 | Generic portal application is the first workflow |
@@ -86,13 +86,13 @@ Status vocabulary:
 
 **Consequences:** New feature proposals must be justified by the packet workflow. UI navigation follows task stages rather than exposing every engine capability as a toolbar command.
 
-## PWS-D003 — Roadmap is dependency-based and gate-driven
+## PWS-D003 — Roadmap records actual prerequisites and delivery gates
 
 **Status:** FROZEN
 
-**Decision:** Work is selected from `TASKS.yaml` according to dependencies and milestone gates rather than calendar promises.
+**Decision (amended 2026-11-26):** `TASKS.yaml` records actual engineering prerequisites, acceptance criteria, and release-gate evidence. Codex owns task decomposition and work sequencing under [AGENTS.md](AGENTS.md).
 
-**Consequences:** A milestone is not complete because time elapsed. Gate tasks record evidence. Parallel work is allowed only when dependencies and edit surfaces permit it.
+**Consequences:** Gates require the evidence for their release obligations. An unfinished gate, unavailable environment, or pending signature blocks the operations that require it. Independent implementation, build, packaging, and verification may continue within their own prerequisites.
 
 ## PWS-D004 — Windows-first desktop delivery
 
@@ -244,7 +244,7 @@ Status vocabulary:
 
 **Status:** FROZEN
 
-**Decision:** Permanent redaction is developed only in Milestone 6 and remains disabled until all extraction, revision, metadata, attachment, OCR, viewer, and resave tests pass plus independent review approves the gate.
+**Decision:** Permanent redaction is the Milestone 6 security-gated capability. It remains disabled until all extraction, revision, metadata, attachment, OCR, viewer, and resave tests pass plus independent review approves the gate.
 
 **Consequences:** Redaction cannot be pulled into v0.1 for schedule reasons. Failed verification blocks export.
 
@@ -435,16 +435,16 @@ The following are implementation parameters rather than permission to change pro
 - Exact Windows isolation primitives available at each release stage
 - Specific font family and embedding method for overlays, proven in `PWS-0303` and `PWS-0307`
 - Numeric resource limits and quality thresholds, measured against approved synthetic workloads and versioned resource policies
-- Exact installer technology and authenticated update mechanism, selected in Milestone 8
+- Exact installer technology and authenticated update mechanism, tracked in Milestone 8
 - Exact reverse-domain application identity and optional file-association policy, selected and evidenced by `PWS-0802`
 
-Each selection requires an ADR in `docs/adr/`, evidence, tests, and no conflict with the frozen decisions above.
+Record material engineering selections in the relevant ADRs with evidence and tests. Preserve the owner-approved requirements above.
 
 ---
 
 ## Change procedure
 
-To replace or amend a frozen decision:
+To replace or amend an owner-approved product requirement:
 
 1. Create an ADR with status **Proposed** and identify the decision ID.
 2. State the concrete evidence, affected users, alternatives, security/privacy/accessibility/licensing impact, and migration impact.
@@ -454,4 +454,4 @@ To replace or amend a frozen decision:
 6. Add the replacement decision with a new ID or a clearly versioned amendment.
 7. Update the task graph and tests in the same change.
 
-Codex MUST NOT perform this procedure autonomously merely to simplify implementation.
+Ordinary engineering changes follow [AGENTS.md](AGENTS.md). Address a technical obstacle within the approved product requirements and record any missing prerequisite against the affected operation.

@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.72",
+  "bundle_version": "0.2.73",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -20,43 +20,43 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 43782,
-      "sha256": "d19b375d5dbf3042aa4b9ae4aaeddbd6d956140001c6565dcfbb9e4398385118"
+      "bytes": 40243,
+      "sha256": "baaa7ef5b619b9c2fec8d89924c707933ff61192b684d422399214de560bee83"
     },
     {
       "path": "DECISIONS.md",
-      "bytes": 29797,
-      "sha256": "4a82099168fac9d557f8783ae32435bf32b3aaa87435c8d8631186521221a31f"
+      "bytes": 30362,
+      "sha256": "d21fb67795fec7d9e254bf7741e184a79a40c180d3585caff59d92e5671e27e5"
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 533889,
-      "sha256": "0815bde17f2a3e9628c7481ee610679dd56035a6b277f79333b8700304d9ca42"
+      "bytes": 539097,
+      "sha256": "d58691d6599a7b92f588c4779836c268717e55386ab35989c58206c7ca03d0a9"
     },
     {
       "path": "TASKS.schema.json",
-      "bytes": 7328,
-      "sha256": "38401b35efb804c263fd8dc0062ffba5a08ed01230a23cb9848679536aceb9a0"
+      "bytes": 7064,
+      "sha256": "4702a749e0482d61c214aaefddf1570900e4cf4f728426868a1525b19b846cda"
     },
     {
       "path": "AGENTS.md",
-      "bytes": 25862,
-      "sha256": "5fa3db967fbc3910ae2eb9d6fa083b9d46b80a8ce7c5b9c0d7529f000b9d7bf3"
+      "bytes": 6812,
+      "sha256": "c9c9d696e996d406c6f7c52dc4b4d9dddd2023a63baa4a87d8eaa0663c9b033b"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 17396,
-      "sha256": "6c2c839d113ca319df3e8d5b756571e3e2110b914da9ce85566e46e87dc23420"
+      "bytes": 2550,
+      "sha256": "fe84c9d7aca52d08de8b9e58321fb0264a14110d20b7c7dbe29705b70bc8d669"
     },
     {
       "path": "README.md",
-      "bytes": 41077,
-      "sha256": "a781e34548f36c876c8d41d29137d8e49f5a33f39af61a537b54dad5ccb708e3"
+      "bytes": 39987,
+      "sha256": "c11e38a95516a0b060348159e63a15921db65aa84901700c22ebbdeb0aeedfe2"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
-      "bytes": 12809,
-      "sha256": "a356cc8a44b6495ea6a761c42809b05b167826f0bd8ba1418871d9d8410b40bd"
+      "bytes": 12699,
+      "sha256": "ed5a12ab4d28e1a0c62aa4558120ee78a8681a2c1330afd5ed9d4c1d9b0ea85e"
     },
     {
       "path": "docs/release/README.md",
@@ -66,17 +66,17 @@
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
       "bytes": 34026,
-      "sha256": "5f8eaa112564190c640779a7927e014da3efd55a7533af99172ceb7c5c1f730c"
+      "sha256": "f79b6c1b0b8bed778b93971a6c65a30d4a9e53f03293df6a5f100472c770704c"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 20786,
-      "sha256": "42c2d24d08aa57b6bf698a602bd410af5bffe684888130164e5da6ad95f3a4b4"
+      "bytes": 20795,
+      "sha256": "afa64d5a9252097f4cdbf10d5d62bf63586a8674a322d8a8d5a444f137034d08"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 11066,
-      "sha256": "98fd41cdd5651e42c8a9124ff375d96bcf19b7496dea5b171d80d83a85c6b9c5"
+      "bytes": 11075,
+      "sha256": "4408a9cdf9051a388674475aa6c088be54835f38267ffac6b7f3764d49add06c"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -280,8 +280,8 @@
     },
     {
       "path": "docs/development/human-testing.md",
-      "bytes": 10220,
-      "sha256": "1cc991d7da59a36863444c8cce9a22d8d01a96acf00b4dceda223f06d85f6497"
+      "bytes": 10251,
+      "sha256": "c896b394b88c67395cdd39cb386d4edf9a8d5c61202e374892eee399ff840142"
     },
     {
       "path": "docs/development/human-test-environment-v1.json",
@@ -415,8 +415,8 @@
     },
     {
       "path": "docs/development/emergency-security-updates.md",
-      "bytes": 9323,
-      "sha256": "ca802adb97b66965e684376fdf88aa2fd9fb2bdca2efeca87341946e36c36298"
+      "bytes": 9398,
+      "sha256": "a80e8d43a7e8f50f77cc8f5b6350165cb425a4b2b8fe811289779a803c54ea37"
     },
     {
       "path": "docs/adr/0017-release-dependency-staging.md",
@@ -450,8 +450,8 @@
     },
     {
       "path": "packaging/README.md",
-      "bytes": 23563,
-      "sha256": "8de287bf7a4f29818c25409c6ddc5003d0a778e8591f45f1995f8651a7ff723e"
+      "bytes": 26226,
+      "sha256": "68843067da40f5cdf91886bf83733bad78352400c728e20f5c93a95d9f8d56dc"
     },
     {
       "path": "docs/adr/0018-windows-installer-and-release-identity.md",
@@ -580,8 +580,8 @@
     },
     {
       "path": "docs/development/pws0802-x64-continuation-20261104.md",
-      "bytes": 9950,
-      "sha256": "bf8dc7fdb40388495570464803fdd40d5f8925cdeb8b9a95fa43fb595d9d51a8"
+      "bytes": 9932,
+      "sha256": "0caa7d8483925e6880f9db2e506fa95500fffb1fdf6675225ea976fe1af36c96"
     },
     {
       "path": "docs/development/pws0802-x64-qualification-20261104.md",
@@ -591,12 +591,12 @@
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
       "bytes": 8348,
-      "sha256": "5c032ead7e7bcd1994e8ea1b3e777ef9766717ead2e27fb237d83c018b1269b4"
+      "sha256": "6154d161912dde06a12015359a256a545c5cb0327ddb0495a393dcc0cdd8d64e"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
-      "bytes": 19058,
-      "sha256": "2aa0f4a5e8c589bbabb8581079d43164dcadd295b6ddc963b61b06dc531646e8"
+      "bytes": 19225,
+      "sha256": "23c6d5ad0132eaf2d11a9909632ee35f549317fabb2ea63397051fa5e125a58f"
     },
     {
       "path": "docs/development/pws0810-r9-second-pc-handoff-20261104.md",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 280592,
-      "sha256": "d49d28056a3c9623b09f9ce83cca568f096662f8ea206ee7028f4f12ce568496"
+      "bytes": 282604,
+      "sha256": "ba4bea6176a80b50c584bb9945e466c167bfda7a93e6aaba818e7a51e3f6c5c8"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",
@@ -622,19 +622,32 @@
       "path": "docs/adr/0021-bounded-repository-scan-groups.md",
       "bytes": 9792,
       "sha256": "d618c6a7b3b533518d8e59873c2d13f3d0698c811eed29f45396b9b202cb9d8a"
+    },
+    {
+      "path": "docs/development/pws0813-trace.md",
+      "bytes": 62948,
+      "sha256": "212779f201a319d29cb3f90d8e3bfff48bc7a59fa5a436bddce9b098f4e1b27b"
+    },
+    {
+      "path": "docs/development/pws0814-automated-setup.md",
+      "bytes": 5466,
+      "sha256": "c306ca8e0fb37049ab21287efb9ad57d5cd2868828d42a793340a427062a7f9c"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 86,
-    "dependency_edge_count": 254,
+    "task_count": 87,
+    "dependency_edge_count": 258,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "initial_ready_tasks": [],
-    "all_tasks_reachable_from": "PWS-0001"
+    "ready_tasks": [
+      "PWS-0803",
+      "PWS-0806"
+    ]
   },
   "notes": [
+    "2026-11-26 owner directive: AGENTS.md governs engineering choices and sequencing. TASKS.yaml records current prerequisites and status, including PWS-0814 automated setup. The remaining entries describe historical evidence and the decisions recorded at the time.",
     "PWS-0811 maintainer disposition, 2026-11-26: the reported second-PC Add file case closed after four first-submission imports in installed TRACE B8. Further PWS-0811 human testing ended by maintainer direction. Historical observations remain recorded, and the task stays in review for its separate evidence requirements.",
     "PWS-0813 TRACE B8 development baseline: starts at installed closeout 0919421e and retains distinct PWS-0811 evidence from the older checkout. The private installer remains bound to acc0b262. See docs/development/pws0813-trace.md for the baseline checks and next step.",
     "PWS-0811 continuous work package 1: exact four-original offline R16 English OCR functional coverage, explicit full-phrase recognition limit, source fixes for package review order labels and selected rotation scheduling, focused gate-test repairs and constrained import phase attribution. Successor timing, final candidate and delivery remain open. PWS-0811 is in review, PWS-0812 is done and PWS-0808 remains dependency-gated. The current workflow batches related dependency-ready work within existing scope and approval requirements.",
