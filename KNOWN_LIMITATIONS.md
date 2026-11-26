@@ -109,8 +109,10 @@ PaperWorkShell targets Windows 11 x64. Available engineering installers and prep
 bundles carry their own build-specific evidence. TRACE B8 has standard-user same-build repair,
 reuse, and offline ordinary PDF observations. A separate engineering bootstrap and runtime ZIP
 exercise authenticated offline update, recovery, and replay refusal using isolated test signing.
-Production signing, production update trust, supported release editions/builds, and the final
-packaged release matrix are pending. [Setup evidence](docs/development/pws0814-automated-setup.md),
+Current builds are unsigned and have no publicly trusted publisher signature. Use the identified
+local installer for repair or preserve-cases replacement. The live update channel is disabled.
+Supported Windows editions/builds and remaining packaged matrix results still require
+exact-candidate evidence. An unsigned candidate is eligible for product completion. [Setup evidence](docs/development/pws0814-automated-setup.md),
 [update evidence](docs/development/pws0803-authenticated-updates.md), and [release interface](docs/release/RELEASE_INTERFACE.md).
 
 PaperWorkShell is in engineering development. Public supported versions, a maintenance
@@ -120,8 +122,10 @@ the maintainer who supplied their build through their existing private channel. 
 On the standard-user TRACE B8 engineering build, the support preview opened and required consent.
 Two saves failed in the walkthrough. The investigation reproduced the native picker retaining its
 suggested filename in the installed runtime folder after an accessibility edit. The source fix
-starts the picker in the user's home folder with a blank filename. If your build reports a save
-failure, use description-only reporting. [Care and recovery](docs/user/CARE_AND_RECOVERY.md#create-a-support-bundle)
+starts the picker in the user's home folder with a blank filename. Exact unsigned PWS-0807 R1
+saved the selected ZIP and refused an occupied name without changing either file. An independent
+reopen matched the saved archive to the preview.
+If your build reports a save failure, use description-only reporting. [Care and recovery](docs/user/CARE_AND_RECOVERY.md#create-a-support-bundle)
 and [TRACE B8 investigation](docs/development/pws0807-diagnostics-investigation.md).
 
 The Milestone 6 source gate covers a narrow permanent-removal workflow for one affected active

@@ -10,11 +10,13 @@
 > authorized. The real system-volume disk-full test is not performed and
 > deferred to later release qualification; do not request its VM again.
 
-This is the current acceptance inventory, actual continuation results and finite
-remaining procedure. The maintainer selected native Windows 11 x64 only. ARM
-prerequisites are superseded and out of scope, not passed. PWS-0804 and PWS-0805
-are already done and are not reopened by this inventory. Root owns task-state,
-release-document and signing-provider updates.
+> **2026-11-26 supersession.** PWS-D044 permits unsigned product completion. The
+> earlier A2 signing requirement and signing-only procedures below are historical.
+> Exact-candidate work and actual low-disk follow-up are in the [PWS-0807 matrix](pws0807-rc-matrix.md).
+
+This inventory preserves earlier acceptance criteria, actual observations and the
+finite procedure. The project target remains native Windows 11 x64. PWS-0804 and
+PWS-0805 retain their accepted evidence.
 
 The preservation baseline is
 `output/pws0802/x64-scope-20261104/baseline-v1.json`, SHA-256
@@ -24,10 +26,10 @@ Historical output, failures, candidate bytes and source snapshots remain intact.
 
 ## Actual R9 qualification — current disposition
 
-This section supersedes the earlier execution plans below. Those plans, failures,
-build epochs and accepted observations remain historical evidence, with their
-original scopes. PWS-0802 is **blocked**, not complete. R7 remains the preserved
-accepted baseline; R9 is a separate unsigned internal engineering candidate.
+This section records the R9 outcome after the earlier execution plans. Those
+plans, failures, build epochs and accepted observations retain their original
+scopes. PWS-0802 was **blocked** under the policy at that date. R7 remains the
+preserved baseline. R9 is a separate unsigned internal engineering candidate.
 
 | R9 artifact | Actual value |
 |---|---|
@@ -168,7 +170,11 @@ VM retirement is separate from the actual product-uninstall proof.
 
 ## Exact remaining x64 observations and external gates
 
-| Item / applicable criterion | Precise missing observation or input |
+The table retains the 4 November gap inventory. PWS-D044 superseded the A2
+publisher-signing requirement on 2026-11-26. The live low-disk gap and exact
+unsigned candidate checks are tracked in the [PWS-0807 matrix](pws0807-rc-matrix.md).
+
+| Historical item or criterion | Observation or input missing at that checkpoint |
 |---|---|
 | Qualification-plan real low disk | Actual bounded disk-full at the ordinary fixed installation target, recovery and case/external preservation. A fresh current-guest read-only probe `7339733454b669dc6b048aa510a6cbadafbd0fc4940c2a335584cdea18ae8a2b`, joined by `f56db5bd66e85372ce5c36f5c522c6881ffaed29485dadf6e3ece478b5d30934`, confirms NTFS flags 29,830,879 without FILE_VOLUME_QUOTAS. COM was not attempted. C: partition query fails with CimJobException; supported size is unqueried, owned jobs closed. No quota/partition/profile/account/policy mutation occurred. A contained licensed Windows 11 x64 target with real quota enforcement or a bounded ordinary OS volume is unavailable; simulations do not pass this scenario. |
 | A2 production signing and final bytes | Qualified provider/approved route, exact final Authenticode signer/trust/timestamp/inventory, then checks affected by changed signed/repackaged bytes. Foundation inquiry submitted once; no response, admission or coverage is established. No signing credential is supplied. |
@@ -176,13 +182,13 @@ VM retirement is separate from the actual product-uninstall proof.
 The exact observed platform is Windows 11 Enterprise 26100.9711 AMD64. Pro 26300.9711
 is development-host evidence only. The engineering installer floor 22000 is not
 qualification of that build. No additional edition, universal Windows-build or
-ARM qualification requirement is invented. Public release facts stay unproved
-until the signed release and its applicable checks exist.
+ARM qualification requirement follows. Candidate claims require the applicable
+checks on the exact artifact.
 
 Codex owns technical preparation, operation and collection. The prior quota
 mutation helper is explicitly a method/model preparation, not an operational R9
 disk-full test. Any necessary owner involvement is limited to the specific
-unavailable licensed target/access or signing decision; no general manual matrix,
+unavailable licensed target or access. No general manual matrix,
 ARM environment or repeat Microsoft acceptance is requested. Microsoft evaluation
 registration/account/agreement is separate from the settled MSVC route and has
 not been submitted or accepted.
@@ -628,5 +634,5 @@ PaperWorkShell remains standalone. No sibling service, shared runtime, database,
 adapter, catalogue or synchronized release is introduced. Cases and external
 documents stay under the user's ownership. The release interface is human-readable
 documentation of proved behavior, not a new API. The next task is determined by
-Root from the validated task graph after PWS-0802's remaining evidence and signing
-gate; this inventory does not reopen PWS-0804/PWS-0805 or start PWS-0803.
+the validated task graph and the [current matrix](pws0807-rc-matrix.md). Earlier
+PWS-0802 evidence keeps its original scope.

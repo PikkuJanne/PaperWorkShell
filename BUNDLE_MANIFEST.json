@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.73",
+  "bundle_version": "0.2.74",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -20,63 +20,63 @@
   "files": [
     {
       "path": "ROADMAP.md",
-      "bytes": 40243,
-      "sha256": "baaa7ef5b619b9c2fec8d89924c707933ff61192b684d422399214de560bee83"
+      "bytes": 41466,
+      "sha256": "220af8e64f2a2b7a17cd87c1a8e5fef75b0275b1a22219b957e0e42dedb835eb"
     },
     {
       "path": "DECISIONS.md",
-      "bytes": 30362,
-      "sha256": "d21fb67795fec7d9e254bf7741e184a79a40c180d3585caff59d92e5671e27e5"
+      "bytes": 32528,
+      "sha256": "41c6326b78f4ffa2c1cfd063cf6cefef6ae932f719acb635049cbee6fbd0b087"
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 544306,
-      "sha256": "9f87369c6ce3416b2ef4166453d9147530bd4149b6137c34826a442c7c38c8e6"
+      "bytes": 546835,
+      "sha256": "79c6cd3d8c774954208f07fa1dbfcbb2061390afcdeb0b69af3fc65a477a2d56"
     },
     {
       "path": "TASKS.schema.json",
-      "bytes": 7064,
-      "sha256": "4702a749e0482d61c214aaefddf1570900e4cf4f728426868a1525b19b846cda"
+      "bytes": 7282,
+      "sha256": "4c123399199956ffb5416d5dd96c661e652946653eea22a3dc709abb2a84f2aa"
     },
     {
       "path": "AGENTS.md",
-      "bytes": 7012,
-      "sha256": "8d5a6b850ebb1394203614351d8e5fdd5b92ff2b5e9b63bf8cc45b4095ca6854"
+      "bytes": 7823,
+      "sha256": "f2c97ac1dca4ebe5880a761e7ae4f5679eacaca61c14c4bd8fba991319dbc57e"
     },
     {
       "path": "CODEX_START_PROMPT.md",
-      "bytes": 2717,
-      "sha256": "fa2e3f85a05cff14996319a4bd85218a851ffa6fe0952d8a34bd5849376b7b02"
+      "bytes": 3144,
+      "sha256": "5b2e9122a071a2f0582f0a144c433bde9e6f54b08ce103037295e3643584c0d0"
     },
     {
       "path": "README.md",
-      "bytes": 40242,
-      "sha256": "0795b5db7af32839a2294c9196ad8ef49ea21b72c6bfbb9ce5c8fe91875f21bf"
+      "bytes": 40342,
+      "sha256": "c97fef9797e452f4974c03dae615a05a4451de1c9d1344b9dde975271896befb"
     },
     {
       "path": "THIRDLIFE_ALIGNMENT.md",
-      "bytes": 12699,
-      "sha256": "ed5a12ab4d28e1a0c62aa4558120ee78a8681a2c1330afd5ed9d4c1d9b0ea85e"
+      "bytes": 12933,
+      "sha256": "cec4aab625fab938c5cd067a991b91bd4bfc26a82417273bdd13026562b040c7"
     },
     {
       "path": "docs/release/README.md",
-      "bytes": 5689,
-      "sha256": "68c12a8050c56766460b62abb3ffda27f7ea6151d002ed8a6a8aabda243acf57"
+      "bytes": 5823,
+      "sha256": "bfac6c5c7e41b97f8930ca55f6c4b1e718898ea05f185f429d1b6bb9af1883c3"
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 37676,
-      "sha256": "b4b0ff5949e4b98719f5af89bf045fcbf14c92bea05dcc47d4f6ba151f806b79"
+      "bytes": 40152,
+      "sha256": "b8e7fcfcbb43da59648e7c381d8a88235cd79616e6241c706792a9c398b8e155"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 21130,
-      "sha256": "83eb2648150d7a609ec167f698929770170d0ef8927dea175ff8f03e85f656ee"
+      "bytes": 21990,
+      "sha256": "76c194a71ad72ed11dc963cf3fafa6a061a1cf9886a0676ededc26efccc1fd95"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 11432,
-      "sha256": "572856f3c987a9c9aaa36b0fbfc1cee6740335b4097e1b38dd01579527744a14"
+      "bytes": 11761,
+      "sha256": "663404e4e7573316b45596bd7de0f332444d141aed2cf7fd4799e7fb7f1fd69b"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 9744,
-      "sha256": "cc44c6efa9fddbf9cf49fa38eb6ee8719afdf9a1cb53d9482ead039fb0c70d18"
+      "bytes": 10148,
+      "sha256": "da865a86022d2732dd43b84574f96e27b9987d13d5a5ee085dfac5c6f4602dbe"
     },
     {
       "path": "LOW_SPEC.md",
@@ -415,13 +415,13 @@
     },
     {
       "path": "docs/development/emergency-security-updates.md",
-      "bytes": 9398,
-      "sha256": "a80e8d43a7e8f50f77cc8f5b6350165cb425a4b2b8fe811289779a803c54ea37"
+      "bytes": 9462,
+      "sha256": "4e7e8736084deb74f7eb74dbcb5e7a45d97047c662ae308d275d39dd7b0dfcb4"
     },
     {
       "path": "docs/adr/0017-release-dependency-staging.md",
-      "bytes": 6251,
-      "sha256": "b3f03404a20cc5ab83568d994e2901cf3ab5999f25c3d759d625ade0f5e20e3b"
+      "bytes": 6466,
+      "sha256": "459c9020811e17ec277b1a368436e6cd205f0f014f10f145e0bd0284551bd298"
     },
     {
       "path": "docs/development/pws0801-audit-20261102.md",
@@ -450,13 +450,13 @@
     },
     {
       "path": "packaging/README.md",
-      "bytes": 28864,
-      "sha256": "313b00910c7f2c6e4762fe6280f5fe0ee7d891d5e47de26474e190bb2b85c351"
+      "bytes": 30111,
+      "sha256": "68b594c9cce9fce3d75717a29edf51fa6c8f8fa4254fe6babc98fd618edbfb71"
     },
     {
       "path": "docs/adr/0018-windows-installer-and-release-identity.md",
-      "bytes": 17998,
-      "sha256": "ba61b4a76fc6fafd8a14f2cdffa3b3b86f20ddb73df7f11e273f51e3c8655020"
+      "bytes": 18966,
+      "sha256": "5eee2731f6f593229d1c06c9f9cf5f221d14d4c5f1baed14a9b94065b84008d9"
     },
     {
       "path": "docs/development/pws0802-result.md",
@@ -465,8 +465,8 @@
     },
     {
       "path": "packaging/windows/QUALIFICATION_PLAN.md",
-      "bytes": 22273,
-      "sha256": "a0a33472c2a801613d0cec8d2a4cd4d9787634ae608c4d0a9fe3197359192997"
+      "bytes": 22925,
+      "sha256": "fcd0c9ed35e146f0ef4595881bb5b8d34f32742d7ac1521b57b5f42b37fe44ec"
     },
     {
       "path": "LICENSE",
@@ -475,8 +475,8 @@
     },
     {
       "path": "LICENSING.md",
-      "bytes": 1542,
-      "sha256": "7a5f2211e8a76202c87f5011289c7e1f469866143b5e4a797b92caf476b92a71"
+      "bytes": 1538,
+      "sha256": "1d57f856b8923967d382bec2efc50d39f6d9e168f675dff53430e5a8cba7a118"
     },
     {
       "path": "packaging/windows/product-v1.json",
@@ -540,8 +540,8 @@
     },
     {
       "path": "docs/development/pws0802-community-runtime-20261103.md",
-      "bytes": 87535,
-      "sha256": "43b9103e397088f034ec66e89b8d122122e6a6cb8bdf75737691c6f2fe96a047"
+      "bytes": 87870,
+      "sha256": "fbdcc1b680d1abfb72cf942970df82e4fee9ce14573c014e2f01e5a86df1f3aa"
     },
     {
       "path": "docs/development/pws0802-community-runtime-result.md",
@@ -570,8 +570,8 @@
     },
     {
       "path": "docs/adr/0019-windows-11-x64-only-scope.md",
-      "bytes": 7968,
-      "sha256": "dd556ce6aef10206dba04040fbacf52e2b1a27324228c4eda76376de7e0d76a5"
+      "bytes": 8007,
+      "sha256": "8b26fa8d1b8df5600d808605b3e08b92e9d66126d6a896a4781e07722d16f93c"
     },
     {
       "path": "docs/development/pws0802-foundation-inquiry-20261104.md",
@@ -580,23 +580,23 @@
     },
     {
       "path": "docs/development/pws0802-x64-continuation-20261104.md",
-      "bytes": 9932,
-      "sha256": "0caa7d8483925e6880f9db2e506fa95500fffb1fdf6675225ea976fe1af36c96"
+      "bytes": 9821,
+      "sha256": "707923a179e5c5d621ff5ed89f3ee427a322220eecf19cad3eb9a867ce19d4f3"
     },
     {
       "path": "docs/development/pws0802-x64-qualification-20261104.md",
-      "bytes": 55190,
-      "sha256": "8a149120c1c836def7113a01b6755a50eeeb5f7b9ce58b8201888083c58db8a0"
+      "bytes": 55468,
+      "sha256": "d14cc616fcf08259cf0848959212e28a9ba4226448582a91c05df09e7d56a240"
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 8945,
-      "sha256": "ac6ee97cc536718b9618a5d6540f82cf3e012d987d1f54e4f967552c2b5de922"
+      "bytes": 9364,
+      "sha256": "e11c1018730498e5929f664ec9e4bc0cfdf4b99d439564c56204f1fbb24b3040"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
-      "bytes": 19225,
-      "sha256": "23c6d5ad0132eaf2d11a9909632ee35f549317fabb2ea63397051fa5e125a58f"
+      "bytes": 19376,
+      "sha256": "e9c3655f27ea8d0f514304814ae3f0eb128ebbf85b486e480773b09573f8d392"
     },
     {
       "path": "docs/development/pws0810-r9-second-pc-handoff-20261104.md",
@@ -605,8 +605,8 @@
     },
     {
       "path": "docs/development/pws0811-repairs-20261106.md",
-      "bytes": 282604,
-      "sha256": "ba4bea6176a80b50c584bb9945e466c167bfda7a93e6aaba818e7a51e3f6c5c8"
+      "bytes": 282661,
+      "sha256": "371e7648250028ff63b206b6800a1d0d85747c5e7f31ba57520193cd36181609"
     },
     {
       "path": "docs/adr/0020-exact-directory-acl-updates.md",
@@ -625,28 +625,33 @@
     },
     {
       "path": "docs/development/pws0813-trace.md",
-      "bytes": 62948,
-      "sha256": "212779f201a319d29cb3f90d8e3bfff48bc7a59fa5a436bddce9b098f4e1b27b"
+      "bytes": 62974,
+      "sha256": "29f9368678b710dc7ba985c31eec39404d510392ec6dc4656e6979e32b568175"
     },
     {
       "path": "docs/development/pws0814-automated-setup.md",
-      "bytes": 5903,
-      "sha256": "9580f7e39a3e414cd3ddecf050ba3d86cdc541aa2271cdd3567547745cf87998"
+      "bytes": 5841,
+      "sha256": "5f2d87844968272e9b83910635b85b01236e939275f7dc03d127c438d5c82843"
     },
     {
       "path": "docs/adr/0022-authenticated-application-updates.md",
-      "bytes": 7955,
-      "sha256": "b05c7be792a632273e007ec720884a56d3e8de5841d1830c655c294c4f8c333c"
+      "bytes": 8355,
+      "sha256": "4c9a2d471829e6ec92c698bf1d8eabb4e93117e9353a09b1789008e29a5caf6f"
+    },
+    {
+      "path": "docs/adr/0023-unsigned-product-completion.md",
+      "bytes": 3779,
+      "sha256": "c616fb7a1ab7941ee95f232d131a09f943ec2cc05c14ab7954917983d65c67d0"
     },
     {
       "path": "docs/development/pws0803-authenticated-updates.md",
-      "bytes": 7347,
-      "sha256": "16d4409f04b42835109a3fd816cd8076fc716424fd245640563aa283cee09d51"
+      "bytes": 7573,
+      "sha256": "211c6e03a805f3fca6f7c7450e6d97c1fbc3c12fa73f4b3ccc5b6aa3ba4b1d8e"
     },
     {
       "path": "SECURITY.md",
-      "bytes": 3394,
-      "sha256": "fee3f511330da55f953ee14ad69c289f166b9198c43a19ac30a1d4b92f3c409b"
+      "bytes": 3501,
+      "sha256": "f492a977f913e5865128277c19dff0fbf8571c0e8563efe70e91e7a0c1dff6f3"
     },
     {
       "path": "docs/user/USER_GUIDE.md",
@@ -655,23 +660,28 @@
     },
     {
       "path": "docs/user/CARE_AND_RECOVERY.md",
-      "bytes": 16879,
-      "sha256": "1bd1550d01b97bf25d6e94ac3b367ba5ec61bf00631f5c69752bccfb1b3c267c"
+      "bytes": 17213,
+      "sha256": "ae3d5447de39966bf7dcba06e544b157efa678bae58623bc474421b7e46de88a"
     },
     {
       "path": "docs/development/pws0806-documentation.md",
-      "bytes": 6845,
-      "sha256": "cea6f568b6ccdd26643d30ca1256c8aca44d62e2430a1bc758e7c8b278c8fc03"
+      "bytes": 6706,
+      "sha256": "7cab26eb986bc47ab56cfaeb56d7987d2fefef813500ff90bfbe446289e0e611"
     },
     {
       "path": "docs/development/pws0807-diagnostics-investigation.md",
-      "bytes": 12024,
-      "sha256": "d768c8c736c4ace5a4fdba568711e7703efc5987b82f05737da42bc463c09769"
+      "bytes": 12499,
+      "sha256": "3e5c489447693a91e5296ae31e93a98d2dcc0457351006a620724cf8c8e0aa5b"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 18013,
-      "sha256": "cdd55dc20a56b0e74309c6fbdef057048b007898d5eabeb593fc46417257ec15"
+      "bytes": 19516,
+      "sha256": "2033eab97a06f6622138d2e681925f86b22d5d7ccfa2281bded88f555739eb9a"
+    },
+    {
+      "path": "docs/development/pws0807-unsigned-completion.md",
+      "bytes": 8270,
+      "sha256": "5f85affd77f85b5659b7e5db7702299f5bc1c0f1cfcfdf919836d37f0e34b3d9"
     }
   ],
   "validation": {
@@ -684,6 +694,7 @@
     "ready_tasks": []
   },
   "notes": [
+    "2026-11-26 unsigned product completion: PWS-D044 allows an exact unsigned Windows 11 x64 candidate to satisfy PWS-0808. TASKS.yaml and the current PWS-0807 continuation record the local R1 observations and remaining qualification. Earlier notes retain their historical scope.",
     "2026-11-26 owner directive: AGENTS.md governs engineering choices and sequencing. TASKS.yaml records current prerequisites and status, including PWS-0814 automated setup. The remaining entries describe historical evidence and the decisions recorded at the time.",
     "PWS-0811 maintainer disposition, 2026-11-26: the reported second-PC Add file case closed after four first-submission imports in installed TRACE B8. Further PWS-0811 human testing ended by maintainer direction. Historical observations remain recorded, and the task stays in review for its separate evidence requirements.",
     "PWS-0813 TRACE B8 development baseline: starts at installed closeout 0919421e and retains distinct PWS-0811 evidence from the older checkout. The private installer remains bound to acc0b262. See docs/development/pws0813-trace.md for the baseline checks and next step.",

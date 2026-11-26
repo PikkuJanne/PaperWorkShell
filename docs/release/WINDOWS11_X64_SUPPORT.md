@@ -11,10 +11,11 @@ to change that boundary.
 
 | Environment | Architecture | Evidence and applicable limits |
 |---|---|---|
-| Windows 11 Enterprise 26100.9711, Windows Sandbox, actual standard account | Native x64 / AMD64 | Accepted R6 clean workflow/interruption and R7 scoped baseline remain preserved. Fresh R9 actual standard guest has install/full 3,195, native GUI input, notices and interactive-repair prefixes; confirmed partial deletion mechanics also pass. Default-preserve removal and bounded removed-state comparisons pass. Finite A9 refusal/A11 review-result reading and independent case/work archives are complete with pointer activation disclosed; real low-disk and signing remain open; no complete release pass. |
+| Windows 11 Enterprise 26100.9711, Windows Sandbox, actual standard account | Native x64 / AMD64 | Accepted R6 clean workflow/interruption and R7 scoped baseline remain preserved. Fresh R9 actual standard guest has install/full 3,195, native GUI input, notices and interactive-repair prefixes; confirmed partial deletion mechanics also pass. Default-preserve removal and bounded removed-state comparisons pass. Finite A9 refusal/A11 review-result reading and independent case/work archives are complete with pointer activation disclosed; actual low-disk remains open; no complete product-candidate pass. |
 | Windows 11 Pro 26300.9711 development host, filtered administrator process | Native x64 | Earlier host-only evidence. It does not establish a clean environment or an actual standard account. |
 | Windows 11 Pro 26300.9711, disconnected Hyper-V guest, standard-user desktop | Native x64 | Exact unsigned TRACE B8 passed same-build repair, reuse, launch and one offline ordinary PDF workflow. In a separate rehearsal, engineering R1 and the isolated test-signed R2 runtime passed authenticated local activation, an offline ordinary PDF export, restoration of R1 and replay refusal. Case files matched their baselines in both rehearsals. [TRACE B8 setup](../development/pws0814-automated-setup.md) and [engineering update proof](../development/pws0803-authenticated-updates.md). |
-| Windows 11 x64 release artifact after production signing | Native x64 | Required final-byte signature, inventory and affected qualification checks remain unrun until a qualified signing route is connected. |
+| Windows 11 Pro 26300.9711, disconnected Hyper-V guest, standard-user desktop, diagnostics R1 | Native x64 | Exact unsigned PWS-0807 R1 passed B8-to-R1 preserve-cases replacement, normal launch, ZIP save and overwrite refusal. The PWS-0814 entry subsequently completed the same replacement and verified the installed inventory. [Packaged R1 evidence](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1) · [R1 setup continuation](../development/pws0807-unsigned-completion.md) |
+| Unsigned Windows 11 x64 product-completion candidate | Native x64 | Exact identity and remaining packaged checks are tracked in the [PWS-0807 matrix](../development/pws0807-rc-matrix.md). |
 | Earlier proposed execution on ARM64 | Outside scope | Earlier unrun scenario superseded by PWS-D043. No pass or future prerequisite is inferred. |
 
 The preserved accepted unsigned baseline is `pws0802-internal-20261103-r7`,
@@ -109,10 +110,9 @@ technical installer floor of build 22000 is an engineering admission check, not
 evidence that build 22000 was qualified. Additional x64 edition/build claims need
 their own applicable evidence when proposed.
 
-Every unsigned engineering candidate remains internal until trusted signing and its required x64
-qualification are complete. Public release/version/signer fields stay unproved
-until that release exists. This is not a new architecture decision request or a
-requirement to acquire another architecture's environment.
+Under PWS-D044 the exact unsigned candidate can complete the required x64
+qualification. Existing engineering candidates retain their internal status. A
+future publication decision records the actual compatibility and signing state.
 
 See the [PWS-0802 qualification record](../development/pws0802-x64-continuation-20261104.md),
 [finite x64 qualification record](../development/pws0802-x64-qualification-20261104.md)

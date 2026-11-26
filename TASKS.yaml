@@ -1,7 +1,7 @@
 schema_version: 1
 project: PaperWorkShell
-task_graph_version: 0.4.1
-frozen_at: '2026-11-04'
+task_graph_version: 0.4.2
+frozen_at: '2026-11-26'
 roadmap_file: ROADMAP.md
 decision_file: DECISIONS.md
 agent_contract_file: AGENTS.md
@@ -15,6 +15,7 @@ release_targets:
     through_milestone: M8
     gate_task: PWS-0808
     permanent_redaction_included: true
+    publisher_code_signing_required: false
 status_values:
 - planned
 - ready
@@ -36,7 +37,8 @@ graph_rules:
   dependency_semantics: >-
     Completion requires every listed prerequisite to be done. Scheduling follows the real
     prerequisites of each operation. Independent preparation can proceed while a prerequisite
-    is pending, and milestone labels and priorities guide planning.
+    is pending, and milestone labels and priorities guide planning. Publisher-code-signing-only
+    work is outside the v1.0 gate dependency closure.
   gate_requires_all_dependencies_done: true
   decision_refs_must_exist: true
   cycles_forbidden: true
@@ -89,8 +91,9 @@ milestones:
 - id: M8
   name: Release hardening
   release_target: v1.0 candidate
-  objective: Ship a signed, updateable, documented, migratable, independently verifiable Windows release with pinned
-    dependencies, an SBOM, and a frozen black-box release envelope.
+  objective: Verify an identified unsigned Windows 11 x64 product with supported installation, same-build repair,
+    cross-build replacement, migration, standalone document workflows, pinned dependencies, an SBOM, and a frozen
+    black-box envelope.
   gate_task: PWS-0808
 tasks:
 - id: PWS-0001
@@ -5870,11 +5873,11 @@ tasks:
       for PWS-0801. The source-tree audit does not claim clean packaged-build or hardware evidence.
 - id: PWS-0802
   milestone: M8
-  title: Build Windows installer and signed release artifacts
+  title: Build and verify the unsigned Windows installer
   kind: implementation
   priority: P0
   effort: XL
-  status: blocked
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0801
@@ -5883,20 +5886,21 @@ tasks:
   - PWS-D034
   - PWS-D042
   - PWS-D043
+  - PWS-D044
   objective: Freeze PaperWorkShell's independent application identity, package the application and required engines/resources
-    for Windows 11 x64 without development tools, and sign artifacts through the approved release process.
+    for Windows 11 x64 without development tools, and verify the exact unsigned candidate.
   deliverables:
   - Installer technology ADR and configuration
   - Stable reverse-domain application ID, publisher, product licence, product version/channel, supported Windows 11 x64
     edition/build matrix, package identity, and upgrade identity
   - Application/installer build pipeline
-  - Code-signing procedure using maintainer-controlled material
+  - Candidate receipt, packaged file inventory, checksums, and observed signing status
   - Install/repair/uninstall test automation where practical
   - Documented privilege, restart, silent-option, rollback, file-association, data-choice, and uninstall-residue behavior
   acceptance_criteria:
   - A clean Windows 11 x64 machine installs and runs PaperWorkShell without a development environment.
-  - Artifacts are signed by the approved process; private signing material is never committed or exposed to Codex
-    logs.
+  - The installer, packaged runtime and inventory identify the same unsigned candidate. Required upstream authenticity
+    and redistribution checks pass.
   - Install locations and permissions follow least privilege.
   - Required notices and component versions are available to the user.
   - Application and package identities are stable, independently versioned, and contain no ThirdLife version coupling.
@@ -5913,40 +5917,17 @@ tasks:
     and other app-data residue by documented category.
   - Uninstall never deletes an externally selected source document or user-selected export destination.
   verification:
-  - Install, standard-user launch, repair/update as supported, and uninstall on clean Windows 11 x64 test environments.
+  - Install, launch as a standard user, and uninstall in clean Windows 11 x64 test environments. Verify the documented
+    same-build repair and cross-build replacement operations in their respective starting states.
   - Exercise preserve-case, explicit-data-removal, reinstall-and-reopen, privilege, restart, rollback, and optional
     file-association paths.
-  - Verify signatures and packaged file inventory.
+  - Verify installer and payload identity, checksums, reported signing status, and reviewed upstream components.
   risk_tags:
   - installer
-  - signing
+  - distribution-integrity
   - windows
   - release
-  blocker:
-    reason: Trusted public signing is unavailable. It prevents signing and signature
-      qualification of the public installer and downstream PWS-0807/PWS-0808 public
-      release checks that require signed bytes. The existing private installer and
-      reviewed runtime support independent packaging, setup and document checks.
-    evidence:
-    - docs/development/pws0802-community-runtime-20261103.md retains the accepted R6/R7 installer,
-      complete runtime, final Microsoft-only terms, observed interruption/recovery, direct keyboard GUI,
-      accessible busy-error handling and scoped qualification with exact source and artifact hashes.
-    - docs/development/pws0802-community-runtime-result.md records authentic Community acquisition,
-      unchanged Microsoft runtime bytes and the accepted individual-developer redistribution route.
-    - docs/development/pws0802-implementation-20261103.md retains earlier R1/R2 evidence and failures.
-    - docs/development/pws0802-signing-and-runtime-review.md records the exact Community 2022
-      agreement, actual Microsoft components and conditional SignPath Foundation route.
-    - docs/development/pws0802-clean-windows-feasibility.md distinguishes available hypervisor
-      capability from an actual clean licensed test guest; its earlier ARM proposal is superseded by D043.
-    - packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt
-      is the final local agreement covering five unique Microsoft DLLs at nine inventoried destinations;
-      the earlier proposal and old-route notices are retained as historical evidence.
-    requested_action: When public distribution is resumed, connect an approved signing route
-      and qualify the exact signed installer. The separate real system-volume low-disk
-      observation requires an authorized isolated target with an enforceable quota or
-      bounded volume. No provider contact, enrollment, upload or agreement is authorized
-      by this task record. Continue internal setup, update implementation and release
-      preparation using the existing authorized inputs.
+  blocker: null
   evidence:
     completed_at: null
     revision: candidate:pws0802-internal-20261103-r7
@@ -5995,7 +5976,16 @@ tasks:
     - "Host R1 install/installed synthetic smoke/reinstall/corrected preserve-uninstall - PASS at HOST_NOT_CLEAN scope. R2 install, in-place repair, prior synthetic-case reopen, full smoke and preserve-uninstall - PASS; receipt 5d7d4f38b966f5f172e44e29fee412d7eb1e17f915a4c3494080df31377bebd8. No clean-machine, standard-account, GUI or public-signature claim."
     - "Production signing/refusal tests and real vendor Authenticode verifier probes - PASS at recorded epochs; no product was publicly signed. Actual Microsoft preparer invocation without authority refused MICROSOFT_RUNTIME_RIGHTS_REQUIRED before output."
     notes:
-    - 'Current maintainer reset 2026-11-04: PWS-0810 owns usable internal delivery and concrete
+    - 'Current 2026-11-26 scope under PWS-D044: qualify the exact unsigned installer and runtime.
+      Existing R6, R7, R9, TRACE B8, and PWS-0807 R1 evidence applies within its recorded scope.
+      The accepted Microsoft route and recipient terms remain documented in
+      docs/development/pws0802-community-runtime-result.md and
+      packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt.
+      The next packaging verification is clean standard-user installation and normal launch,
+      with exact-candidate preservation and removal checks. Real install-target disk exhaustion
+      still requires a bounded disposable environment. Prior signing requests are superseded.
+      Any future publisher signing is optional work under a separately authorized distribution route.'
+    - 'Historical maintainer reset 2026-11-04: PWS-0810 owns usable internal delivery and concrete
       functional repairs independently of this deferred public phase. This task remains blocked only
       for its original signed public outcome, not the entire project. R9 and applicable accepted
       installed/runtime evidence are preserved. The real system-volume disk-full test is not performed
@@ -6073,6 +6063,11 @@ tasks:
     - PWS-0804 and PWS-0805 retain their accepted evidence. The private installer
       supports independent PWS-0803 implementation and PWS-0814 setup proof.
 
+    - The 2026-11-26 prepared R1 run verified a B8-to-R1 cross-build replacement on the
+      offline Windows 11 Pro x64 26300.9711 standard-user desktop. Keep cases preserved all
+      353 established case files. Setup verified 3219 payload files and launched R1.
+      See docs/development/pws0807-unsigned-completion.md. Clean-machine evidence and
+      actual installer-target disk exhaustion remain open.
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy
@@ -6090,11 +6085,14 @@ tasks:
   - PWS-D034
   - PWS-D042
   - PWS-D043
-  objective: Provide optional authenticated application updates that are separate from document processing and cannot
-    silently replace components from an untrusted source or couple PaperWorkShell to a portfolio release cadence.
+  - PWS-D044
+  objective: Provide and verify the local installer paths for same-build repair and cross-build replacement, and
+    an offline application-update verifier. Keep application updates separate from document processing and require
+    an authenticated, compatible bundle before activation.
   deliverables:
   - Update-channel ADR and threat model
-  - Signed update metadata/package verification
+  - Authenticated update metadata/package verification with isolated test trust
+  - Documented unsigned local-installer replacement and repair path
   - User control and offline behavior
   - Rollback/failure handling
   - Component/version audit trail
@@ -6102,7 +6100,9 @@ tasks:
   acceptance_criteria:
   - Application update artifacts and their qualification target Windows 11 x64 only under PWS-D043.
   - Document processing remains fully usable offline.
-  - Unsigned, tampered, rollback-forbidden, or wrong-channel updates are rejected before installation.
+  - Unauthenticated, tampered, rollback-forbidden, or wrong-channel update bundles are rejected before activation.
+  - The supported local installer path distinguishes same-build repair from candidate replacement and preserves cases.
+  - Optional live network delivery stays disabled. Isolated test trust cannot establish a production trust anchor.
   - Update checks transmit no document/case content.
   - A failed update leaves the previous working version intact or recoverable.
   - Worker network denial remains in effect during document processing.
@@ -6111,6 +6111,7 @@ tasks:
     version or range.
   verification:
   - Run valid, tampered, expired, rollback, offline, interrupted, and privacy-capture update tests.
+  - Verify the local installer path independently of the isolated authenticated update rehearsal.
   - Verify independent product/channel metadata and absence of ThirdLife content or cadence coupling.
   risk_tags:
   - updates
@@ -6138,8 +6139,11 @@ tasks:
       precise localized replay wording passed focused widget regression testing.
     - The PWS-Test guest returned to its exact earlier TRACE B8 state with the original case
       inventory and preserved checkpoints. Host proof preceded the restore.
-    - Production trust provisioning, signed public artifacts and release qualification remain
-      with the owning release tasks. The update has no ThirdLife requirement or compatibility claim.
+    - PWS-0807 separately records a normal local installer replacement from TRACE B8 to unsigned R1
+      and preservation of 353 baseline case files. PWS-0814 records B8 same-build repair and reuse.
+      Candidate-specific replacement and migration remain in the PWS-0807 matrix.
+    - Optional network delivery and its production trust configuration remain disabled and are
+      outside product completion. The verifier has no ThirdLife requirement or compatibility claim.
 - id: PWS-0804
   milestone: M8
   title: Implement case migration and release-to-release recovery tests
@@ -6277,6 +6281,7 @@ tasks:
   - PWS-D037
   - PWS-D039
   - PWS-D042
+  - PWS-D044
   objective: Provide accurate documentation for users, volunteers, administrators, and security reporters without
     overstating product guarantees, and prepare the exact-candidate standalone release interface and evidence index.
   deliverables:
@@ -6297,6 +6302,8 @@ tasks:
   - No guide promises portal acceptance, legal advice, forensic erasure, OCR certainty, or PDF/UA conformance.
   - Support instructions do not ask users to send sensitive documents or ordinary logs containing content.
   - Accessibility and keyboard instructions are complete.
+  - Document the observed unsigned status, supported same-build repair and cross-build replacement, disabled optional
+    network update delivery, and actual limitations.
   - Product documentation states that PaperWorkShell is standalone, versions independently, retains local user-data
     boundaries, and has no current ThirdLife app-to-app integration or compatibility claim.
   - Every data category has a documented location class, retention and deletion behavior, and uninstall disposition
@@ -6338,15 +6345,16 @@ tasks:
       agent-operated novice and support walkthroughs, corrections, and preserved evidence.
     - The B8 support ZIP failure is a recorded engineering limitation; exact packaged
       diagnostics qualification remains with PWS-0807.
-    - Public release fields remain draft. Test-signed update evidence does not establish
-      production trust, and public reporting contact and supported versions remain pending.
+    - Candidate paperwork remains draft until observed. Current publisher signing is unavailable
+      under PWS-D044. Isolated update test trust does not establish a production channel.
+      Public reporting contact and supported versions remain pending.
 - id: PWS-0807
   milestone: M8
-  title: Run release-candidate matrix, performance, uninstall, and recovery validation
+  title: Verify the unsigned packaged-candidate matrix
   kind: implementation
   priority: P0
   effort: XL
-  status: planned
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0802
@@ -6362,14 +6370,17 @@ tasks:
   - PWS-D040
   - PWS-D041
   - PWS-D042
-  objective: Execute the complete public black-box release matrix on packaged builds and confirm installation, launch,
-    opening, workflow, updates, migrations, recovery, accessibility, compatibility, data preservation, and cleanup behavior.
+  - PWS-D043
+  - PWS-D044
+  objective: Execute the standalone black-box matrix on the exact unsigned Windows 11 x64 candidate and confirm
+    installation, launch, document workflow, same-build repair, cross-build replacement, migration, recovery,
+    accessibility, compatibility, data preservation, resource budgets, and cleanup.
   deliverables:
   - Release-candidate test plan and environment inventory
   - Packaged-build automated and manual results
   - Packaged-build resource-budget plus low-disk and slow-I/O simulation report
   - Optional physical-device observations when available, explicitly non-gating
-  - Install/update/migration/uninstall/residual-case report
+  - Install/replacement/repair/migration/uninstall/residual-case report
   - Synthetic black-box sample package with representative inputs, applicable workspace/project artifact, expected
     outputs and summaries, expected-behavior notes, provenance, and hashes
   - Candidate release-evidence results tied to exact artifact, interface, environment, and sample revisions
@@ -6379,10 +6390,13 @@ tasks:
   - Install requires no development tools and uninstall clearly handles remaining cases.
   - Supported older cases migrate safely.
   - Packaged builds meet approved resource budgets and bounded-behavior requirements.
-  - Full keyboard/NVDA, redaction, compression, reader, recovery, diagnostics, and update scenarios pass.
-  - Clean install, standard-user launch, supported synthetic-file opening, the canonical offline workflow, update or
-    repair, interrupted-update recovery, uninstall with preserved cases, reinstall and reopen, explicit data removal,
-    and optional file-association cleanup pass using only documented public behavior.
+  - Full keyboard/NVDA, redaction, compression, reader, recovery, and diagnostics scenarios pass.
+  - Documented local same-build repair and cross-build replacement pass on the candidate with separate starting-state
+    evidence, including applicable interruption recovery and case preservation. Exercise the applicable offline update
+    verifier and refusal paths using isolated test trust.
+  - Clean install, standard-user launch, supported synthetic-file opening, the canonical offline workflow,
+    uninstall with preserved cases, reinstall and reopen, explicit data removal, and optional file-association
+    cleanup pass through documented product behavior.
   - PaperWorkShell works with ThirdLife absent and requires no sibling process, account, server, database, fixture,
     adapter, source tree, or compatibility result.
   - Public samples and evidence contain no private username, absolute local path, credential, real or user document/OCR
@@ -6392,7 +6406,7 @@ tasks:
   verification:
   - Run the full packaged-build test matrix on clean environments. Verify applicable installed
     fixes, offline operation and resource behavior against the exact release candidate.
-  - Perform manual accessibility, compatibility, redaction, update, migration, and uninstall scenarios.
+  - Perform manual accessibility, compatibility, redaction, repair, replacement, migration, and uninstall scenarios.
   - Run black-box launch/open/offline/preserve/reinstall/remove-data/association scenarios against the frozen synthetic
     sample package and reconcile results and hashes with `docs/release/RELEASE_EVIDENCE.md`.
   risk_tags:
@@ -6406,14 +6420,15 @@ tasks:
     revision: null
     commands: []
     notes:
-    - The exact signed candidate is needed for final signed-package results. Prepare the
-      matrix and fixtures, and exercise independent checks with suitable internal builds.
+    - PWS-D044 allows final packaged results on an exact unsigned candidate. Reuse R1 diagnostics
+      within its recorded scope and continue clean install and ordinary standard-user launch.
+      Optional network channel activation and publisher-signature checks are outside this matrix.
     - The previously tested guest lacked a bounded quota or test partition for the packaged
       low-disk observation. Obtain an authorized isolated environment with that capability
       for the affected check and continue the remaining matrix work independently.
     - PWS-0806 observed support ZIP publication fail at two fixed local destinations on
-      exact TRACE B8. Verify successful local save, exact preview contents, privacy, and safe
-      failure on the candidate. See docs/development/pws0806-documentation.md.
+      exact TRACE B8. The later R1 results cover the affected installed workflow within the
+      scope described below. See docs/development/pws0806-documentation.md.
     - PWS-0807 reproduced the native picker retaining its suggested name in the B8 runtime
       folder after an accessibility edit. An empty filename in the user home directory let the
       installed B8 writer save the exact reviewed ZIP. The source regression failed before the
@@ -6421,18 +6436,28 @@ tasks:
     - The scenario matrix, environment inventory and verified synthetic rehearsal kit are recorded
       in docs/development/pws0807-rc-matrix.md. The current offline Pro guest reports NTFS quota
       capability in a read-only probe. Actual installer-target disk exhaustion still needs an
-      authorized disposable configuration. Exact signed-candidate qualification requires PWS-0802.
+      authorized disposable configuration. PWS-0802 owns the installation and packaging requirements.
     - The exact B8 installed-runtime constrained-v1 smoke passed PDF/PNG intake, previews,
       verified output, OCR, unavailable-input and no-overwrite checks, and preservation.
       The receipt records final case/cache sizes and zero temporary residue. Peak resource
-      measurements, slow I/O, disk exhaustion, and signed release qualification remain pending.
+      measurements, slow I/O, and disk exhaustion remain pending.
     - Exact unsigned R1 from e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec passed the offline
       standard-user native picker save, preview SHA-256 and member checks, and occupied ZIP refusal
       with an open synthetic case. All 3219 installed payload files matched. The 353 baseline case
       files matched after replacement and restore. See docs/development/pws0807-diagnostics-investigation.md.
+    - The prepared R1 setup passed cross-build replacement with case preservation. Native
+      Cancel returned to preview without creating a ZIP. Windows refused the denied folder
+      and the application independently refused a Windows-valid name beyond its storage
+      limit. The same preview then saved and reopened with exact permitted members and privacy
+      checks. No partial output remained. The input, existing ZIP, all 353 earlier case files
+      and five new synthetic case files matched. See docs/development/pws0807-unsigned-completion.md.
+    - Prepared setup verified same-build reuse without an installer invocation and opened
+      a new exact R1 process. The one-page synthetic case reopened with saved state and a
+      completed preview. All 358 case files matched. Continue clean-machine installation as
+      a separate starting state.
 - id: PWS-0808
   milestone: M8
-  title: Run Milestone 8 v1.0 release gate
+  title: Run Milestone 8 v1.0 product-completion gate
   kind: gate
   priority: P0
   effort: XL
@@ -6460,11 +6485,12 @@ tasks:
   - PWS-D040
   - PWS-D042
   - PWS-D043
-  objective: Approve a v1.0 candidate only when every milestone gate and release-hardening criterion has current
-    evidence on the packaged build and its complete standalone black-box release envelope is frozen.
+  - PWS-D044
+  objective: Accept the identified unsigned v1.0 product when the approved milestone gates and quality criteria have
+    current evidence and the exact candidate's standalone black-box envelope is frozen.
   deliverables:
   - Milestone 8/v1.0 gate report
-  - Signed artifact inventory and checksums
+  - Candidate artifact inventory, checksums, and actual observed signing status
   - SBOM/license bundle
   - Release notes and known limitations
   - Security/accessibility/compatibility sign-off records
@@ -6472,25 +6498,28 @@ tasks:
   - Frozen synthetic sample package, expected-behavior notes, hashes, and standalone-checklist sign-off
   acceptance_criteria:
   - The product platform qualification matrix covers Windows 11 x64 only under PWS-D043.
-  - Every M8 prerequisite and every earlier milestone gate is done.
-  - Packaged artifacts are signed and match the verified inventory/SBOM.
-  - Authenticated updates, migrations, diagnostics, install/uninstall, and recovery pass.
+  - Every listed prerequisite and every earlier milestone gate is done.
+  - Packaged artifacts match the verified inventory/SBOM, with source and byte identity and the actual signing status
+    recorded. An unsigned candidate satisfies this criterion with the required identity and integrity evidence.
+  - Supported same-build repair and cross-build replacement have distinct passing evidence. Migrations, diagnostics,
+    installation, uninstall, and recovery pass. The offline update verifier rejects unauthenticated, tampered, or
+    incompatible bundles. Optional live network delivery and any future publisher-signing route are outside the gate.
   - Permanent redaction retains independent approval and passes against the candidate.
   - Full keyboard/NVDA and compatibility matrices pass.
   - Every release-interface and evidence field is proved for the exact candidate or explicitly marked “not supported”
     with a reason; no unexplained `TBD` remains.
   - Release documents, packaged artifacts, source revision, SBOM, samples, expected outputs, known limitations, and
     hashes identify the same frozen candidate.
-  - PaperWorkShell's standalone workflow, install, launch, supported opening, update or repair, migration, diagnostics,
-    data preservation, and uninstall pass with ThirdLife absent.
+  - PaperWorkShell's standalone workflow, install, launch, supported opening, repair, replacement, migration,
+    diagnostics, data preservation, and uninstall pass with ThirdLife absent.
   - No ThirdLife build, fixture, repository, process, service, adapter, or compatibility approval is required for the
     PaperWorkShell release gate, and the release makes no premature ThirdLife compatibility claim.
   - No unresolved release/security/privacy/accessibility blocker remains.
   verification:
-  - Run the final packaged-build matrix and independently verify artifact signatures/checksums.
+  - Run the final packaged-build matrix and independently verify artifact checksums, inventory, and reported signing status.
   - Perform the formal release review and record pass/fail.
   - Reconcile and freeze the standalone checklist, release interface, release evidence, synthetic sample manifest, and
-    known limitations with the signed candidate inventory.
+    known limitations with the exact candidate inventory.
   risk_tags:
   - gate
   - v1-0
@@ -6501,8 +6530,9 @@ tasks:
     revision: null
     commands: []
     notes:
-    - 'Maintainer scope decision 2026-11-04: apply PWS-D043 to this release gate without adding
-      another platform prerequisite or waiving trusted signing and applicable x64 qualification.'
+    - PWS-D043 fixes the required Windows 11 x64 scope. PWS-D044 supersedes the former
+      trusted-signature requirement and preserves all applicable quality and x64 evidence.
+      Product outcome, artifact signing status, and publication authorization have separate records.
 - id: PWS-0809
   milestone: M8
   title: Integrate ThirdLife late-binding governance and release-envelope ownership
@@ -6622,9 +6652,10 @@ tasks:
   - PWS-D041
   - PWS-D042
   - PWS-D043
+  - PWS-D044
   objective: Deliver a usable unsigned internal Windows 11 x64 application from the current local
-    checkout and verified R9 candidate, independently of deferred public signing and release-only
-    qualification. Repair concrete functional defects and deliver the usable internal handoff.
+    checkout and verified R9 candidate. Repair concrete functional defects and deliver the
+    usable internal handoff. Its results retain their internal-delivery scope under PWS-D044.
   deliverables:
   - Exact installable candidate identity and normal installed shortcut/executable location
   - Finite installed core-workflow check with applicable reused evidence and plainly stated limitations
@@ -6642,8 +6673,8 @@ tasks:
     or precisely explained where a genuine execution limit remains; claims identify reused evidence.
   - Security, privacy, worker isolation, consent, immutable originals, private storage and truthful verified
     export outcomes remain intact; no public-release qualification or ThirdLife compatibility is claimed.
-  - The handoff states exact app/launch locations, what works, concrete changes, practical first steps and
-    deferred signing/publication/release-only qualification. Owner feedback is optional, not a delivery gate.
+  - The handoff states exact app/launch locations, what works, concrete changes, practical first steps and remaining
+    exact-candidate qualification. Owner feedback is optional.
   verification:
   - Verify R9's exact size, SHA-256 and unsigned/internal identity; preserve its bytes.
   - Use the installed shortcut or executable and ordinary GUI with a small synthetic packet; reuse accepted
@@ -6699,7 +6730,7 @@ tasks:
       Receipt: 2acc1f3e70cf566cbc63203bd510af89e726f8306cbfc1ca83545a8570468c47;
       unrelated cases/global recovery state not inspected.
     notes:
-    - Explicit maintainer reset on 2026-11-04 authorizes this narrow task-graph amendment and internal
+    - Historical maintainer reset on 2026-11-04 authorized this narrow task-graph amendment and internal
       handoff without another approval. Public signing/SignPath/publication and remaining release-only
       environmental qualification are deferred; PWS-0802 is not done and PWS-0803 is not current work.
     - The real system-volume disk-full test is not performed and deferred to later release qualification.
@@ -7495,7 +7526,7 @@ tasks:
     - "The TRACE implementation and exact B4 verification are recorded in docs/development/pws0813-trace.md."
     - "The continuation records B5 source, installer and native contrast evidence."
     - "The continuation records B6 reopen evidence, B7 package and batch evidence, the B7 narrow-pane failure, and exact B8 source, installer and native fix verification."
-    - "The bounded offline console path was verified in the signed-in standard-user session. Logged-out batch admission was denied by the existing Windows account policy. The signed release and M8 release gate retain their separate prerequisites."
+    - "The bounded offline console path was verified in the signed-in standard-user session. Logged-out batch admission was denied by the existing Windows account policy. The exact-candidate M8 product gate retains its applicable evidence requirements."
     - "The TRACE continuation records the separate baseline scan verification under the approved ADR 0021 amendment. Both registered scans passed in the complete linked repository with the 768 MiB development work cap, the 50,000-record cap, and full ref, index, and working-file coverage."
 
 - id: PWS-0814
@@ -7518,6 +7549,7 @@ tasks:
   - PWS-D034
   - PWS-D042
   - PWS-D043
+  - PWS-D044
   objective: Install and verify an explicitly identified TRACE build from a prepared artifact
     on an authorized Windows 11 x64 target using the supported per-user installation.
   deliverables:
@@ -7555,4 +7587,5 @@ tasks:
     - docs/development/pws0814-automated-setup.md records the exact launcher and package,
       native per-user repair and launch, offline GUI import/export and independent PDF
       reopening, early failure paths, and successful verification and reuse on repeat.
-    - Trusted signing remains a separate public-delivery prerequisite.
+    - Reuse the unsigned setup capability for exact-candidate checks under PWS-D044.
+      Same-build repair and reuse evidence applies to TRACE B8 within its recorded scope.

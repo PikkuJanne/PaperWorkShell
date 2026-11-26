@@ -1,8 +1,8 @@
 """Build a bounded, explicitly unsigned internal Windows installer from exact inputs.
 
 This is release tooling, not a document-processing or application command. Network
-acquisition is confined to the explicit prepare-compiler --fetch action. Public
-signing and runtime redistribution entitlement are separate, fail-closed gates.
+acquisition is confined to the explicit prepare-compiler --fetch action. Runtime
+redistribution entitlement is checked independently of publisher signing.
 """
 
 from __future__ import annotations
@@ -1039,7 +1039,11 @@ def assemble(
     obligation = next(c for c in result["obligations"] if c["component_id"] == "paperworkshell")
     obligation.update(
         source_paths=[app_source, source_name],
-        distribution_note="MIT applies only to authorized first-party material. Unsigned internal installer; public signing and clean-machine qualification remain separate gates. Microsoft runtime delivery and applicable route are recorded explicitly in the build plan.",
+        distribution_note=(
+            "MIT applies only to authorized first-party material. Unsigned internal installer. "
+            "Clean-machine qualification requires exact installed evidence. Microsoft runtime "
+            "delivery and the applicable route are recorded in the build plan."
+        ),
     )
     python_obligation = next(
         item for item in result["obligations"] if item["component_id"] == "cpython"

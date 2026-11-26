@@ -93,7 +93,7 @@ PWS-0005 establishes the baseline format and rules. The PWS-0801 assembly and fr
 the resolved inventory, compare it with the actual stage and reopened package, and produce
 CycloneDX 1.6, SPDX 2.3 and notice sidecars. They fail closed on changed inputs or contents. The
 internal `0.0.0` dependency candidate is not a supported portable installation or public release.
-Installer identity, signing, final product terms and clean prerequisite installation remain
+Installer identity, observed signing state, final product terms and clean prerequisite installation remain
 PWS-0802 work; later candidates must regenerate evidence for their actual files.
 
 ## Admission states and packaging state

@@ -94,6 +94,52 @@ class TaskValidationTests(unittest.TestCase):
 
         self.assertEqual(set(), self.issue_codes(data))
 
+    def test_product_completion_cannot_require_publisher_code_signing(self) -> None:
+        for use_signing_requirement in (True, None):
+            with self.subTest(requirement=use_signing_requirement):
+                data = copy.deepcopy(self.data)
+                target = data["release_targets"]["v1.0"]
+                if use_signing_requirement is None:
+                    target.pop("publisher_code_signing_required")
+                else:
+                    target["publisher_code_signing_required"] = use_signing_requirement
+
+                self.assertIn("RELEASE_UNSIGNED_PATH_REQUIRED", self.issue_codes(data))
+
+    def test_unsigned_gate_can_complete_with_optional_signing_outside_its_closure(self) -> None:
+        data = copy.deepcopy(self.data)
+        signing = copy.deepcopy(_task(data, "PWS-0814"))
+        signing.update(
+            id="PWS-9999",
+            title="Prepare a separately authorized signed distribution variant",
+            depends_on=[],
+            risk_tags=["publisher-code-signing"],
+            status="deferred",
+        )
+        cast(list[dict[str, Any]], data["tasks"]).append(signing)
+        for task_id in ("PWS-0802", "PWS-0807", "PWS-0808"):
+            task = _task(data, task_id)
+            task["status"] = "done"
+            task["evidence"] = {
+                "completed_at": "2026-11-26",
+                "revision": "fixture:unsigned-candidate",
+                "commands": ["Synthetic complete exact-candidate evidence"],
+                "notes": ["Unsigned with verified inventory and checksums"],
+            }
+
+        self.assertEqual(set(), self.issue_codes(data))
+
+        signing["status"] = "done"
+        for task_id in ("PWS-0808", "PWS-0802"):
+            with self.subTest(dependent=task_id):
+                dependencies = _task(data, task_id)["depends_on"]
+                dependencies.append("PWS-9999")
+                self.assertIn("RELEASE_PUBLISHER_SIGNING_DEPENDENCY", self.issue_codes(data))
+                dependencies.remove("PWS-9999")
+
+        _task(data, "PWS-0807")["status"] = "in_progress"
+        self.assertIn("TASK_DEPENDENCY_INCOMPLETE", self.issue_codes(data))
+
     def test_gate_kind_must_match_milestone(self) -> None:
         data = copy.deepcopy(self.data)
         _task(data, "PWS-0010")["kind"] = "implementation"
@@ -226,9 +272,14 @@ class X64ReleaseScopeTests(unittest.TestCase):
             task["objective"] = "Qualify the Windows 11 x64-only product."
             for field in ("deliverables", "acceptance_criteria", "verification"):
                 task[field] = ["Windows 11 x64-only release evidence."]
-            if task["blocker"] is not None:
-                task["blocker"]["reason"] = "Approved public signing remains unavailable."
-                task["blocker"]["requested_action"] = "Supply approved signing authority."
+        _task(self.data, "PWS-0802").update(
+            status="blocked",
+            blocker={
+                "reason": "An isolated test environment is unavailable.",
+                "evidence": ["Synthetic blocker for architecture-scope tests."],
+                "requested_action": "Prepare the existing isolated Windows 11 x64 test target.",
+            },
+        )
 
     def codes(self) -> set[str]:
         return {issue.code for issue in validate_data(self.data, self.schema, self.decisions)}

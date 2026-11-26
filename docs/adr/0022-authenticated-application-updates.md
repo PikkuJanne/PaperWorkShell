@@ -1,6 +1,6 @@
 # ADR 0022 — Authenticated PaperWorkShell updates
 
-- Status: Implemented for offline update engineering. Public candidate qualification remains separate.
+- Status: Implemented for offline update engineering. Production channel activation is optional under PWS-D044.
 - Date: 2026-11-26
 - Task: PWS-0803
 - Decisions preserved: PWS-D005, PWS-D013, PWS-D027, PWS-D034, PWS-D042, PWS-D043
@@ -35,8 +35,11 @@ input and its installation destination in the resolved inventory. The versioned 
 contains the channel, P-256 public coordinates, a minimum trust epoch, and the baseline's
 release sequence floor. An installation needs a provisioned anchor to accept an offer. A
 runtime package cannot change the installed root. Root replacement uses a separately
-approved and verified regular installer. Public installer signing and timestamp evidence
-remain part of PWS-0802 and the release gates. [Windows release signing procedure](0018-windows-installer-and-release-identity.md#signing-and-exact-output-identity).
+approved and verified regular installer. That approval concerns admission of the update trust
+root. Under PWS-D044, the supported local installer path and product completion can use an
+unsigned PaperWorkShell installer. A selected installer checksum identifies known bytes.
+An installed update anchor is a distinct mechanism that authenticates offered update metadata.
+[Windows installer identity](0018-windows-installer-and-release-identity.md#signing-and-exact-output-identity).
 
 The update verifier uses Windows CNG ECDSA P-256 with SHA-256. Public points and detached
 signatures use fixed 64-byte big-endian coordinate and scalar pairs. The root authorizes a
@@ -96,11 +99,15 @@ successful activation record to become a launch target.
 
 ## Qualification and scope
 
-The engineering verification and the exact public-candidate matrix have different artifact and
-trust prerequisites. The [security test plan](../security/security-test-plan.md#pws-0803-update-verification)
-identifies the local admission, installed update, recovery, accessibility and release checks.
-Public distribution requires trusted bootstrap signing, approved release and recovery keys,
-and current packaged-build evidence under PWS-0802, PWS-0807 and PWS-0808. The update protocol
-adds no automatic check, background task, remote endpoint, separate component self-updater or
-ThirdLife dependency. PaperWorkShell owns its channel, versions, case data and migrations. A
-ThirdLife compatibility claim requires a future B4 cut for the exact release or range.
+The [security test plan](../security/security-test-plan.md#pws-0803-update-verification)
+identifies local admission, installed update, recovery and accessibility checks. Engineering
+trust established by isolated test keys applies only to the recorded installed test artifacts.
+Production channels require separately qualified trust and distribution. Keep them disabled
+without that qualification. The former requirement for trusted bootstrap publisher signing
+was superseded on 2026-11-26 by PWS-D044. The supported local per-user installer route
+covers repair and case-preserving cross-build replacement with their own evidence.
+
+The update protocol adds no automatic check, background task, remote endpoint, separate
+component self-updater or ThirdLife dependency. PaperWorkShell owns its channel, versions,
+case data and migrations. A ThirdLife compatibility claim requires a future B4 cut for
+the exact release or range.

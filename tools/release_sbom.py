@@ -689,9 +689,9 @@ def build_notices(inventory: Mapping[str, Any]) -> str:
         "Source SHA-256: " + resolved.candidate["source_sha256"],
         "Inventory SHA-256: " + resolved.digest,
         "",
-        "These notices describe the reviewed dependency stage. They do not assert installer",
-        "signing, release approval, or a final PaperWorkShell product licence. Build inputs",
-        "are identified separately from runtime files. Original text below is preserved.",
+        "These notices describe the reviewed dependency stage. Installer identity, observed",
+        "signing status, product completion and publication have their own candidate records.",
+        "Build inputs are identified separately from runtime files. Original text below is preserved.",
     ]
     for component in resolved.components:
         lines.extend(

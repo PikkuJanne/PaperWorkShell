@@ -2,6 +2,7 @@
 
 - Status: Accepted implementation choice within PWS-0801
 - Date: 2026-11-03
+- Completion scope: PWS-D044 supersedes the former first-party signing requirement. The dependency evidence below retains its original scope.
 - Decisions preserved: PWS-D004, PWS-D005, PWS-D012, PWS-D013, PWS-D016, PWS-D034,
   PWS-D036, PWS-D041, PWS-D042
 
@@ -12,8 +13,8 @@ the Python resolution, not the precise DLLs, static libraries, source obligation
 Windows package. Copying an installed development environment would also bring evaluated Qt
 Addons into the product. A source-tree SBOM cannot prove what a later installer contains.
 
-PWS-0801 precedes PWS-0802, which chooses the final application identity, product terms,
-installer and signing process. Establish a real internal dependency staging candidate now and
+PWS-0801 precedes PWS-0802, which owns the final application identity, product terms,
+installer and exact packaged evidence. Establish a real internal dependency staging candidate now and
 make the same inventory/verification procedure reusable for later exact candidates. This does
 not turn an internal `0.0.0` stage into a public release or a supported portable installation.
 
@@ -67,8 +68,9 @@ same candidate. Sidecars sit outside the ZIP inventory, avoiding circular self-h
 snapshots and recipe/review hashes identify the dirty source exactly; HEAD alone does not.
 
 The internal stage keeps product licence `NOASSERTION`; this limited first-party deferral never
-grants unresolved third-party rights. Installer identity, signing, public release approval,
-update trust, supported OS claims and final product terms remain with their existing M8 owners.
+grants unresolved third-party rights. Installer identity, observed signing status,
+supported OS claims and final product terms remain with their existing M8 owners.
+PWS-0803 owns the update-admission mechanism. Publication requires separate authorization.
 Later builds must regenerate and reconcile evidence against their actual contents. No measured
 performance result, source revision, signature or candidate result is relabelled.
 

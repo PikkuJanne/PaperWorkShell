@@ -56,17 +56,19 @@ the settled target from still-unproved edition/build and scenario coverage.
 | Package format | **TBD** |
 | Package size | **TBD** |
 | SHA-256 | **TBD** |
-| Signature or verification method | **TBD** |
+| Observed PaperWorkShell publisher signing state | Current engineering builds are unsigned and have no publicly trusted publisher signature. Exact completion-candidate observation **TBD** until the artifact is identified. |
+| Artifact verification method | Compare size and SHA-256 with the independently retained build receipt and verify the installed payload inventory. Exact candidate reference **TBD**. |
 | Source revision/tag | **TBD** |
 | Dependency lock/SBOM reference | **TBD** |
-| Download source | **TBD** |
+| Download source | No public download authorized. If publication is approved, record the actual delivery source. |
 | Offline-media source | **TBD or not supported with reason** |
 | Required external runtime | **TBD; release must not require development tools** |
 
 The checked-in dependency inventory is a policy baseline, not the final release SBOM. An
 [unsigned internal engineering installer](../development/pws0802-community-runtime-20261103.md)
-now exists with exact inventory and SBOMs. It is not the qualified signed release represented
-by the still-unproved release fields in this sheet. Its stable Inno upgrade identity is
+now exists with exact inventory and SBOMs. Under PWS-D044, an identified unsigned candidate can
+satisfy product completion with the required functional and quality evidence. R7 owns only its
+recorded engineering results. Its stable Inno upgrade identity is
 `{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. No account, registration, email, activation,
 subscription or licence key is required; application document uploads, telemetry and automatic
 crash-report submission are prohibited.
@@ -75,8 +77,8 @@ The preserved engineering R7 build includes the acquired Community 2022 app-loca
 runtime and offline component-only recipient agreement; it does not require a
 separately installed VC runtime. The current report separates actual native origin
 and workflow observations from the current Sandbox standard-account
-checks and the remaining Windows 11 x64 matrix and trusted-signing requirements. These engineering facts do not fill the public
-release fields above or create a supported-build claim.
+checks and the remaining Windows 11 x64 matrix. These engineering facts apply to the recorded
+candidate, environments and scenarios.
 
 Its exact unsigned installer is 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
@@ -86,8 +88,8 @@ installer is unchanged. Actual engineering target evidence names Windows 11
 Enterprise 26100.9711 x64 and a genuine standard account. Pro 26300.9711 is a host
 observation, not another qualified guest. R7 used the existing instrumented guest;
 R6 clean offline document evidence is reused only within the audited unchanged
-runtime/worker/export boundary. Public signed artifact/version/hash/signer fields
-remain unproved.
+runtime/worker/export boundary. The completion candidate's version and artifact identity
+remain TBD.
 
 ## 3. Install, update, repair, and remove
 
@@ -98,9 +100,9 @@ remain unproved.
 | Supported silent installation options | **TBD or not supported with reason** |
 | Default install location | **TBD** |
 | Restart requirement | **TBD** |
-| Update mechanism | Development implementation: the **PaperWorkShell Updates** Start menu shortcut verifies a local signed update folder and waits for explicit confirmation. Public bootstrap, trust and distribution **TBD**. |
-| Repair behavior | **TBD or not supported with reason** |
-| Rollback behavior and limits | Development implementation: **Restore previous version** selects a verified retained runtime or the original installation. The accepted update sequence stays in force. Public candidate result **TBD**. |
+| Update mechanism | Explicit local replacement via the verified per-user installer with **Keep cases** during removal, followed by reopen and applicable migration. The live update channel is disabled. Exact completion-candidate evidence **TBD**. |
+| Repair behavior | Close the app and use the matching setup bundle with `--repair`. Engineering TRACE B8 has scoped evidence. Exact completion-candidate result **TBD**. |
+| Rollback behavior and limits | Follow documented local recovery and preserve cases. Case schema compatibility applies. Isolated authenticated-update rehearsal exercised **Restore previous version**. Exact completion-candidate recovery result **TBD**. |
 | Normal uninstall path or UI | **TBD** |
 | User choice about cases during uninstall | **TBD; separate explicit choice required** |
 | Data remaining after uninstall | **TBD by category** |
@@ -135,7 +137,7 @@ installer, updater, migration, or uninstall logic.
 | Open user-selected JPEG/PNG through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
 | Open portable PaperWorkShell workspace/project | **Not currently supported; no portable project-transfer format is frozen** |
 | Multiple-file operating-system opening | **Not currently supported** |
-| Independently useful CLI options | TRACE supports bounded local recipe replay for ordinary PDF export. Exact public candidate scope and evidence **TBD**. |
+| Independently useful CLI options | TRACE supports bounded local recipe replay for ordinary PDF export. Exact completion-candidate scope and evidence **TBD**. |
 | ThirdLife-specific CLI/URI/RPC | **Not supported** |
 
 The local recipe route takes an explicitly selected source and replays supported page selection,
@@ -148,7 +150,7 @@ Public documentation uses known-folder notation and never contains a real userna
 machine path.
 
 The [care and recovery guide](../user/CARE_AND_RECOVERY.md) records current location classes,
-retention, deletion and uninstall behavior by category. Exact public candidate paths, permissions,
+retention, deletion and uninstall behavior by category. Exact completion-candidate paths, permissions,
 cleanup and uninstall residue remain **TBD**. Record verified values for each category and link the
 matching [data-location evidence](RELEASE_EVIDENCE.md#4-data-location-and-preservation-evidence).
 
@@ -201,8 +203,8 @@ silently replaced.
 | Project-controlled server required for core workflow | None |
 | Worker network access during document processing | Denied by product design and current Windows tests; **verify packaged release** |
 | Optional downloads | The app discovers local OCR language packs. The offline updater reads a local folder and has no automatic check. Any public artifact acquisition route is **TBD**. |
-| Data transmitted by optional features | The implemented updater and support-bundle creation operate locally. Exact public candidate verification **TBD**. |
-| Offline installation path | TRACE B8 exercised the prepared per-user setup route. Exact public release media, package UI and privileges **TBD**. |
+| Data transmitted by optional features | The implemented updater and support-bundle creation operate locally. Exact completion-candidate verification **TBD**. |
+| Offline installation path | TRACE B8 exercised the prepared per-user setup route. Exact completion-candidate media, package UI and privileges **TBD**. |
 | Interrupted download behavior | In-app download is unsupported because the OCR pack and update routes use local files. Public acquisition and recovery instructions **TBD**. |
 
 ## 9. Resource behavior
@@ -229,7 +231,7 @@ It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, 
 | Untrusted inputs | PDF, JPEG, PNG, templates, and any future project/engine package as applicable |
 | Document processing isolation | Restricted worker; exact packaged controls **TBD** |
 | Network during processing | Denied; **verify candidate** |
-| Update provenance | The offline updater verifies channel authority, signed release metadata, freshness and exact package bytes against a provisioned trust root. Production trust and exact release checks **TBD**. |
+| Update provenance | Check the local installer against the trusted build reference before replacement. The disabled live channel has no production trust root. The separately exercised verifier enforces cryptographic channel authority, freshness and exact package identity. |
 | Secrets handling | No secrets or sensitive document content in arguments, routine logs, crash reports, or support bundles |
 | Telemetry | Off by default |
 | Original preservation | Immutable imported copy and hash; candidate verification **TBD** |
@@ -245,7 +247,7 @@ release-grade packaged qualification remains separate.
 
 | Item | Release value |
 |---|---|
-| Creation path | TRACE offers **Create support bundle…** in **Settings** and **Help**. Exact public release verification pending. |
+| Creation path | TRACE offers **Create support bundle…** in **Settings** and **Help**. Exact unsigned diagnostics R1 passed filename selection, archive verification, privacy and overwrite refusal. Completion-candidate verification remains scoped to applicable evidence. |
 | User preview before creation | Required |
 | Default destination | Explicit user-selected local file; no automatic submission |
 | Included categories | Exact preview of `summary.txt` and `allowlist.txt`; numeric versions by default, other closed typed diagnostic fields only when actually recorded; no file collector |
@@ -315,7 +317,7 @@ index documents, control hidden processing, change originals, or perform PaperWo
 
 - [ ] Exact product version, source revision, channel, and interface revision are recorded.
 - [ ] Every release-specific `TBD` is completed or marked “not supported” with a reason.
-- [ ] Package identity, size, hash, signature, SBOM, notices, and source revision are recorded.
+- [ ] Package identity, size, hash, observed signing state, SBOM, notices, and source revision are recorded.
 - [ ] Install/update/repair/removal, privilege, restart, rollback, and residual-data behavior are documented.
 - [ ] Launch, supported opening, associations, and CLI behavior are documented without inventing an interface.
 - [ ] Data locations and retention/deletion behaviors are documented by category.

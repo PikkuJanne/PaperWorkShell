@@ -736,8 +736,8 @@ violations were detected.
 The earlier and final verification receipts are under
 `output/pws0813/development-baseline-checks/finish-pws0813` in the primary
 checkout. The final run records the source commit and actual linked-root scope.
-The PWS-0813 installed closure, PWS-0811 review and signed release prerequisites
-retain their individual evidence and task state.
+The PWS-0813 installed closure and PWS-0811 evidence retain their individual
+scope. PWS-D044 governs the current unsigned product-completion prerequisites.
 
 ### Hosted promotion checks
 

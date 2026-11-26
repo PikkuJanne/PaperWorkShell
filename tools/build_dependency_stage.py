@@ -986,7 +986,10 @@ def assemble(
                     "component_id": cid,
                     "source_paths": sorted(set(source_for[cid])),
                     "replacement_instructions_path": guide,
-                    "distribution_note": "Internal dependency stage. Preserve full upstream notices and supplied source. Final installer, signing and protective product terms remain PWS-0802.",
+                    "distribution_note": (
+                        "Internal dependency stage. Preserve full upstream notices and supplied source. "
+                        "PWS-0802 owns exact installer qualification and applicable product terms."
+                    ),
                 }
             )
         assembly.bytes(

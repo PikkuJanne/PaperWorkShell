@@ -4,6 +4,11 @@ Use these prompts with the current [operating policy](AGENTS.md). The repository
 [task graph](TASKS.yaml) and linked records track current work and evidence. Earlier
 evidence and handoffs describe their recorded candidates and conditions.
 
+PWS-D044 permits PWS-0808 product completion on an exact unsigned candidate. Carry that
+path into every continuation and gate review. Handoffs identify the next engineering
+operation and actual missing prerequisite. Publication and any future signed variant
+require separate owner direction.
+
 Each handover ends with a **Next step** in plain English. Record it in the current task
 or evidence record so the next session can pick up the first concrete action.
 
@@ -39,6 +44,8 @@ Record the result and remaining affected operations in TASKS.yaml or its linked 
 Review <TASK_ID_OR_CHANGE> or verify release gate <GATE_TASK_ID> under AGENTS.md.
 Inspect the relevant requirements, diff, tests, and evidence. For a gate, verify its
 required behaviors and delivery obligations on the applicable revision and environment.
+For PWS-0808, verify the unsigned candidate's exact identity, checksums, observed signing
+status and product evidence under PWS-D044.
 Where evidence is missing, perform the authorized checks that can proceed and record
 what still depends on a missing prerequisite. Preserve failed or inconclusive results.
 Report exact findings and evidence, and update the task or gate record as warranted.

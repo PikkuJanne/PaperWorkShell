@@ -101,8 +101,9 @@ def test_stage_checks_exact_inputs_review_and_exhaustive_file_hashes(tmp_path: P
     assert receipt["status"] == "pass"
     assert receipt["verified_staged_files"] == 2
     assert receipt["verified_stage_bytes"] == sum(item["size_bytes"] for item in inventory["files"])
-    assert "installer/signing/product-release approval remain separately gated" in str(
-        receipt["scope"]
+    assert (
+        "Installer qualification and product completion require exact packaged-candidate evidence."
+        in str(receipt["scope"])
     )
 
 

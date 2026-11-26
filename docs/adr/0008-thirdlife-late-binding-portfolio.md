@@ -27,7 +27,11 @@ PaperWorkShell will publish a versioned human-readable release interface and a m
 
 Only PaperWorkShell migrates PaperWorkShell cases. A future ThirdLife component may retain its own catalogue, installation, compatibility, and support metadata, but it may not read or index PaperWorkShell documents, OCR text, overlays, signatures, redaction state, private manifests, or case records. PaperWorkShell releases and versions independently and does not wait for ThirdLife adoption.
 
-The decision is implemented in governance under PWS-0809. Existing M8 tasks are extended rather than duplicated: they select and prove stable identity; package and remove the application; authenticate independent updates; own migrations; create separate sanitized diagnostics; publish release documentation; execute the public black-box candidate matrix; and freeze the complete standalone release envelope at the existing PWS-0808 gate.
+The decision is implemented in governance under PWS-0809. Existing M8 tasks own stable
+identity, packaging and removal, supported local replacement, update authentication, migration,
+sanitized diagnostics, documentation and the black-box candidate matrix. PWS-0808 freezes the
+standalone envelope and can accept an exact unsigned candidate under PWS-D044. Publication
+remains a separately authorized delivery action.
 
 ## Existing decision mapping
 
@@ -75,7 +79,9 @@ All existing keyboard, NVDA, scaling, cancellation, progress, and resource-budge
 
 ### Packaging, licensing, and maintenance
 
-PWS-0801 and PWS-0802 still select and prove exact release dependencies, application identity, installer technology, signatures, notices, and packaged contents. Versions and update cadence remain PaperWorkShell-owned. This ADR adds no dependency and does not choose unresolved publisher, licence, installer, signing, association, or support values.
+PWS-0801 and PWS-0802 own exact dependencies, application identity, installer technology,
+observed signing status, notices and packaged contents. PaperWorkShell owns its versions,
+distribution choices and supported update behavior.
 
 ### Migration and compatibility
 

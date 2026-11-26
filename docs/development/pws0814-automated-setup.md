@@ -78,15 +78,14 @@ The focused setup, installer, task-graph, portfolio and documentation test run p
 161 tests and 145 subtests. Registered format, lint, strict typing, schema, task-graph,
 documentation, and portfolio boundary checks passed.
 
-Public signing and public-release qualification retain their own criteria and evidence.
 This run covers same-build repair and reuse, standard-user launch and an offline ordinary
-PDF workflow for TRACE B8. The [task graph](../../TASKS.yaml) records the independent
-prerequisites for broader release operations.
+PDF workflow for TRACE B8. Under PWS-D044 an identified unsigned candidate can satisfy the
+product-completion gate. The [task graph](../../TASKS.yaml) records the remaining packaged
+checks. A separate publication decision is required for external delivery.
 
 ## Next step
 
-Begin PWS-0803, authenticated updates. Codex should first inspect the existing install,
-repair, and replacement paths and document how an update proves its origin and leaves a
-working installation after a failure. Use isolated test signing keys to verify that the
-mechanism rejects untrusted updates. The prerequisites for this engineering work are
-complete. Production signing is needed for public release qualification.
+The [PWS-0803 continuation](pws0803-authenticated-updates.md) records authenticated
+local update and recovery with isolated test trust. [PWS-0807](pws0807-rc-matrix.md)
+tracks exact-candidate local replacement, clean installation, migration and remaining
+packaged behavior. B8 same-build repair retains its original scope.

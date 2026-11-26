@@ -118,21 +118,25 @@ private. Keep or delete your local ZIP when finished.
 
 ## Install, repair, update, or remove the application
 
-Use the installer or prepared setup bundle for the build you received. Run setup
-under the Windows account that will use the app. Review the Microsoft runtime
+Use the installer or prepared setup bundle for the build you received. Current
+builds are unsigned. Verify the installer against the checksum supplied by the
+trusted source for your build. Run setup under the Windows account that will use
+the app. Review the Microsoft runtime
 terms when prompted. Open **PaperWorkShell** from Start. If setup asks you to
 close the running application, close it normally and wait for pending saves before
 retrying. For a matching installation, use the documented same-build repair or
-reuse route. For a different fixed-layout build, follow its replacement
-instructions and keep cases during removal if you need them afterward.
+reuse route. For a different fixed-layout build, close the app, remove any update
+slots if present, and follow the uninstall instructions below with **Keep cases
+and continue application removal**. Install the replacement under the same
+Windows account, then choose **Open case** to reopen the preserved cases.
 [Prepared setup and repair](../../packaging/README.md#automated-per-user-setup).
 
 ### Apply or recover an authenticated offline update
 
-Use this path on an update-capable installation with a configured update channel.
-The engineering proof used an internal installer and isolated test-signed ZIP.
-Public update packages and trust provisioning remain subject to public
-qualification. [Engineering update verification](../development/pws0803-authenticated-updates.md).
+Use this path only on an update-capable installation with a configured update
+channel. The available engineering proof used an internal installer and isolated
+test-signed ZIP. Ordinary unsigned builds use local installer replacement and
+repair. The live update channel is disabled. [Engineering update verification](../development/pws0803-authenticated-updates.md).
 
 1. Close PaperWorkShell and open **PaperWorkShell Updates** from Start. Select
    **Choose update folder…** and select the local folder supplied for the update.
@@ -173,8 +177,8 @@ with ordinary user permissions. Read **Remove PaperWorkShell** before continuing
   keep remaining data** is available after a deletion attempt. A remaining case
   may require support. Leave unknown files and worker recovery records in place.
 
-Source files, external exports, and external support ZIPs remain. The signed
-public candidate needs its own removal and residue verification.
+Source files, external exports, and external support ZIPs remain. Removal and
+residue evidence is scoped to the tested installer, options and environment.
 [Installer removal and residue plan](../../packaging/windows/QUALIFICATION_PLAN.md#residue-inventory).
 
 ## Where data stays

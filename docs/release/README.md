@@ -1,9 +1,10 @@
 # Release documentation
 
 This directory holds the human-readable PaperWorkShell release envelope for packaged M8 preview
-and stable candidates. These documents support ordinary standalone release engineering and a
-possible later ThirdLife B4 black-box compatibility cut; they are not an application API or a live
-cross-project dependency.
+and stable candidates. Under PWS-D044, the identified unsigned candidate can satisfy the v1.0
+product-completion gate. Record product acceptance, observed artifact signing status and publication
+approval independently. These documents support standalone release engineering and a possible later
+ThirdLife B4 black-box compatibility cut using frozen public artifacts.
 
 ## Documents
 
@@ -32,7 +33,7 @@ cross-project dependency.
 - [PWS-0802 complete-runtime implementation and qualification](../development/pws0802-community-runtime-20261103.md)
   — preserved unsigned internal R7 and separately corrected R9, exact identity,
   settled Microsoft route and actual scoped qualification, separately from the
-  remaining real low-disk and trusted-signing requirements. The
+  remaining actual low-disk and exact-candidate qualification. The
   [earlier preflight](../development/pws0802-result.md) remains historical.
 
 Both the interface and evidence files are draft templates. Their release-specific `TBD` fields
@@ -64,9 +65,9 @@ Current repository facts that are safe to use as development context include:
   [cleared synthetic sample](../../tests/fixtures/diagnostics/v1/README.md), owned by PWS-0805.
 
 An unsigned engineering installer now exists, with publisher Janne Vuorela, scoped project-owned
-MIT/free distribution and stable application/upgrade identity. There is no publicly trusted
-signed release, completed Windows 11 x64 release matrix, project-transfer format or completed
-M8 evidence package. Unsupported surfaces remain explicit.
+MIT/free distribution and stable application/upgrade identity. Current engineering artifacts
+are unsigned and internal. The Windows 11 x64 matrix and M8 evidence package remain incomplete.
+Project transfer remains unsupported.
 
 The retained R7 installer is 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,

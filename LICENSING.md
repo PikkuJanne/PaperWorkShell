@@ -16,7 +16,7 @@ Microsoft runtime code. Component-specific terms must remain scoped to those com
 must not restrict rights granted by MIT or LGPL elsewhere.
 
 Documents and document-derived data stay local. PaperWorkShell has no document upload,
-telemetry or automatic crash-report submission. An internal unsigned installer is a local
-engineering artifact; it is not a publicly trusted or approved public release. Public
-distribution still requires resolved component rights, approved trusted signatures and the
-applicable release qualification. No licence text or notice constitutes that qualification.
+telemetry or automatic crash-report submission. Current unsigned installers are internal
+engineering artifacts. An unsigned candidate may meet the product-completion gate under
+PWS-D044. Public distribution requires separate authorization, resolved component rights,
+applicable qualification, and disclosure of the actual signing and compatibility state.

@@ -10,8 +10,9 @@ checks as an ordinary dependency change. Urgency may change the work order; it d
 release gate. This policy defines maintainer work. It does not establish a response-time promise,
 a supported-version list, or a public reporting contact.
 
-At adoption, authenticated updates and signed application distribution remain PWS-0802/PWS-0803
-work. This policy does not claim that a signed release or functioning updater already exists.
+Under PWS-D044, the unsigned product uses the identified local installer for replacement and
+repair. Live update activation is optional. PWS-0803 exercises the authenticated verifier and
+recovery with isolated test trust.
 Published contacts, support commitments, and vulnerability-handling documentation belong to
 PWS-0806. The [dependency policy](dependency-policy.md), [frozen decisions](../../DECISIONS.md),
 and [security model](../security/README.md) continue to apply.
@@ -32,7 +33,7 @@ bundle does not authorize collection of document content.
 
 Record separately what is proved, what remains uncertain, and any temporary user guidance. Do
 not infer that network denial alone prevents a malicious-document exploit. Preserve the original
-report and the exact affected release's signed metadata, hashes, SBOMs, notices, source, and test
+report and the exact affected release's metadata, observed signing state, hashes, SBOMs, notices, source, and test
 receipts as historical evidence. A new fix must not rewrite a past result or replace a released
 artifact under its old identity.
 
@@ -91,12 +92,12 @@ policy and storage failure checks; do not raise limits just to pass an emergency
 redaction-affecting change retains its independent gate and must fail export when verification
 does not succeed.
 
-PWS-0803 must establish update tests for valid, unsigned, tampered, expired, wrong-channel,
-rollback-forbidden, offline, and interrupted updates, including privacy capture and recovery of
-the previous working version. The emergency candidate must run those tests against its exact
-artifacts once that mechanism exists. Until then, these are required future implementation
-checks, not accepted evidence or a reason to invent an update path. PWS-0802 owns signing and
-installer behavior; PWS-0807/PWS-0808 own packaged-candidate verification and final approval.
+Verify the emergency candidate's applicable local installation, tamper refusal, offline
+replacement, interruption and recovery paths on its exact artifacts. Changes to the authenticated
+verifier exercise PWS-0803's authentic, missing-signature, tampered, expired, wrong-channel,
+rollback-forbidden, offline and interrupted offers, including privacy and recovery. Test trust
+stays isolated. PWS-0802 owns installer behavior. PWS-0807 and PWS-0808 own packaged behavior
+and product completion.
 
 ## 5. Handle compromised trust material explicitly
 
@@ -111,7 +112,8 @@ Record the revocation/rotation decision, new public trust identity and its prove
 client recovery steps, expiry and rollback policy, and tests of valid and rejected recovery paths.
 PWS-0803's approved trust design must implement and test this behavior. If deployed clients
 cannot recover securely through that design, publish maintainer-approved manual recovery
-instructions using an independently verified signed package. Do not disable authentication,
+instructions using a package obtained through a separately authenticated route and verified
+against that route's trusted reference. Do not disable authentication,
 accept expired metadata, permit an otherwise forbidden downgrade, or grant the worker network
 access as a workaround. No current key-rotation or revocation capability is claimed by this
 policy.
@@ -123,7 +125,7 @@ closure, migration/recovery effects, remaining limitations, and applicable gate 
 its [release interface](../release/RELEASE_INTERFACE.md),
 [evidence index](../release/RELEASE_EVIDENCE.md),
 [standalone checklist](../release/STANDALONE_RELEASE_CHECKLIST.md), SBOMs, notices, source/build
-provenance, signatures, and checksums together. Unproved candidate facts stay draft rather than
+provenance, observed signing state, and checksums together. Unproved candidate facts stay draft rather than
 being copied from an earlier release.
 
 User guidance states affected and fixed versions, the concrete risk and scope of available

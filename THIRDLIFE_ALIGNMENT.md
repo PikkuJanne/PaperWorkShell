@@ -122,12 +122,14 @@ suite until B4 tests that exact version or range.
 
 ## Minimal black-box release envelope
 
-An M8 packaged preview or stable candidate publishes, from real evidence:
+An M8 packaged preview or stable candidate carries the following evidence. Publication
+is separately authorized. PWS-D044 allows PaperWorkShell to complete on an exact unsigned
+candidate and leaves any future B4 compatibility claim to ThirdLife.
 
 - Stable product identity, application identifier, version, channel, publisher, licence, Windows 11
   x64-only scope, and evidenced editions/builds.
-- Installer/package identity, size, hash, signature or verification method, install/update/repair/
-  removal behavior, privilege and restart behavior, and exact uninstall residue.
+- Installer/package identity, size, hash, observed signing state, verification method, installation,
+  replacement, repair and removal behavior, privilege and restart behavior, and exact uninstall residue.
 - Documented locations, retention, permissions, migration, and deletion behavior for configuration,
   cases, originals, derivatives, caches, temporary files, optional engines/data, logs, support
   bundles, and migration backups.
@@ -195,14 +197,14 @@ separate user-data choices explicit.
 
 Portfolio steering does not choose PaperWorkShell's reverse-domain application ID, publisher,
 final product licence, supported Windows editions/builds, installer technology,
-signing/update channel, exact packaged data paths and retention defaults, file-association policy,
+optional update channel, exact packaged data paths and retention defaults, file-association policy,
 independently useful CLI options, project export format, hardware claims, release contact, or
 supported-version policy. The maintainer has now selected Janne Vuorela, scoped MIT/free
 distribution and the stable application/upgrade IDs in
 [ADR 0018](docs/adr/0018-windows-installer-and-release-identity.md), and Windows 11
-x64-only scope in ADR 0019. Other release facts remain `TBD` until their owning
-local tasks produce evidence; an unsigned engineering installer is not a trusted
-public release or a ThirdLife compatibility cut.
+x64-only scope in ADR 0019. PWS-D044 determines eligibility for product completion.
+Other release facts remain `TBD` until their owning local tasks produce evidence.
+Existing engineering installers retain their actual scope and internal status.
 
 The immutable R7 engineering installer is 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,

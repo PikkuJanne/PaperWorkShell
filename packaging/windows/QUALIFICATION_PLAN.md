@@ -11,10 +11,10 @@ The maintainer's current scope is **native Windows 11 x64 only** under PWS-D043.
 ARM qualification is superseded/outside scope, not a pass or environment request.
 R7 remains the preserved accepted baseline at its recorded scope; it is not
 promoted or overwritten by the newest experimental unsigned R9 candidate.
-Approved public signing and verification of eventual signed bytes remain separate
-release gates.
+Under PWS-D044, the exact unsigned candidate can satisfy PWS-0802 and PWS-0808
+with the required installer and product evidence.
 
-## Newest experimental R9 checkpoint
+## Historical experimental R9 checkpoint
 
 `pws0802-internal-20261104-r9` is **built**, 512,732,779 bytes, SHA-256
 `d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4`,
@@ -116,8 +116,8 @@ No product-uninstall result is inferred from stopping the VM.
 
 Before execution, bind each receipt to the exact installer and installed-file
 inventory, source snapshot, dependency lock, SBOM/notices, product/package/upgrade
-identities, version/channel and signing-policy revision. Record SHA-256 values
-automatically. A changed candidate requires new affected evidence.
+identities, version/channel and observed signing state. Record SHA-256 values
+automatically and compare to the independently retained build receipt. A changed candidate requires new affected evidence.
 
 Use a disposable clean Windows environment for each claimed supported x64
 edition/build. Record OS facts, privilege state and installed
@@ -151,7 +151,7 @@ acceptance. Storage unit/integration checks provide separate supporting evidence
 | Component information | User can find versions, terms and notices offline | R9 offline guarded viewer and actual shortcut supplement observed; versions/terms, MIT/search/paging at the recorded scope, prefix8aff. Initial reader gap retained. |
 | Install permissions | Per-user scope, least privilege; data separate from binaries | Per-user standard-token R9 setup/full inventory observed; bounded ACL evidence is separate. Corrected bounded removed-state residue/default comparison passes40868e40. |
 | Repair/reinstall | Supported same-candidate behavior; cases/externals preserved | R9 quiet install0 and keyboard-operated interactive same-candidate repair0 after taskbar activation/full 3,195 preservation observed; local terms/navigation/progress/Finish separately recorded. R6 reinstall/reopen remains scoped supporting evidence. |
-| Upgrade/rollback | Stable identity; honest supported recovery limits | Different-candidate update is PWS-0803 and currently refused. R6 held repair interruption/recovery accepted; automatic rollback, reboot and power-loss recovery are not claimed. |
+| Replacement and recovery | Explicit preserve-cases replacement, stable identity and supported recovery | Exact B8-to-R1 local replacement and case preservation passed under PWS-0807, including the prepared setup entry. Same-build repair is checked separately. PWS-0803 exercised isolated authenticated activation, recovery and replay refusal. Actual interruption and migration coverage must match the selected candidate. |
 | Default uninstall | App removed; cases/externals retained; residue recorded | R7 preservation remains accepted. R9 default-preserve removal0 passes75188e18; corrected removed-state category/default comparison passes40868e40. Two cases and six external files remain exact. |
 | Reinstall after preservation | Retained supported case reopens with original identity | R6 joined actual lifecycle proof; R7 unchanged storage/runtime audit. No repeat requested solely for recorder changes. |
 | Explicit data removal | Unchecked choice, review and separate confirmation precede deletion | R9 exact review/initially unchecked separate confirmation/owned lock/deletion mechanically pass ae1040; one deleted, two remaining, one failed/partial. Later finite A11 review/result reading passes Root join55868 with disclosed pointer target activation; no universal reader claim. |
@@ -164,7 +164,7 @@ acceptance. Storage unit/integration checks provide separate supporting evidence
 | Restart behavior | Requests and supported limits match documentation | Fixed no-restart route exits naturally in accepted runs; static restart/forced-close overrides are refused. No actual reboot is claimed. Both pending-rename values and two global reboot indicators were absent in the bounded removed snapshot40868e40. |
 | Silent options | Only supported safe switches; preserve data by default | Exact quiet install/repair/preserve-removal sequence observed. Other combinations remain unsupported. |
 | File associations | Unsupported means none registered; unrelated defaults preserved | Associations/URI handling remain unsupported. Targeted installed comparison is separate; R9 installed-to-removed four selected defaults remain exact and selected class keys are absent (40868e40). |
-| Signatures and inventory | Approved final signer and exact installed inventory | Unsigned R9 data audit/full 3,195 install/repair inventory pass; R7/R8 artifacts remain exact. Approved signer/trust/timestamp and signed final-byte inventory are outstanding. |
+| Artifact identity and inventory | Observed signing state, exact installer and installed inventory bound to the trusted build reference | Unsigned R9 data audit/full 3,195 install/repair inventory pass. PWS-0807 R1 matched all 3,219 installed files after B8-to-R1 replacement. Verify the exact completion candidate and retain R7/R8 unchanged. |
 | Keyboard/accessibility | Choice, confirmation, progress, cancellation and recovery | R9 notices/input/interactive-repair observations are scoped passes. Finite A9 full error text/Enter and A11 review/inventory/confirmation/partial-result/Cancel pass joins8aaa/55868 after disclosed pointer target activation; not keyboard-only launch or universal reliability. |
 
 Failure injection belongs in disposable synthetic environments. Exercise
@@ -237,7 +237,11 @@ Reflect observed facts in [the release interface](../../docs/release/RELEASE_INT
 and [evidence index](../../docs/release/RELEASE_EVIDENCE.md). Leave unknowns visibly
 unproved; this plan is not a completed release checklist.
 
-## Final-byte signing and verification
+## Historical signed-variant plan
+
+PWS-D044 superseded the mandatory signing provisions on 2026-11-26. The procedure
+below is retained for context and applies only to a later separately approved signed
+variant. Candidate qualification uses the unsigned identity and inventory checks above.
 
 Use only the approved maintainer-controlled signing mechanism. Never request,
 commit or log private keys, certificate passwords or signing-service credentials.
@@ -253,8 +257,9 @@ controls. No signed-artifact claim is permitted until these checks actually pass
 ## Remaining scoped qualification
 
 The [current finite x64 ledger](../../docs/development/pws0802-x64-qualification-20261104.md#exact-remaining-x64-observations-and-external-gates)
-identifies only actual ordinary-target disk-full/recovery and production signing/
-final-byte checks as remaining qualification gates. Finite A9/A11 reader checks,
+identifies actual ordinary-target disk-full/recovery as a remaining R9-era gap.
+Qualify clean installation and the checks affected by changes on the exact unsigned
+completion candidate. Finite A9/A11 reader checks,
 removed-state comparisons and independent archive reviews now pass at their stated
 scope. Codex owns the remaining environment preparation, operation and evidence.
 A general manual-testing assignment or another reader replay is not required.

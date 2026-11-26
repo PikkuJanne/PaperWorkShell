@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Roadmap version | 0.4.1 |
+| Roadmap version | 0.4.2 |
 | Status | **Binding** |
 | Product name | **PaperWorkShell** |
 | Planning model | Actual operation prerequisites and evidence-based delivery gates |
 | First pilot release | v0.1 after Milestone 4 |
-| Hardened public release target | v1.0 after Milestone 8 |
+| Product completion target | v1.0 at the Milestone 8 gate |
 | Last amended | 2026-11-26 |
 
 This roadmap records PaperWorkShell's approved product requirements and release gates. [TASKS.yaml](TASKS.yaml) tracks implementation, actual prerequisites, and evidence. [AGENTS.md](AGENTS.md) governs engineering choices and sequencing.
@@ -79,7 +79,13 @@ The v0.1 pilot MUST NOT advertise permanent redaction, digital signing, qualifie
 
 ### 1.5 v1.0 definition
 
-A hardened v1.0 requires the approved release deliverables and gate evidence, including the redaction security gate, accessibility and assisted-mode gate, signed packaging, dependency inventory, migration tests, and release-candidate validation.
+A finished v1.0 requires PWS-0808 acceptance of an identified Windows 11 x64 candidate.
+An unsigned candidate can satisfy the gate under [PWS-D044](DECISIONS.md#pws-d044--v10-product-completion-accepts-an-unsigned-candidate).
+Required evidence covers the approved document workflows, immutable originals, safe verified
+exports, effective redaction verification, offline worker isolation, accessibility, assisted
+use, resource bounds, installation, local repair and replacement, migration, recovery,
+uninstall, documentation, dependency inventory, notices and SBOM. Evidence must identify
+the packaged candidate and scope of each observation.
 
 ### 1.5.1 Current internal setup and delivery
 
@@ -92,15 +98,15 @@ internal delivery.
 
 PWS-0814 provides the automated Windows 11 x64 setup route for an explicitly identified
 prepared candidate. Verification covers the intended package, per-user installation,
-normal launch, an offline synthetic file workflow, and a repeat run. Unsigned internal
-packaging and setup may proceed under the target machine's policy. Signed release
-qualification requires the exact trusted artifacts and applicable release evidence.
+normal launch, an offline synthetic file workflow, and a repeat run. Unsigned packaging,
+setup, installed verification and product acceptance can proceed under the target
+machine's policy. Real system-volume disk-full qualification retains its required scope
+and is tracked separately from low-space and injected-failure observations.
 
-Trusted public signing, external provider enrollment, publication, and real
-system-volume disk-full qualification remain separate release operations. Additional
-provider contact, uploads, and agreements require their own authorization. Preserve
-existing correspondence, artifacts, existing cases, and the limits of earlier
-low-space and injected-failure evidence.
+Publication requires separate authorization and disclosure of the tested artifact's
+actual signing state and platform compatibility. A signed distribution variant may be
+considered after product completion at the owner's direction. Keep existing artifacts,
+correspondence and observations within their original scope.
 
 ### 1.6 ThirdLife portfolio position and product boundary
 
@@ -154,10 +160,11 @@ Future permitted shallow actions are limited to documented installation, update 
 
 ### 3.2 Minimal standalone release envelope
 
-Preview and stable candidates MUST publish a small human-readable black-box envelope tied to the exact release:
+Prepare a human-readable black-box envelope for each exact preview and stable candidate.
+The envelope MUST include the following evidence and accompany any authorized publication.
 
 - Stable product and reverse-domain application identity, independent version and channel, publisher, licence, and evidenced Windows 11 x64 editions/builds
-- Installer or package identity, source revision, size, hashes, signatures or verification, privileges, restart, repair, update, rollback, and removal behavior
+- Installer or package identity, source revision, size, checksums, observed signing status, privileges, restart, repair, replacement, rollback, and removal behavior
 - Exact configuration, case, immutable-original, derived, cache, temporary, optional engine or language-data, log, support-bundle, migration-backup, and export locations with retention and uninstall residue by category
 - Supported ordinary inputs and outputs; documented copying, conversion, flattening, reconstruction, or reference behavior; and workspace or project opening only where independently supported
 - Normal launch, user-visible file-opening and optional file-association behavior, with unsupported CLI or project-export behavior stated honestly rather than invented
@@ -359,7 +366,7 @@ These apply to every milestone:
 | M5 — Compression and compatibility | Portal robustness | Target-size policy, sanitization inspection, viewer profile | `PWS-0507` |
 | M6 — Permanent redaction | Security-gated capability | Reconstructed pages, adversarial verification, blocked failure | `PWS-0608` |
 | M7 — Accessibility, localization, assisted mode | Inclusive pilot readiness | Keyboard, NVDA, scaling, consent, retention controls | `PWS-0707` |
-| M8 — Release hardening | **v1.0 candidate** | Signed standalone package, updates, SBOM, migrations, black-box release envelope, RC matrix | `PWS-0808` |
+| M8 — Release hardening | **v1.0 product completion** | Verified standalone package eligible when unsigned, supported local replacement, SBOM, migrations, black-box release envelope, packaged matrix | `PWS-0808` |
 
 Milestone labels group related outcomes. Consult the actual prerequisites recorded in
 [TASKS.yaml](TASKS.yaml) for the operation at hand. A gate can pass once its required
@@ -554,18 +561,22 @@ Make the complete primary workflow operable by keyboard and screen reader, and s
 
 ### Objective
 
-Produce a supportable, signed, updateable, migratable, and independently verifiable Windows 11 x64 release with the public black-box envelope needed by deployers and a future ThirdLife B4 compatibility cut.
+Accept a supportable, independently verifiable Windows 11 x64 product candidate at
+PWS-0808. Its standalone envelope records exact evidence for installation, local
+repair and replacement, migration, recovery, use and removal. An unsigned candidate
+is eligible for product completion under PWS-D044.
 
 ### Exit criteria
 
 - Runtime and build dependencies are pinned; an SBOM and license inventory are generated.
-- Installer and application binaries are signed under the approved release process.
-- Update metadata and packages are authenticated; document-processing components cannot be silently replaced from an untrusted source.
+- The exact candidate has a source and artifact identity, inventory and checksums, with the observed publisher-signing status recorded.
+- Explicit local installer replacement and repair are verified with preserved cases, migration and recovery. Same-build repair and cross-build replacement have distinct evidence.
+- Authenticated update admission rejects unauthenticated or tampered payloads, invalid channels and versions, and replay. With no production trust and distribution path, the optional live channel stays disabled. Isolated test keys establish only test evidence.
 - Supported manifest migrations are reversible or safely fail before mutating a case.
 - User-authorized diagnostic export shows its exact contents before creation.
 - Installation requires no development tools.
 - Uninstall behavior explains and preserves or removes remaining cases according to an explicit user choice.
-- Security reporting, vulnerability handling, user documentation, and support documentation are published.
+- Security reporting, vulnerability handling, user documentation and support documentation are complete and available with the candidate.
 - The release-candidate matrix passes the supported Windows 11 x64 configurations and readers, packaged-build resource budgets, low disk, slow I/O, interruption, migration, accessibility, and security tests. ARM64 native/emulation cells are outside scope rather than pending release prerequisites.
 - Optional physical-device observations may be recorded when available, but are non-gating and cannot be described as certification unless that exact hardware was tested.
 - Stable application identity, install, launch, supported file opening, update or repair, removal, privilege, file-association policy, data preservation, and uninstall residue are documented and tested against the exact packaged candidate.
@@ -574,7 +585,7 @@ Produce a supportable, signed, updateable, migratable, and independently verifia
 - `docs/release/RELEASE_EVIDENCE.md` indexes current packaged-build results, artifact and sample hashes, known limitations, and the matching interface revision.
 - A non-sensitive synthetic black-box package contains representative inputs, a workspace or project artifact where independently supported, expected outputs and summaries, expected-behavior notes, and hashes.
 - Clean install, standard-user launch, supported-file opening, offline workflow, update or repair, failure recovery, uninstall with preserved cases, reinstall and reopen, explicit data removal, and optional file-association cleanup pass using only public PaperWorkShell behavior.
-- The exact release works with ThirdLife absent and requires no sibling source, service, process, fixture, database, adapter, or compatibility result.
+- The exact candidate works with ThirdLife absent and requires no sibling source, service, process, fixture, database, adapter, or compatibility result.
 - The completed interface, evidence index, standalone checklist, samples, known limitations, and artifact inventory are frozen together. A future ThirdLife compatibility claim remains a separate B4 decision.
 
 ---
@@ -583,8 +594,10 @@ Produce a supportable, signed, updateable, migratable, and independently verifia
 
 Use [AGENTS.md](AGENTS.md#definition-of-done) and the applicable acceptance criteria in
 [TASKS.yaml](TASKS.yaml). A gate report binds its required behavior and delivery evidence
-to the tested revision and environment and records unresolved release-blocking defects.
-Keep failed or unperformed observations visible within the scope they affect.
+to the tested revision and environment and records unresolved defects that block the gate.
+Keep failed or unperformed observations visible within the scope they affect. PWS-0808
+requires its product prerequisites and evidence, with an unsigned path under PWS-D044.
+Optional future signing and publication are outside its dependency closure.
 
 ---
 

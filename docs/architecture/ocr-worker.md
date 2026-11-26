@@ -369,4 +369,4 @@ constrained-resource gate.
 Additional deferrals are:
 
 - PWS-0801: final packaged dependency/SBOM/license-notice and release-input verification; and
-- PWS-0802/PWS-0803/PWS-0807: packaged-build installation, signing, and release-matrix evidence.
+- PWS-0802/PWS-0803/PWS-0807: packaged-build installation, local replacement and repair, and unsigned candidate matrix evidence.

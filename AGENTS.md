@@ -32,6 +32,19 @@ the applicable decisions, roadmap, task entries, code, tests, schemas, and ADRs.
 [decision change procedure](DECISIONS.md#change-procedure) for changes to owner-approved product
 requirements. Use a coherent task ID or set of related IDs in the work log and delivery report.
 
+## Unsigned product completion
+
+Apply [PWS-D044](DECISIONS.md#pws-d044--v10-product-completion-accepts-an-unsigned-candidate)
+to build, packaging, setup, testing, acceptance, and handoffs. Complete the required
+PWS-0808 product evidence on an exact unsigned candidate. Keep publisher-signing
+credentials, receipts, signed reruns and provider actions out of the prerequisite
+chain. Bind evidence to candidate identity, checksums and observed signing status.
+Follow actual Windows execution policy and preserve genuine security and integrity
+checks. Publication needs separate authorization. Consider a signed variant only
+after product completion and a separate owner decision. Use the task-graph
+`publisher-code-signing` risk tag for any such future work and keep it outside
+the PWS-0808 prerequisite closure.
+
 ## Standalone boundary
 
 Apply PWS-D042 and [THIRDLIFE_ALIGNMENT.md](THIRDLIFE_ALIGNMENT.md) to portfolio, installer, update,

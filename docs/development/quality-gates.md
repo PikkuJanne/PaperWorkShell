@@ -108,7 +108,7 @@ generate CycloneDX 1.6 and SPDX 2.3, and reopen the deterministic ZIP. Both gene
 are checked against the vendored official schemas by the release tests. See the
 [packaging procedure](../../packaging/README.md) and [ADR 0017](../adr/0017-release-dependency-staging.md).
 The internal `0.0.0` dependency stage is separate from PWS-0802's installer, identity,
-product terms, signing and clean-machine qualification; later candidates must regenerate
+product terms and clean-machine qualification. Later candidates must regenerate
 the evidence against their own exact bytes.
 
 Case manifests use bounded strict UTF-8 JSON parsing, exact version dispatch, a

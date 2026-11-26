@@ -10,6 +10,15 @@
 | Source revision/tag | **TBD** |
 | Release interface revision | **TBD** |
 
+## Unsigned product completion
+
+PWS-D044 makes the identified unsigned product candidate eligible for PWS-0808.
+The current engineering artifacts retain their original internal distribution status.
+Record the exact candidate's observed signing state and verify its size and SHA-256
+against the retained build reference. The checksums bind selected bytes. The current
+PaperWorkShell artifacts have no trusted publisher signature. External publication
+requires its own authorization.
+
 ## Current Windows 11 x64 scope
 
 [PWS-D043 / ADR 0019](../adr/0019-windows-11-x64-only-scope.md) selects
@@ -217,9 +226,9 @@ desktop. The following results are scoped to their specific packages and trust c
 | Unsigned `pws0813-trace-engineering-b8` | Same-build repair and reuse, standard-user launch, and one offline ordinary PDF export. Existing case files matched their prior hashes. | [PWS-0814 setup record and artifact identities](../development/pws0814-automated-setup.md) |
 | Unsigned `pws0803-updates-engineering-r1` bootstrap and isolated test-signed `pws0803-updates-engineering-r2` runtime ZIP | Local authenticated offer and explicit consent, activation, offline ordinary PDF export, restoration of R1 and refusal to replay the accepted R2 offer. All 353 pre-existing synthetic case files matched their prior hashes. | [PWS-0803 update record and artifact identities](../development/pws0803-authenticated-updates.md) |
 
-The release matrix still needs exact public-candidate evidence for installed update behavior,
-production trust, Authenticode signatures, failure recovery, and setup and removal. The public
-release identity and status fields remain draft.
+The completion matrix still needs exact-candidate evidence for local installer replacement,
+repair, recovery, setup and removal. The isolated update exercise retains its original trust
+configuration. The live production channel is disabled. Completion-candidate identity remains draft.
 
 ### TRACE B8 documentation walkthroughs
 
@@ -242,13 +251,24 @@ The exact unsigned PWS-0807 R1 installer was built from
 `a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8`.
 The offline standard-user desktop saved the exact preview to the selected
 filename, refused an occupied ZIP, and left zero staging files. Verified
-replacement preserved all 353 baseline case files. Signed-candidate
-diagnostics verification remains pending.
+replacement preserved all 353 baseline case files. These assertions pass for
+exact unsigned R1. The original run left separate installed cancellation and
+storage-failure rows open. [Unsigned continuation](../development/pws0807-unsigned-completion.md)
+records subsequent work. In that continuation, the PWS-0814 setup entry completed
+R1 replacement after **Keep cases**. It verified all 3,219 installed payload files,
+launched the ordinary application, and retained all 353 baseline case files.
+The subsequent diagnostics run returned to review without a file on picker Cancel.
+The native picker denied a restricted folder. The application independently refused
+a Windows-valid filename above its 180 UTF-16 code unit limit. A retry saved
+an exact copy of the reviewed 1,567-byte archive at a supported name. Independent
+inspection verified the permitted members, CRCs and privacy canaries. The source
+and occupied ZIP hashes matched the baseline, and the canceled and rejected
+destinations and staging location stayed empty.
 [Packaged R1 verification](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1).
 
 The [PWS-0807 matrix](../development/pws0807-rc-matrix.md) records the environment inventory,
-existing engineering results, synthetic rehearsal sample, and prerequisites for the signed-candidate
-runs.
+existing engineering results, synthetic rehearsal sample, and remaining exact-candidate
+checks for unsigned product completion.
 
 ## Current development evidence available for later reconciliation
 
@@ -263,8 +283,8 @@ The following evidence is real but is not a completed M8 release package:
 | Resources | [Policy version 1 / constrained-v1](../performance/LOW_RESOURCE_POLICY.md) and completed M1/PWS-0208 constrained evidence | These are bounded software facts, not packaged or physical-hardware certification |
 | Accessibility | [PWS-0111 human keyboard/NVDA record](../accessibility/pws-0111-nvda-smoke.md) and [PWS-0203 agent scan-review record](../accessibility/pws-0203-scan-review-smoke.md) | The complete packaged M7/M8 keyboard/NVDA matrix is still required |
 | Synthetic corpus | [Public synthetic fixture index](../../tests/fixtures/synthetic/v1/index.json) and [fixture policy](../development/synthetic-fixture-policy.md) | M8 must freeze a representative release subset, expected outputs, behavior notes, and hashes |
-| Dependencies | [Reviewed policy baseline](../../packaging/README.md), [dependency inventory](../../packaging/dependency-inventory-v1.json), [OCR language-pack catalog](../../packaging/tesseract-language-pack-catalog-v1.json), and [PWS-0801 redistribution audit](../development/pws0801-result.md) | PWS-0801 replaces the JBIG-dependent TIFF library and applies the exact approved lxml omission; its internal dependency stage has separate resolved evidence. Final public-package approval remains pending |
-| Diagnostics | [PWS-0805 previewable support bundle](../architecture/support-bundle.md) and [synthetic sample](../../tests/fixtures/diagnostics/v1/README.md) | Verify creation, privacy and safe failure on the public candidate |
+| Dependencies | [Reviewed policy baseline](../../packaging/README.md), [dependency inventory](../../packaging/dependency-inventory-v1.json), [OCR language-pack catalog](../../packaging/tesseract-language-pack-catalog-v1.json), and [PWS-0801 redistribution audit](../development/pws0801-result.md) | PWS-0801 replaces the JBIG-dependent TIFF library and applies the exact approved lxml omission; its internal dependency stage has separate resolved evidence. Match the exact candidate inventory, notices and SBOM |
+| Diagnostics | [PWS-0805 previewable support bundle](../architecture/support-bundle.md), [synthetic sample](../../tests/fixtures/diagnostics/v1/README.md), and [unsigned R1 installed evidence](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1) | Reuse matching exact-candidate evidence and verify remaining failure paths |
 
 At adoption, the repository is a pre-alpha source tree with project metadata `0.0.0`; no installer,
 signed package, stable application ID, frozen release sample package, or M8 release candidate
@@ -335,21 +355,21 @@ integration stage. Broad QA, the final tooling delta and source-preservation clo
 [current task result](../development/pws0801-result.md).
 
 The [staging ADR](../adr/0017-release-dependency-staging.md) explains this internal candidate's
-scope. PWS-0802 owns final identity, product terms, installer, signing and clean-machine
-prerequisite installation; subsequent packages must regenerate their own evidence. This is not
-a supported portable installation, public-release approval, or a ThirdLife compatibility cut.
-The later public-release rows below still require their own exact-candidate evidence.
+scope. PWS-0802 owns identity, product terms, installer and clean-machine prerequisite
+installation. Subsequent packages require their own exact-candidate evidence. The
+staged dependency files confer no installation or ThirdLife compatibility claim.
 
 ## 1. Frozen artifact inventory
 
 | Evidence | Location/reference | SHA-256 or verification | Status |
 |---|---|---|---|
-| Installer/package | **TBD** | **TBD** | Pending |
+| Installer/package and payload inventory | **TBD** | **TBD** | Pending |
+| Observed publisher signing state | Unsigned candidate policy, PWS-D044 | Exact candidate observation **TBD** | Current engineering builds unsigned |
 | Portable/offline package, if supported | **TBD** | **TBD** | Pending/not supported |
 | Release notes | **TBD** | **TBD** | Pending |
 | Known limitations | **TBD** | **TBD** | Pending |
 | `RELEASE_INTERFACE.md` | [Draft template](RELEASE_INTERFACE.md) | **TBD for frozen revision** | Pending |
-| Source revision/tag | **TBD** | Signed tag/hash **TBD** | Pending |
+| Source revision/tag | **TBD** | Exact commit or source archive hash **TBD** | Pending |
 | Dependency lock | **TBD** | **TBD** | Pending |
 | SBOM | **TBD** | **TBD** | Pending |
 | Licence/notice bundle | **TBD** | **TBD** | Pending |
@@ -365,8 +385,8 @@ The later public-release rows below still require their own exact-candidate evid
 - Future B4 evidence that a newer unverified version is not automatically compatible: **TBD in
   ThirdLife, not a PaperWorkShell gate**
 
-The selected identities and target do not fill the still-unproved public release
-version, signed artifact, signer or final release-approval fields. The
+The completion candidate's version, artifact identity and acceptance remain unproved.
+The following signing inquiry is historical under PWS-D044. The
 [authorized eligibility inquiry](../development/pws0802-foundation-inquiry-20261104.md)
 was submitted once through the official General message contact form; its
 submission acknowledgement was observed. No provider enrollment, agreement,
@@ -382,8 +402,9 @@ Foundation acceptance or production signing has occurred in this continuation.
 | OS-level open of supported sample, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Open portable workspace/project, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Repair, if supported | **TBD** | **TBD** | Pending/not supported | **TBD** |
-| Authenticated update | **TBD** | **TBD** | Pending | **TBD** |
-| Interrupted/failed update recovery | **TBD** | **TBD** | Pending | **TBD** |
+| Local preserve-cases replacement | **TBD for completion candidate** | Per-user removal with **Keep cases**, then identified local installer | Scoped B8-to-R1 pass. Completion candidate pending. | [PWS-0807 R1](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1) |
+| Interrupted/failed replacement recovery | **TBD** | **TBD** | Pending | **TBD** |
+| Live network update channel | Unsigned product scope | Disabled, no production trust | Confirm on exact candidate | Isolated [verifier rehearsal](../development/pws0803-authenticated-updates.md) |
 | Rollback, if supported | **TBD** | **TBD** | Pending/not supported | **TBD** |
 | Uninstall while preserving cases | **TBD** | **TBD** | Pending | **TBD** |
 | Explicit app-data removal | **TBD** | **TBD** | Pending | **TBD** |
@@ -397,7 +418,7 @@ notation rather than real usernames or private absolute paths.
 
 The [care and recovery guide](../user/CARE_AND_RECOVERY.md) is the source reference for locations,
 retention, deletion and uninstall behavior. Record the packaged result and receipt for each
-category on the public candidate.
+category on the exact completion candidate.
 
 - Configuration location and permissions: **TBD**
 - Case/workspace location and permissions: implemented architectural convention; packaged result
@@ -506,7 +527,8 @@ packaged matrix.
 - Timeout, memory, page, pixel, and temporary-storage limits: **TBD**
 - Original preservation and signed-source handling: **TBD**
 - Logging/support prohibited-content audit: **TBD**
-- Update provenance/signature tests: **TBD**
+- Local installer identity and tamper refusal: **TBD for exact candidate**
+- Authenticated updater rejection and recovery: [isolated PWS-0803 evidence](../development/pws0803-authenticated-updates.md). Live production channel disabled.
 - Independent M6 permanent-redaction gate and exact-candidate result: **TBD; required for PWS-0808/v1.0. A preview that omits redaction cannot satisfy that gate**
 - No-telemetry default: **TBD for candidate**
 - Security reporting process: **TBD**
@@ -518,7 +540,7 @@ packaged matrix.
 - Interrupted/disk-full migration: **TBD**
 - Future-version rejection: **TBD**
 - Worker crash/restart recovery: **TBD for candidate**
-- Update failure and application rollback/recovery: **TBD**
+- Local replacement interruption and applicable repair/recovery: **TBD for exact candidate**
 - Migration-backup cleanup: **TBD**
 - Recovery documentation walkthrough: **TBD**
 - Confirmation that only PaperWorkShell performs case migrations: **TBD**
@@ -573,7 +595,8 @@ untested environment.
 | PaperWorkShell release owner | **TBD** | **TBD** | Pending |
 | Security review | **TBD** | **TBD** | Pending |
 | Accessibility review | **TBD** | **TBD** | Pending |
-| Release gate | **TBD** | **TBD** | Pending |
+| Product-completion gate PWS-0808 | **TBD** | **TBD** | Pending |
+| External publication | Separate authorization | **TBD** | No public delivery authorized |
 
 A future ThirdLife B4 review is separate. Completing this index does not approve PaperWorkShell's
 inclusion in any ThirdLife release.

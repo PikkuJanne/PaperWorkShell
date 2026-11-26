@@ -756,7 +756,8 @@ mutation, or automatic cold deletion of abandoned AppContainer profiles/local te
 
 - Add keyboard/NVDA coverage to security warnings, consent, lock, retention, deletion,
   diagnostics inventory, update errors, and recovery.
-- Run packaged-build dependency/SBOM/signature, install/update/migration/uninstall, constrained
+- Run packaged-build dependency/SBOM/inventory, observed signing state, local install/replacement/
+  repair/migration/uninstall, constrained
   resource/low-disk, and residual-case matrices. Optional device observations do not replace the
   automated budget gate and do not certify an HDD or other physical configuration.
 - Exercise updates with networking unavailable. If a future online check is enabled, capture its
@@ -785,10 +786,12 @@ Each result identifies its actual trust source, ZIP and installed scope.
   registration, activation and audit record, sequence floor, and unchanged synthetic case hashes.
   Verify keyboard access and screen-reader announcements for review, cancellation, errors and
   recovery. Exercise ordinary offline processing after a successful update.
-- On the exact supported public candidate establish the configured root's provenance, required
-  Windows publisher and timestamp verification for the regular installer and packaged update and
-  recovery evidence under PWS-0807/PWS-0808. If a future online check is added, inspect controlled
-  request captures for approved fields and absence of private case or device fields.
+- On the exact unsigned product candidate, verify the local installer and payload against the
+  retained build reference. Record its observed signing state, preserve-cases replacement,
+  same-build repair and recovery, and confirm the live channel is disabled. If an authenticated
+  channel is later configured, qualify its production trust and actual recovery behavior. For
+  any future online check, inspect controlled request captures for approved fields and absence
+  of private case or device fields.
 
 ## Failure report requirements
 

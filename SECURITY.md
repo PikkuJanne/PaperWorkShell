@@ -38,10 +38,11 @@ will carry the support and update details for the exact qualified release.
 ## Local protection and updates
 
 PaperWorkShell processes documents locally in a restricted worker, preserves imported originals,
-and verifies new outputs before reporting export success. A user can run authenticated offline
-updates independently of document processing where the installation has provisioned trust. The
-engineering update proof used isolated test signing. Availability, production trust, and supported
-versions require exact release evidence. [Authenticated update record](docs/development/pws0803-authenticated-updates.md).
+and verifies new outputs before reporting export success. Use the identified local installer
+for repair or preserve-cases replacement. Obtain the installer and its reference checksum
+from the trusted source that provided the build. The current engineering packages have no
+trusted PaperWorkShell publisher signature. The live update channel is disabled. The
+separate authenticated offline updater was exercised with isolated test trust. [Authenticated update record](docs/development/pws0803-authenticated-updates.md).
 
 PaperWorkShell owns its update process and migrations and versions independently. The user
 controls their local cases and files. PaperWorkShell has no current ThirdLife app-to-app

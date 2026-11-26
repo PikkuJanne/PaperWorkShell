@@ -3,6 +3,7 @@
 - Status: Accepted, version 1.0
 - Proposed: 2026-11-04
 - Accepted: 2026-11-04, by explicit maintainer direction
+- Completion scope: The original signing prerequisite was superseded on 2026-11-26 by PWS-D044 and [ADR 0023](0023-unsigned-product-completion.md).
 - Task: PWS-0802; applies to PWS-0803 and the M8 release boundary
 - Decisions affected: PWS-D004 superseded for current platform scope; PWS-D043 added
 - Decisions preserved: PWS-D005, PWS-D009, PWS-D013, PWS-D030, PWS-D034, PWS-D036, PWS-D037, PWS-D040, PWS-D041 and PWS-D042
@@ -21,7 +22,10 @@ Add PWS-D043 and retain PWS-D004's original text as **SUPERSEDED** history. Curr
 
 No ARM build, native/emulated test environment, matrix cell or qualification result is required to complete PWS-0802, start dependency-ready PWS-0803 work, or satisfy an M8/public-release gate. Do not replace the removed prerequisite with a mandatory deferred ARM task. This decision creates no future ARM delivery commitment.
 
-Exact Windows 11 editions/builds and supported packaged behavior remain evidence-based. Signing, authenticated updates, worker isolation, privacy, accessibility, preservation, recovery, licensing and resource-budget requirements stay in force. A smaller target scope is not a qualification pass. The existing public-release gates and task dependencies continue to apply within this boundary.
+Exact Windows 11 editions/builds and supported packaged behavior remain evidence-based.
+Authenticated update admission, worker isolation, privacy, accessibility, preservation, recovery,
+licensing and resource-budget requirements stay in force. The required gates apply within this
+platform boundary under the unsigned completion policy in PWS-D044.
 
 The existing `x64os` installer admission and x64 runtime design already match the selected target. Historical R7 outer bytes, embedded product metadata, inventory, source archives, audits, failures, successful observations and signatures remain untouched. Current policy and validation must distinguish those authenticated historical records from a current support declaration. In particular, an old ARM-plan label is not current ARM support or permission to enable `x64compatible`.
 

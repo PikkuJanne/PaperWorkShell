@@ -11,7 +11,12 @@ results, and precise remaining real low-disk and signing gaps. Earlier failures 
 results below keep their original scope; neither R7 nor any prior receipt is
 rebuilt or relabeled.
 
-**Release status: BLOCKED; PWS-0802 is not done.** The current unsigned candidate
+> **2026-11-26 supersession.** The signing-dependent status and next actions below
+> describe the historical R7/R9 plan. PWS-D044 permits unsigned product completion.
+> See the [current PWS-0802 continuation](pws0802-x64-continuation-20261104.md)
+> and [candidate matrix](pws0807-rc-matrix.md) for remaining observations.
+
+**Historical release status: BLOCKED; PWS-0802 was not done.** The current unsigned candidate
 is R7, SHA-256 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`.
 Its independent artifact audit, focused source checks and canonical privacy/secret
 scans pass. Actual standard-user installation, same-candidate repair, normal public

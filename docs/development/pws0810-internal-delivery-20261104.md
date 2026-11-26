@@ -9,6 +9,8 @@ qualified public release.
 
 This section records the November 4 delivery assignment. Current sequencing and
 prerequisites are in [AGENTS.md](../../AGENTS.md) and [TASKS.yaml](../../TASKS.yaml).
+PWS-D044 superseded the original signing requirements on 2026-11-26. The November 4
+assignment, candidate metadata and test results remain historical.
 
 The local branch is `codex/pws-0607-redaction-export` at HEAD `2e70ec0`;
 extensive pre-existing uncommitted work was preserved, with no reset, staging,

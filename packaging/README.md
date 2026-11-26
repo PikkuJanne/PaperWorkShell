@@ -1,5 +1,11 @@
 # Windows packaging and dependency evidence
 
+Under PWS-D044, build and qualify the unsigned Windows 11 x64 candidate with the
+existing installer and receipt. Record the observed signing state with the artifact
+identity, inventory, notices and SBOM. Validate third-party provenance as before.
+External distribution is a separate decision. Existing engineering receipts retain
+their internal distribution designation.
+
 ## Automated per-user setup
 
 Use `Setup-PaperWorkShell.exe` from a prepared PaperWorkShell setup bundle on native
@@ -7,7 +13,9 @@ Windows 11 x64. Run it in the intended user's interactive desktop without elevat
 The bundle contains the existing Inno Setup installer and the exact build receipt and
 resolved inventory. The separately supplied receipt SHA-256 binds the installer and the
 runtime that setup verifies. Obtain the bundle and receipt SHA-256 from the trusted
-build or delivery source.
+build or delivery source. The receipt and installer hashes identify the selected
+bytes against that reference. The installed engineering build has no trusted
+PaperWorkShell publisher signature.
 
 ```powershell
 .\Setup-PaperWorkShell.exe --installer .\PaperWorkShell-pws0813-trace-engineering-b8-win-x64-UNSIGNED.exe --receipt .\installer-receipt.json --receipt-sha256 145d9efeb0ace1e24e43dd1543a48c0433dac2aad2f764fb4139238c4b4461bc
@@ -23,8 +31,11 @@ acceptance explicitly.
 
 Run the same command again to recheck the actual installed payload and launch the
 verified application. To request same-build repair, close PaperWorkShell normally and
-append `--repair`. A different installed candidate requires its documented replacement
-route. If the result asks you to close an application, finish installer consent or restart,
+append `--repair`. For a different fixed-layout build, close the app, remove any update
+slots if present, then uninstall through Windows **Installed apps** and choose **Keep
+cases and continue application removal**. Install the identified replacement under the
+same Windows account and reopen the preserved cases using **Open case**. Follow the
+[recovery guide](../docs/user/CARE_AND_RECOVERY.md) for supported migrations and backups. If the result asks you to close an application, finish installer consent or restart,
 complete that action and rerun the same command. Setup reports an exit code and a concise
 result. Use `--result <new-json-path>` to retain that result for automation.
 
@@ -44,6 +55,11 @@ See the [PWS-0814 setup record](../docs/development/pws0814-automated-setup.md) 
 the tested build and observed scope.
 
 ## Authenticated offline updates
+
+The unsigned product path uses the local installer for explicit replacement and repair.
+It has no live network update service or configured production update trust. The route
+below is exercised on an isolated engineering installation with test trust. If an
+authenticated channel is configured in future, the same verification and failure rules apply.
 
 An update-capable installation with a configured channel root offers **PaperWorkShell
 Updates** in Start. Close the desktop app, open the updates window, then choose a folder on
@@ -79,14 +95,15 @@ the repository, installer, ZIP and ordinary tool output. The update ZIP must car
 same case-manifest schema and exact Microsoft recipient terms as the baseline. Use the
 regular installer for a trust-root change or different terms and qualify any schema
 transition separately. The ZIP leaves the fixed launcher and registration in place.
-Provisioning production trust and qualifying the public signed installer remain release
-work. [Trust, activation and recovery design](../docs/adr/0022-authenticated-application-updates.md).
+Production channel activation is optional future work. An engineering trust root must
+stay confined to its test installation. [Trust, activation and recovery design](../docs/adr/0022-authenticated-application-updates.md).
 
 ## Packaging inputs
 
 Windows packaging configuration and reviewed release inputs belong in this directory. PWS-0801
 implements an internal dependency-stage package and evidence pipeline. The selected installer,
-product terms, qualification, signing and public-release evidence belong to their Milestone 8 tasks.
+product terms, installation qualification and product-completion evidence belong to their
+Milestone 8 tasks.
 
 The current application/package/update target is **Windows 11 x64 only**, under
 [PWS-D043 / ADR 0019](../docs/adr/0019-windows-11-x64-only-scope.md). Native ARM64
@@ -104,7 +121,7 @@ unresolved inputs. [Accepted ADR 0018](../docs/adr/0018-windows-installer-and-re
 and the [qualification plan](windows/QUALIFICATION_PLAN.md) define the implemented per-user
 installer. The [current complete-runtime continuation](../docs/development/pws0802-community-runtime-20261103.md)
 binds unsigned internal R7, the acquired Community route and actual qualification separately
-from pending release-matrix coverage and trusted public signing. The
+from pending product-matrix coverage. The
 [earlier R2 report](../docs/development/pws0802-implementation-20261103.md) remains historical.
 Neither candidate is a public release.
 
@@ -115,8 +132,8 @@ archive, inventory and audit remain authenticated historical inputs. The newer
 x64-only source-policy metadata does not restage or rebuild that artifact. The
 engineering guest evidence is Windows 11 Enterprise 26100.9711 x64/genuine
 standard user; Pro 26300.9711 describes the host only. R6 clean runtime evidence
-and R7's existing instrumented-guest checks keep their separate scopes. Public
-signed release/version/hash/signer facts remain unproved.
+and R7's existing instrumented-guest checks keep their separate scopes. The exact
+product-completion candidate and supported Windows editions/builds still need evidence.
 
 The R7 build consumed `--microsoft-overlay` and the independently retained
 `--microsoft-overlay-receipt-sha256`; there is no unchecked complete-runtime CLI switch.
@@ -222,8 +239,8 @@ explicit frozen-decision change.
 The historical PWS-0801 dependency-stage candidate uses project version `0.0.0`
 and first-party licence `NOASSERTION`; the later installer uses scoped MIT.
 This limited first-party deferral does not waive any third-party obligation. It is not a supported
-portable installation, signed installer, final product licence or public release. PWS-0802 owns
-the later installer/signing and clean-machine runtime delivery. Future installer contents must be
+portable installation, final product licence or public release. PWS-0802 owns the
+installer and clean-machine runtime delivery. Future installer contents must be
 reconciled again; this stage does not pre-approve unknown installer bytes.
 
 ### Reproduce the internal dependency stage

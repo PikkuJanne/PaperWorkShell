@@ -14,8 +14,8 @@ synthetic workflow verification. Developer preparation uses a separate environme
 
 [PWS-0811's installed evidence](docs/development/pws0811-repairs-20261106.md) and
 [PWS-0810's R9 delivery](docs/development/pws0810-internal-delivery-20261104.md) retain
-their original candidate and test scope. Public distribution requires the applicable
-signed release artifacts and qualification.
+their original candidate and test scope. An identified unsigned package can meet the
+v1.0 product-completion gate. Public distribution is a separate decision. [Decision PWS-D044](DECISIONS.md#pws-d044--v10-product-completion-accepts-an-unsigned-candidate).
 
 ## TRACE workbench
 
@@ -48,8 +48,7 @@ telemetry or automatic crash-report submission.
 Native ARM64 and x64 emulation on ARM64 are outside project scope and are not
 release or update prerequisites. The [approved platform decision](docs/adr/0019-windows-11-x64-only-scope.md)
 retains earlier ARM plans as superseded history. Exact Windows 11 x64 support remains
-bounded by packaged evidence; the scope decision does not make an unsigned internal
-candidate a qualified public release.
+bounded by evidence for the exact packaged candidate.
 
 ## ThirdLife portfolio position
 
@@ -117,9 +116,10 @@ restricted worker, immutable PDF/JPEG/PNG ingest boundaries, local OCR compositi
 pikepdf, pypdfium2, Pillow,
 OCRmyPDF, and Tesseract adapters. The first PySide6 Widgets organizer admits exact
 PySide6-Essentials and shiboken runtime dependencies; it does not admit Qt PDF or Addons. The
-repository now contains a separate Windows installer and production-signing pipeline. Its
-engineering output is explicitly unsigned and internal; public trusted signing, resolved
-Microsoft runtime redistribution and clean packaged qualification remain release requirements.
+repository contains a per-user Windows installer with an app-local Microsoft runtime and
+recorded recipient terms. Current engineering builds are unsigned and internal. The exact
+completion candidate needs the applicable clean packaged qualification, inventory, notices
+and SBOM.
 See [installer choices](docs/adr/0018-windows-installer-and-release-identity.md) and the
 [qualification plan](packaging/windows/QUALIFICATION_PLAN.md). Cryptographic PDF-signature
 creation remains outside the product scope.
@@ -519,7 +519,7 @@ Dependencies record actual prerequisites. Codex can revise stale sequencing, rec
 | M5 | Target-size compression, compatibility, sanitization inspection |
 | M6 | Separately gated permanent redaction |
 | M7 | Accessibility, localization, assisted retention workflow |
-| M8 | Installer, authenticated updates, SBOM, migrations, documentation — **v1.0 candidate** |
+| M8 | Unsigned installer, local replacement and repair, SBOM, migrations, packaged qualification — **v1.0 product completion** |
 
 ## Important release boundary
 

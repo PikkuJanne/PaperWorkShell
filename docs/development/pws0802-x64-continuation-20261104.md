@@ -4,11 +4,10 @@
 > reset. See [AGENTS.md](../../AGENTS.md) for current sequencing and [TASKS.yaml](../../TASKS.yaml)
 > for status. Keep valid qualification evidence bound to its original candidate.
 
-**Status.** Public signing requires an approved trusted signing route. The actual
-system-volume disk-full observation requires a suitable disposable target.
-Unsigned packaging, authorized installation, normal launch, and work on the
-update mechanism can proceed with their own prerequisites. No additional external
-contact, enrollment, agreement or upload is authorized by this record.
+**Status after the 2026-11-26 amendment.** PWS-D044 permits unsigned product
+completion. Installation, repair, case-preserving replacement and removal need
+exact-candidate evidence where the prior records cannot be reused. Actual
+system-volume disk-full behavior still requires a suitable disposable target.
 
 ## Applied product scope
 
@@ -99,8 +98,8 @@ Independent case/work archive reviews pass and the ordinary synthetic export
 strictly reopens as three pages. The exact disposable guest was retired after
 verified backups and natural preserve cleanup.
 
-Remaining qualification is actual bounded low-disk recovery at the ordinary fixed
-target, then trusted signing and checks affected by final signed/repackaged bytes.
+Remaining qualification includes actual bounded low-disk recovery at the ordinary
+fixed target and checks affected by changes in the exact completion candidate.
 A fresh read-only probe of the actual R9 guest confirms missing quota support and
 an unavailable C: partition record (`7339733454b669dc6b048aa510a6cbadafbd0fc4940c2a335584cdea18ae8a2b`).
 No quota/partition/profile policy mutation or simulated disk-full pass is claimed.
@@ -124,7 +123,7 @@ actual corrected probe pass without product or registry/ACL/policy mutation.
 Codex retains the engineering/testing work. No ARM environment, repeated MSVC
 agreement or general manual-testing assignment is requested.
 
-## Foundation inquiry and signing boundary
+## Historical Foundation inquiry and signing plan
 
 One factual, nonbinding inquiry is authorized. Its [exact text and route record](pws0802-foundation-inquiry-20261104.md)
 ask about current-stage eligibility, the existing-release condition, bundled
@@ -140,18 +139,17 @@ identity documents, paid services, installer uploads or publication. Foundation
 admission and signing coverage are unproved. Its certificate identity, if approved,
 would be SignPath Foundation; product publisher remains Janne Vuorela.
 
-Trusted public signing remains a release requirement. The prepared production
-stage must connect an approved route, verify signer/trust/timestamp and exact
-final artifacts, and rerun checks affected by signing or repackaging. An internal
-unsigned candidate does not satisfy that requirement.
+The 4 November plan required trusted public signing, matching signer and timestamp,
+and checks affected by repackaging. PWS-D044 superseded that prerequisite on
+2026-11-26. This inquiry and its original outcome remain historical.
 
 ## Task state and evidence closure
 
-PWS-0802 requires trusted signing for its signed-artifact acceptance. The missing
-signing route also prevents final checks that need signed bytes and public distribution.
-PWS-0803 development and verification with controlled test keys can proceed independently.
-PWS-0804 and PWS-0805 retain their accepted evidence. Current task states and next
-actions are in [TASKS.yaml](../../TASKS.yaml).
+PWS-0802 continues unsigned installer qualification. PWS-0803 recorded authenticated
+update and recovery with isolated test trust. The [PWS-0807 matrix](pws0807-rc-matrix.md)
+tracks exact-candidate checks, including distinct clean-install, replacement and same-build
+repair observations. PWS-0804 and PWS-0805 retain their accepted evidence. Current task
+states and next actions are in [TASKS.yaml](../../TASKS.yaml).
 
 
 Current scope checks and final document hashes are recorded separately after the

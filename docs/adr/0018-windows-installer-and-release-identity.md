@@ -3,6 +3,7 @@
 - Status: Accepted implementation choices after explicit maintainer direction; packaged/public release qualification remains pending
 - Date: 2026-11-03
 - Platform-scope amendment: 2026-11-04, superseded by [ADR 0019](0019-windows-11-x64-only-scope.md) / PWS-D043
+- Product-completion amendment: 2026-11-26, PWS-D044 and [ADR 0023](0023-unsigned-product-completion.md)
 - Task: PWS-0802
 - Decisions preserved: PWS-D004 (historical platform scope, replaced by PWS-D043), PWS-D005, PWS-D009, PWS-D012, PWS-D013, PWS-D028,
   PWS-D029, PWS-D030, PWS-D034, PWS-D038, PWS-D041, PWS-D042
@@ -152,6 +153,21 @@ instructions available through ordinary installed user-visible paths.
 
 ### Signing and exact output identity
 
+PWS-D044 superseded mandatory PaperWorkShell publisher signing on 2026-11-26.
+PWS-0802 owns an identified unsigned installer and exact packaged runtime with a
+documented standard-user installation, repair, replacement and removal path.
+Retain the source revision, version, candidate ID, exact dependency inventory,
+notices, both SBOMs, checksums and observed signing status. The recorded checksums
+bind the selected artifacts to their reference. Upstream signature and source
+verification continue to apply to admitted components. Publication requires
+separate authorization. A later signed variant requires a separate owner decision
+after completion.
+
+#### Historical signing design
+
+The original signing procedure and criterion below describe the superseded
+signed-release plan. They remain as design history.
+
 Keep private material in a maintainer-controlled certificate store, hardware device or signing
 service. Obtain only the approved public signing identity and procedure. Do not read/export
 keys, request a PFX/password, log credentials, or use an arbitrary available certificate.
@@ -209,8 +225,9 @@ installer path logs by default; they are not PaperWorkShell's sanitized diagnost
   native toolchain, licence and worker-bootstrap qualification surface.
 - **Bundle canonical VC runtime files or `vc_redist`:** not authorized by the accepted internal
   stage. A downloaded valid signature establishes authenticity, not redistribution authority.
-- **Internal unsigned installer:** useful later for engineering tests, but cannot establish the
-  publisher/licence or replace the mandatory approved signatures and clean-machine evidence.
+- **Internal unsigned installer (original assessment):** considered for engineering tests
+  under the former mandatory-signature policy. PWS-D044 now permits unsigned completion.
+  Clean-machine evidence and accurate publisher trust disclosure still apply.
 
 ## Remaining release conditions and consequences
 
@@ -220,9 +237,9 @@ see the [current continuation](../development/pws0802-community-runtime-20261103
 No repeat Community agreement acceptance is needed. Exact supported Windows 11 x64
 editions/builds, actual standard-account behavior and remaining packaged observations
 still require their real release evidence; ARM64 native/emulation is outside scope.
-Public signing also requires an approved provider/identity; the
-SignPath Foundation route remains conditional and is not enrolled. No private material is
-requested. Engineering and independently ready tasks continue while these actions are pending.
+The original signed-release plan recorded the SignPath Foundation route as conditional
+and unenrolled. This is a historical observation. PWS-0802 continues with the
+unsigned installer and the remaining Windows 11 x64 observations.
 
 The original implementation selected existing parameters without a released case/RPC schema
 transition. Its platform plan is subsequently superseded by PWS-D043 / ADR 0019; that

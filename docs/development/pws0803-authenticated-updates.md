@@ -101,13 +101,16 @@ evidence](pws0814-automated-setup.md) applies to its frozen installer with SHA-2
 fixed-layout candidates establish an update-capable bootstrap through the documented
 preserve-cases replacement route.
 
-Production trust provisioning, trusted installer signatures and exact public-candidate
-qualification belong to PWS-0802, PWS-0807 and PWS-0808. PaperWorkShell owns its own case
-data, release versions and update trust. ThirdLife compatibility requires a separate
-future B4 verification against the exact released version.
+Unsigned product candidates use the explicit local installer replacement and repair
+route. The mechanism above needs independently provisioned production update trust to
+admit real update offers. The engineering test keys provide evidence solely for the
+isolated rehearsal. The unsigned product keeps the live channel disabled under PWS-D044.
+PaperWorkShell owns its case data, release versions and update trust. ThirdLife
+compatibility requires a separate future B4 verification against the exact release.
 
 ## Next step
 
-PWS-0806 is ready. Use the established local update and recovery behavior to
-prepare the user and support documentation. Production update and signing facts
-still require the exact release evidence owned by the public qualification tasks.
+PWS-0806 completed the engineering documentation walkthrough. The [PWS-0807
+matrix](pws0807-rc-matrix.md) tracks exact unsigned candidate replacement, repair,
+migration and recovery. The [care and recovery guide](../user/CARE_AND_RECOVERY.md)
+describes the local path for users.

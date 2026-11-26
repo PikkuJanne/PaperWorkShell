@@ -47,7 +47,11 @@
         "properties": {
           "through_milestone": { "$ref": "#/$defs/milestoneId" },
           "gate_task": { "$ref": "#/$defs/taskId" },
-          "permanent_redaction_included": { "type": "boolean" }
+          "permanent_redaction_included": { "type": "boolean" },
+          "publisher_code_signing_required": {
+            "type": "boolean",
+            "description": "Whether the product gate requires publisher signatures on PaperWorkShell executables or packages."
+          }
         }
       }
     },

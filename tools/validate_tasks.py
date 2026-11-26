@@ -30,6 +30,8 @@ REQUIRED_GRAPH_RULES: Final = (
     "decision_refs_must_exist",
     "cycles_forbidden",
 )
+UNSIGNED_COMPLETION_DECISION: Final = "PWS-D044"
+PUBLISHER_CODE_SIGNING_TAG: Final = "publisher-code-signing"
 X64_SCOPE_DECISION: Final = "PWS-D043"
 X64_SCOPE_TASKS: Final = frozenset({"PWS-0802", "PWS-0803", "PWS-0808", "PWS-0814"})
 _ARM_SCOPE: Final = re.compile(r"\b(?:arm(?:64)?|aarch64|x64\s+emulation)\b", re.IGNORECASE)
@@ -264,9 +266,13 @@ def _transitive_dependencies(
     return found
 
 
-def _x64_scope_adopted(decisions_text: str) -> bool:
-    section = re.search(r"(?ms)^## PWS-D043\b.*?(?=^## PWS-D|\Z)", decisions_text)
+def _decision_is_frozen(decision_id: str, decisions_text: str) -> bool:
+    section = re.search(rf"(?ms)^## {re.escape(decision_id)}\b.*?(?=^## PWS-D|\Z)", decisions_text)
     return section is not None and "**Status:** FROZEN" in section.group()
+
+
+def _x64_scope_adopted(decisions_text: str) -> bool:
+    return _decision_is_frozen(X64_SCOPE_DECISION, decisions_text)
 
 
 def _x64_task_scope_issues(
@@ -578,6 +584,31 @@ def semantic_issues(data: Mapping[str, Any], decisions_text: str) -> list[Valida
         if gate_id not in task_map:
             continue
         ancestors = _transitive_dependencies(gate_id, task_map)
+        if release_name == "v1.0" and _decision_is_frozen(
+            UNSIGNED_COMPLETION_DECISION, decisions_text
+        ):
+            if release.get("publisher_code_signing_required") is not False:
+                issues.append(
+                    ValidationIssue(
+                        "RELEASE_UNSIGNED_PATH_REQUIRED",
+                        "$.release_targets.v1.0.publisher_code_signing_required",
+                        f"{UNSIGNED_COMPLETION_DECISION} requires unsigned product completion",
+                    )
+                )
+            signing_tasks = sorted(
+                task_id
+                for task_id in ancestors | {gate_id}
+                if PUBLISHER_CODE_SIGNING_TAG in task_map[task_id]["risk_tags"]
+            )
+            if signing_tasks:
+                issues.append(
+                    ValidationIssue(
+                        "RELEASE_PUBLISHER_SIGNING_DEPENDENCY",
+                        "$.release_targets.v1.0.gate_task",
+                        "publisher-code-signing-only work is outside product completion: "
+                        + ", ".join(signing_tasks),
+                    )
+                )
         milestone_index = milestone_order.index(milestone_id)
         for previous_id in milestone_order[:milestone_index]:
             previous_gate = cast(str, milestone_map[previous_id]["gate_task"])

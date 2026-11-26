@@ -179,8 +179,13 @@ case-file hashes matched.
 
 ## Next step
 
-On the signed candidate built with this fix, exercise the same filename entry
-through the native picker with a synthetic case open. Verify the matching ZIP,
-no overwrite, cancellation and safe storage failure under the standard-user
-account. The [release-candidate matrix](pws0807-rc-matrix.md) records the
-remaining candidate and environment requirements.
+Under PWS-D044, retain the R1 standard-user pass for native picker selection,
+verified ZIP save, privacy, overwrite refusal and preservation. The focused source
+checks covered cancellation and publication failure. The original installed R1 run left picker cancellation and a separate destination
+failure unexecuted. The [unsigned continuation](pws0807-unsigned-completion.md)
+records no-file return to review after native picker cancellation, the picker-level
+permission refusal, and a separate application publication refusal. A supported
+filename then saved the same preview. Independent inspection confirmed archive
+identity and privacy, with no staging residue and the original and occupied ZIP
+preserved. Use the [candidate matrix](pws0807-rc-matrix.md) for clean installation, migration,
+and the remaining packaged workflows.

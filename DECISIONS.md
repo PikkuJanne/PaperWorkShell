@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Register version | 0.4.1 |
+| Register version | 0.4.2 |
 | Status | **Frozen** |
 | Effective date | 2026-07-14 |
 | Last amended | 2026-11-26 |
@@ -61,10 +61,11 @@ Status vocabulary:
 | PWS-D037 | User-facing validation claims remain concrete and limited |
 | PWS-D038 | External tools receive structured arguments, never shell command strings |
 | PWS-D039 | Diagnostics are sanitized and previewable before export |
-| PWS-D040 | v0.1 ends at M4; v1.0 requires all release gates |
+| PWS-D040 | v0.1 ends at M4; v1.0 requires all release gates as amended by PWS-D044 |
 | PWS-D041 | Low-resource compatibility is enforced through bounded architecture and automated resource budgets |
 | PWS-D042 | PaperWorkShell remains standalone and ThirdLife portfolio assembly is late-bound |
 | PWS-D043 | Windows 11 x64-only product and release scope |
+| PWS-D044 | v1.0 product completion accepts an unsigned candidate |
 
 ---
 
@@ -92,7 +93,7 @@ Status vocabulary:
 
 **Decision (amended 2026-11-26):** `TASKS.yaml` records actual engineering prerequisites, acceptance criteria, and release-gate evidence. Codex owns task decomposition and work sequencing under [AGENTS.md](AGENTS.md).
 
-**Consequences:** Gates require the evidence for their release obligations. An unfinished gate, unavailable environment, or pending signature blocks the operations that require it. Independent implementation, build, packaging, and verification may continue within their own prerequisites.
+**Consequences:** Gates require the evidence for their release obligations. An unfinished gate or unavailable environment blocks the operations that require it. Independent implementation, build, packaging, and verification may continue within their own prerequisites.
 
 ## PWS-D004 — Windows-first desktop delivery
 
@@ -392,6 +393,8 @@ Status vocabulary:
 
 **Consequences:** Permanent redaction is not a v0.1 promise. A public v1.0 label is not used while a required gate is incomplete.
 
+**Applicability amendment (2026-11-26):** PWS-D044 supersedes the publisher-signing requirement previously inherited through Milestone 8. The milestone and gate sequence remains in force. PWS-0808 can complete on an exact unsigned candidate that meets the approved requirements.
+
 ## PWS-D041 — Low-resource compatibility is enforced through bounded architecture and automated resource budgets
 
 **Status:** FROZEN
@@ -408,7 +411,7 @@ Status vocabulary:
 
 Future ThirdLife Deployment and Suite Assembly work may consume only an exact frozen PaperWorkShell release through its public installer or package, hashes, human-readable release documents, synthetic samples, and documented black-box behavior. ThirdLife owns any later catalogue entry, profile, compatibility rule, workaround, or optional version-bounded adapter. Normal installation, launch, user-visible opening of a user-selected supported file, documented workspace behavior where independently supported, ordinary export and import, and human guidance precede a custom interface. A CLI, URI, RPC command, file association, machine-readable export, or manifest field requires independent PaperWorkShell user, testing, support, accessibility, or administration value and the normal local decision process; hypothetical sibling convenience is insufficient.
 
-PaperWorkShell publishes a versioned human-readable `docs/release/RELEASE_INTERFACE.md` and a matching `docs/release/RELEASE_EVIDENCE.md` for preview and stable candidates. These documents describe an exact release and are not a shared runtime schema or an application API. PaperWorkShell owns its case migrations and rollback behavior. A future ThirdLife release may keep catalogue, installation, compatibility, and its own support metadata, but it does not read or index PaperWorkShell documents, OCR text, overlays, signatures, redaction state, private manifests, or case records. Removing or disabling a future adapter must leave the complete normal PaperWorkShell path available.
+PaperWorkShell prepares a versioned human-readable `docs/release/RELEASE_INTERFACE.md` and a matching `docs/release/RELEASE_EVIDENCE.md` for preview and stable candidates. They describe the exact package and accompany any authorized publication under PWS-D044. The documents describe the packaged application in human-readable form and are outside its runtime schema and application API. PaperWorkShell owns its case migrations and rollback behavior. A future ThirdLife release may keep catalogue, installation, compatibility, and its own support metadata, but it does not read or index PaperWorkShell documents, OCR text, overlays, signatures, redaction state, private manifests, or case records. Removing or disabling a future adapter must leave the complete normal PaperWorkShell path available.
 
 **Consequences:** The PaperWorkShell task graph remains project-local, and composite portfolio journeys or future adapter ideas are non-gating observations rather than dependencies. PaperWorkShell versions and releases independently and does not wait for ThirdLife adoption. No ThirdLife compatibility claim exists until a future B4 compatibility cut tests an exact frozen release. Release documents keep unknown facts as `TBD` or state “not supported” with a reason until real packaged-build evidence exists. A change to the PaperWorkShell **Owns** or **Does not own** boundary requires an explicit maintainer-approved portfolio-alignment decision rather than an incidental task edit. Existing decisions PWS-D001–PWS-D041 remain in force; this decision specializes PWS-D003, PWS-D005, PWS-D008, PWS-D010, PWS-D027, PWS-D028, PWS-D033, PWS-D036, PWS-D039, and PWS-D040 for the late-binding portfolio boundary. The accepted rationale and source mapping are recorded in `docs/adr/0008-thirdlife-late-binding-portfolio.md`.
 
@@ -423,6 +426,32 @@ PaperWorkShell publishes a versioned human-readable `docs/release/RELEASE_INTERF
 **Consequences:** Exact supported editions and builds within Windows 11 x64 still require release-grade evidence. Scope selection does not grant a test pass, trusted signature, public-release approval or universal accessibility claim. Earlier ARM plans, unrun cells and immutable R7 artifacts remain historical records, not completed or deferred requirements. There is no new mandatory ARM task. Accepted exported-document reader observations remain evidence about those files, not another supported PaperWorkShell application platform.
 
 Security, privacy, accessibility, licensing, bounded-resource behavior under `PWS-D041`, case ownership and independent standalone operation under `PWS-D042` remain unchanged. No case, template or RPC schema migration is introduced. The rationale, supersession, affected surfaces and rollback procedure are recorded in [ADR 0019](docs/adr/0019-windows-11-x64-only-scope.md).
+
+---
+
+## PWS-D044 — v1.0 product completion accepts an unsigned candidate
+
+**Status:** FROZEN. Explicitly authorized by the owner on 2026-11-26.
+Amends the applicable PWS-D040 gate interpretation and supersedes ADR 0018's mandatory
+PaperWorkShell publisher-signing criteria for product completion.
+
+**Decision:** PWS-0808 can accept an identified unsigned Windows 11 x64 candidate when
+the approved functional and quality evidence is complete. Development, packaging, setup,
+installed testing, usability, and candidate acceptance must have a supported unsigned path.
+Production publisher signing, certificates, signing receipts, provider participation,
+reputation, and signed reruns are outside the completion prerequisites. Any optional
+signed variant requires a separate owner decision after completion. Publication requires
+its own authorization and discloses actual signing and platform compatibility. A chosen
+delivery route may have additional prerequisites.
+
+**Consequences:** Candidate records bind the source, artifacts, inventory, checksums, and
+observed signing state to the evidence. Existing internal artifacts retain their original
+metadata. Third-party authenticity verification, PDF signature behavior, authenticated update
+admission, dependency and licensing obligations, and functional and quality gates continue to
+apply. A supported local installer repair or case-preserving replacement path is required.
+Any optional live update channel remains disabled unless production trust and distribution
+are separately qualified. A real OS execution denial applies to its observed environment.
+[ADR 0023](docs/adr/0023-unsigned-product-completion.md) records the rationale and effects.
 
 ---
 

@@ -2,12 +2,14 @@
 
 | Field | Value |
 |---|---|
-| Applies to | Packaged M8 preview/stable candidates and the v1.0 release gate |
+| Applies to | Packaged M8 preview/stable candidates and the unsigned v1.0 product-completion gate |
 | Does not apply as a new gate to | The Milestone 4 v0.1 pilot |
 | Principle | PaperWorkShell is complete without ThirdLife; future suite work consumes frozen public artifacts |
 | Completion rule | A checked item requires current evidence for the exact packaged candidate |
 
-This checklist is an M8 release aid, not evidence by itself. “Not supported” is an acceptable
+This checklist records the evidence required for M8 acceptance under PWS-D044. An
+identified unsigned candidate is eligible. External publication requires separate
+authorization. “Not supported” is an acceptable
 release-interface answer when accompanied by a product reason and tests that prove safe visible
 failure. The checklist must not force a portable project format, operating-system file-opening
 contract, association, CLI, repair mode, rollback mode, or silent installer into PaperWorkShell
@@ -27,12 +29,12 @@ The retained R7 installer remains 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
 **NotSigned**. New source-policy wording does not rebuild it or replace its
 embedded build metadata. R6 clean and R7 instrumented-guest evidence retain their
-original scopes; exact public version, signed artifact and signer remain unproved.
+original scopes. The product-completion version and artifact identity remain unproved.
 
 The [user guide](../user/USER_GUIDE.md), [care and recovery guide](../user/CARE_AND_RECOVERY.md),
 and [security policy](../../SECURITY.md) describe current behavior. The [evidence index](RELEASE_EVIDENCE.md)
 links the separate TRACE B8 setup and PWS-0803 offline update rehearsals. Each checklist item
-requires public-candidate evidence for its own scope.
+requires exact-candidate evidence for its own scope.
 
 ## 1. Product boundary and independence
 
@@ -58,11 +60,11 @@ requires public-candidate evidence for its own scope.
 ## 3. Install, update, repair, and removal
 
 - [ ] A clean supported Windows 11 x64 environment installs and launches PaperWorkShell without development tools, within the exact edition/build evidence boundary.
-- [ ] Package identity, version, source, size, hash, signature/verification, and privileges are recorded.
+- [ ] Package identity, version, source, size, hash, observed signing state, inventory and privileges are recorded. Size and hash match the retained build reference.
 - [ ] Elevation occurs only for the selected install/update/repair/remove operation.
 - [ ] Silent options are tested and documented or explicitly unsupported.
-- [ ] Update authenticity, interruption, failure recovery, and offline behavior are tested.
-- [ ] Repair and rollback are tested or explicitly unsupported with a reason.
+- [ ] Local preserve-cases replacement, interruption, failure recovery and offline behavior are tested on the exact candidate.
+- [ ] Same-build repair and applicable recovery are tested. The live update channel is disabled, and the isolated authenticated verifier's rejection evidence is recorded.
 - [ ] Uninstall removes application registrations and any supported associations while following the user's data choice.
 - [ ] Remaining files/settings are documented by category.
 

@@ -241,7 +241,10 @@ def validate_stage(
         "verified_staged_files": len(inventory["files"]),
         "verified_components": len(inventory["components"]),
         "verified_stage_bytes": sum(item["size_bytes"] for item in inventory["files"]),
-        "scope": "Internal dependency staging candidate; installer/signing/product-release approval remain separately gated",
+        "scope": (
+            "Internal dependency staging candidate. Installer qualification and product completion "
+            "require exact packaged-candidate evidence."
+        ),
     }
 
 

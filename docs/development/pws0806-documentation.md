@@ -14,7 +14,7 @@ recovery, data retention, support bundles, setup, updates and removal. The
 and draft vulnerability handling. The [release interface](../release/RELEASE_INTERFACE.md),
 [evidence index](../release/RELEASE_EVIDENCE.md), and
 [standalone checklist](../release/STANDALONE_RELEASE_CHECKLIST.md) link this guidance.
-Public release identity, trust, supported editions and versions, and a private route for public
+Exact candidate identity, supported editions and versions, and a private route for public
 reports still need approval or exact evidence. The checklist retains its previous verification state.
 
 | Engineering artifact rehashed | Bytes | SHA-256 |
@@ -63,8 +63,8 @@ route, description-only reporting, recovery for damaged versus future-version ca
 scope of uninstall deletion. The [known limitations](../../KNOWN_LIMITATIONS.md) and
 [release evidence](../release/RELEASE_EVIDENCE.md) retain the B8 support ZIP write failure.
 The previously verified source support writer and synthetic ZIP stay scoped to their evidence.
-This walkthrough established the safe reporting fallback. Successful installed ZIP creation
-still needs candidate verification under PWS-0807.
+This walkthrough established the safe reporting fallback. PWS-0807 later verified the
+successful save and overwrite refusal on [exact unsigned R1](pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1).
 
 The local evidence under `output/pws0806/trace-b8-walkthrough` includes the desktop receipts,
 independent PDF inspection, synthetic report draft, and case-preservation receipts. After the
@@ -75,8 +75,6 @@ and aggregate digest of all 353 pre-existing case files matched the baseline.
 ## Next step
 
 PWS-0806's engineering documentation and walkthrough are complete. The release sheets remain
-draft for the exact public candidate. Public support commitments and the reporting route require
-maintainer approval. PWS-0807 remains planned behind PWS-0802. Its independent matrix preparation
-can carry the TRACE B8 support ZIP failure into the packaged diagnostics scenario. The first
-candidate action is to verify preview, successful local ZIP creation, and privacy under a standard
-user on the exact build. No new dependency-ready task opens from the documentation closure.
+draft for the exact unsigned product-completion candidate. Public support commitments and the
+reporting route remain open. The [PWS-0807 matrix](pws0807-rc-matrix.md) carries forward the
+B8 failure, exact unsigned R1 diagnostics result, and pending packaged checks.
