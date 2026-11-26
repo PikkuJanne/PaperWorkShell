@@ -7403,4 +7403,4 @@ tasks:
     - "The continuation records B5 source, installer and native contrast evidence."
     - "The continuation records B6 reopen evidence, B7 package and batch evidence, the B7 narrow-pane failure, and exact B8 source, installer and native fix verification."
     - "The bounded offline console path was verified in the signed-in standard-user session. Logged-out batch admission was denied by the existing Windows account policy. The signed release and M8 release gate retain their separate prerequisites."
-      - "The TRACE continuation records the separate baseline scan verification under the approved ADR 0021 amendment. Both registered scans passed in the complete linked repository with the 768 MiB development work cap, the 50,000-record cap, and full ref, index, and working-file coverage."
+    - "The TRACE continuation records the separate baseline scan verification under the approved ADR 0021 amendment. Both registered scans passed in the complete linked repository with the 768 MiB development work cap, the 50,000-record cap, and full ref, index, and working-file coverage."
