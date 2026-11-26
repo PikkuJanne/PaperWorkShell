@@ -6264,7 +6264,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: L
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0804
@@ -6313,8 +6313,8 @@ tasks:
   - support
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
+    completed_at: '2026-11-26'
+    revision: e0ae0e79655336c2a7a1070f0390408f506f521f
     commands:
     - Get-FileHash with byte counts for the TRACE B8 installer, PWS-0803 R1 installer, and
       PWS-0803 R2 runtime ZIP - all matched their recorded engineering identities.
@@ -6325,9 +6325,19 @@ tasks:
     - 'Canonical tools/dev.py format-check, lint, typecheck, validate-docs, validate-task-graph,
       validate-schemas, and validate-portfolio-boundary - passed; scoped terminology, privacy,
       claims, draft state, and git diff --check passed.'
+    - 'Exact TRACE B8 installed novice walkthrough - existing destination refused; fresh
+      destination verified, one page reopened strictly and matched extracted text and rendering;
+      external source, immutable copy, and occupied file preserved.'
+    - 'Exact TRACE B8 installed support walkthrough - preview and consent gate passed; both
+      local ZIP saves failed with no archive or unexpected output. Description-only fallback
+      checked with an unsent synthetic report. Restored baseline matched 353 case file hashes.'
+    - 'Final documentation, graph, portfolio, and diagnostic validator pytest selection -
+      113 passed and 145 subtests passed. Draft state, checklist, claims, and report privacy checked.'
     notes:
-    - docs/development/pws0806-documentation.md records the draft guides, exact predecessor
-      and artifact scope, validation, and remaining novice and support-person walkthroughs.
+    - docs/development/pws0806-documentation.md records the engineering guides, exact build,
+      agent-operated novice and support walkthroughs, corrections, and preserved evidence.
+    - The B8 support ZIP failure is a recorded engineering limitation; exact packaged
+      diagnostics qualification remains with PWS-0807.
     - Public release fields remain draft. Test-signed update evidence does not establish
       production trust, and public reporting contact and supported versions remain pending.
 - id: PWS-0807
@@ -6401,6 +6411,9 @@ tasks:
     - The previously tested guest lacked a bounded quota or test partition for the packaged
       low-disk observation. Obtain an authorized isolated environment with that capability
       for the affected check and continue the remaining matrix work independently.
+    - PWS-0806 observed support ZIP publication fail at two fixed local destinations on
+      exact TRACE B8. Verify successful local save, exact preview contents, privacy, and safe
+      failure on the candidate. See docs/development/pws0806-documentation.md.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 release gate
