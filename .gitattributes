@@ -15,6 +15,13 @@
 *.tiff binary
 # Release notice hashes bind original upstream bytes, including encoding/newlines.
 packaging/licenses/release-*/** -text
+packaging/licenses/NotoSans-Regular-2.007-OFL-1.1.txt -text
+tests/fixtures/release-sbom/schema/*-LICENSE.txt -text
+tests/fixtures/release-sbom/schema/PROVENANCE.json -text
+LICENSE text eol=lf
+packaging/windows/launcher.c text eol=lf
+packaging/windows/launcher.rc text eol=lf
+packaging/windows/paperworkshell.iss text eol=lf
 .gitignore text eol=lf
 .python-version text eol=lf
 uv.lock text eol=lf
