@@ -45,7 +45,7 @@ class _Installation:
         self.calls: list[str] = []
         self._ui_thread = get_ident()
         self.wait_to_cancel = False
-        self.inspection_error = False
+        self.inspection_error: Exception | None = None
         self.install_started = Event()
 
     def status(self) -> InstallationStatus:
@@ -62,8 +62,8 @@ class _Installation:
         assert get_ident() != self._ui_thread
         assert directory.name == "synthetic-update"
         self.calls.append("inspect")
-        if self.inspection_error:
-            raise OSError("private-source-path-canary")
+        if self.inspection_error is not None:
+            raise self.inspection_error
         return UpdateOffer(
             UpdateMetadata(
                 channel="engineering",
@@ -272,12 +272,22 @@ def test_recovery_requires_explicit_confirmation(
         app.processEvents()
 
 
+@pytest.mark.parametrize(
+    ("error", "feedback"),
+    [
+        (OSError("private-source-path-canary"), "could not finish safely"),
+        (
+            UpdateInstallationError("UPDATE_ROLLBACK_FORBIDDEN", "private-source-path-canary"),
+            "already been installed or superseded. Choose a newer update.",
+        ),
+    ],
+)
 def test_failed_review_keeps_install_disabled_and_does_not_echo_private_values(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error: Exception, feedback: str
 ) -> None:
     app = _app()
     installation = _Installation()
-    installation.inspection_error = True
+    installation.inspection_error = error
     dialog = UpdateDialog(installation)
     dialog.show()
     try:
@@ -288,7 +298,7 @@ def test_failed_review_keeps_install_disabled_and_does_not_echo_private_values(
         activity = dialog.findChild(QLabel, "updateActivity")
         assert install is not None and not install.isEnabled()
         assert choose is not None and choose.hasFocus()
-        assert activity is not None and "could not finish safely" in activity.text()
+        assert activity is not None and feedback in activity.text()
         assert "private-source-path-canary" not in activity.text()
     finally:
         _idle(app, dialog)

@@ -3307,12 +3307,16 @@ def _process_creation_guard_findings(
 def test_production_windows_process_creation_has_only_locked_authorities() -> None:
     source_root = _REPOSITORY_ROOT / "src" / "paperworkshell"
     broker = source_root / "worker" / "client" / "_windows.py"
+    # The separately launched updater checks only the fixed interpreter in an
+    # authenticated candidate slot, with fixed arguments and no document inputs.
+    update_health = source_root / "storage" / "update_installation.py"
     subprocess_authorities = frozenset(
         {
             source_root / "pdf" / "qpdf_checker.py",
             source_root / "ocr" / "ocrmypdf_adapter.py",
             source_root / "ocr" / "tesseract_runner.py",
             source_root / "worker" / "process_creation_policy.py",
+            update_health,
         }
     )
     expected_calls = {
@@ -3326,6 +3330,7 @@ def test_production_windows_process_creation_has_only_locked_authorities() -> No
             "TimeoutExpired",
         },
         source_root / "worker" / "process_creation_policy.py": {"list2cmdline"},
+        update_health: {"run"},
     }
     findings: list[tuple[Path, str]] = []
     subprocess_calls_by_module: dict[Path, set[str]] = {}

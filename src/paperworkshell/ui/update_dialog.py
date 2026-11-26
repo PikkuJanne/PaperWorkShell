@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from paperworkshell.domain.update_verification import UpdateErrorCode
 from paperworkshell.localization.catalog import tr
 from paperworkshell.storage.update_installation import (
     InstallationStatus,
@@ -76,18 +77,16 @@ class _OperationThread(QThread):
         self._service = service
         self.offer: UpdateOffer | None = None
         self.status: InstallationStatus | None = None
-        self.failed = False
-        self.cancelled = False
+        self.error_code: str | None = None
 
     def run(self) -> None:
         try:
             if self._work is not None:
                 self.offer = self._work()
         except UpdateInstallationError as error:
-            self.cancelled = error.code == "UPDATE_CANCELLED"
-            self.failed = not self.cancelled
+            self.error_code = error.code
         except Exception:
-            self.failed = True
+            self.error_code = "UPDATE_OPERATION_FAILED"
         try:
             self.status = self._service.status()
         except Exception:
@@ -307,14 +306,22 @@ class UpdateDialog(QDialog):
         self._thread = None
         self._status = thread.status
         inspection_cancelled = thread.action is _Action.INSPECT and self._cancellation.is_set()
+        cancelled = inspection_cancelled or thread.error_code == "UPDATE_CANCELLED"
         if not inspection_cancelled:
             self._offer = thread.offer
         self._refresh_actions()
         self._refresh_review()
 
-        if inspection_cancelled or thread.cancelled:
+        if cancelled:
             self._report(tr("The update operation was cancelled."))
-        elif thread.failed:
+        elif thread.error_code == UpdateErrorCode.ROLLBACK_FORBIDDEN:
+            self._report(
+                tr(
+                    "This PaperWorkShell update has already been installed or superseded. Choose a newer update."
+                ),
+                error=True,
+            )
+        elif thread.error_code is not None:
             self._report(
                 tr(
                     "The update operation could not finish safely. Review the current installation before trying again."
@@ -355,7 +362,7 @@ class UpdateDialog(QDialog):
         thread.deleteLater()
         if self._offer is not None:
             self._review.setFocus()
-        elif thread.failed and self._choose.isEnabled():
+        elif thread.error_code is not None and not cancelled and self._choose.isEnabled():
             self._choose.setFocus()
         else:
             self._close.setFocus()
