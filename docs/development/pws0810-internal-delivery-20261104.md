@@ -145,7 +145,7 @@ Receipt `evidence/final-case-preservation.json` is SHA-256
 ## First use and local sample packet
 
 The prepared local packet and concise instructions are in
-[START-HERE.txt](../../output/pws0810/internal-use-20261104/START-HERE.txt), alongside
+`output/pws0810/internal-use-20261104/START-HERE.txt`, alongside
 `Samples/Organization`, `Samples/OCR`, `Samples/Form` and `Samples/Package` under
 `output/pws0810/internal-use-20261104`. These are local ignored handoff artifacts,
 not publicly published installer or source packages.

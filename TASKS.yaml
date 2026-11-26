@@ -7096,6 +7096,180 @@ tasks:
       The original R16 T06 seal has one known before-snapshot mismatch from a later helper
       invocation. The other 40 members rehashed and the later snapshot is separately labeled.
       See output/pws0811/functional-work-package-2 for the build, gate and incident receipts.
+    - >-
+      Exact installed pws0811-engineering-image-preview-v4 at d9846effa466b78ab14812312e1a07cd40efc0d6
+      passed limited offline PWSTest identity, actual selected PNG pixels at 0/90/180/270 degrees,
+      saved/reopened 270-degree pixels and original bytes. One warm persisted-angle interval per target
+      remained inconclusive against 500 ms: 180 degrees 202.1032–560.6340 ms and 270 degrees
+      243.1483–5070.2423 ms. Independently rendered ordinary PDF passed expected order and orientation.
+      English export passed upright order, searchable layer and PAGE 206 on both scans. Exact SCAN PAGE 206
+      failed as SCAM PAGE 206, with the substitution reproduced by the bundled engine on the source PNG.
+      Combined checklist package passed four confirmed assignments and independently rendered intended
+      package order differing from case order. Verified source-fixture and case-original digests matched.
+      Evidence is under output/pws0811/phase-observer-installed/installed-application-v4-20261112.
+    - >-
+      V4 exposed premature preview completion and stale progress format. Both focused regressions reproduced
+      the old behavior and 68 targeted tests passed after the fix. Private v5 commit
+      40b792caef734eadd3aa074dd964526d64d55242 is a direct child of v4. Its read-only unsigned x64 Setup
+      has 512860911 bytes and SHA-256 4c519c5e0499cfc2d854f42891d9ff0e38b2f4753e67ede453cb335f72af09a0.
+      Build and independent 3201-member payload verification passed. Exact limited offline PWSTest v5
+      installed/running identity, selected PNG pixels and current progress across 0/90/180/270 degrees,
+      following form import, ordinary export, and saved 270-degree close/reopen passed. Independently rendered
+      v5 ordinary PDF bytes matched v4. V5 package and warm persisted angle timing were not rerun.
+      English OCR progress, output order, searchable layers and PAGE 206 passed. Exact SCAN PAGE 206
+      failed again on both scans, with pixel and extraction comparisons matching v4.
+      V5 remains active in the offline lab. PWS-0811 remains in review for exact OCR, persisted timing
+      and wider final-candidate verification.
+      Evidence is under output/pws0811/phase-observer-installed/installed-application-v5-20261112.
+    - >-
+      Exact installed v5 subsequently passed independent marked checklist order and rotated marked
+      ordinary PDF checks after normal restart, reorder and Undo/Redo. Offline English OCR extracted
+      RIVER BRIDGE 732 exactly from the independent fixture. Both original scans contain searchable
+      PAGE 206 and still return SCAM PAGE 206 for the full phrase. This is the recognition limitation
+      allowed by original HT-10 after bundled-engine investigation. The installed collision preserved
+      destination bytes and the new-name retry succeeded. Cancellation left no final PDF or saved case
+      change. V6 corrects the missing low-storage preview catalog message, localizes the private observer
+      dialog and updates stale typing test doubles. Its source commit is
+      051e386e1d8f114b1ef7cf0714b1eff9fdaae22c and the frozen unsigned x64 Setup SHA-256 is
+      e66139f651fe6036e48cafba7dac45c4899ba189f57cfc1b6907742c35acecf4. The v5/v6 follow-up is under
+      output/pws0811/phase-observer-installed/installed-acceptance-v5-20261112. V6 was installed
+      offline as limited PWSTest, preserved the case inventory, and completed the literal guide, R9
+      case migration, four-source English OCR, and pending preview edit and close checks. Two live
+      engine-fault guards refused before interruption. The actual cancellation preserved the case
+      and published no PDF. The warm PNG and cached rotation cohorts retain inconclusive bounds.
+      A paired restricted worker startup experiment isolated two eager PDF imports as removable
+      image inspection startup work. The V7 private successor carries the deferral for installed
+      verification. Current results and remaining requirements follow the canonical continuation.
+    - >-
+      V7 a9ebe752f9256ca1cd9d2284597e3dbb5deb7700 was installed offline as limited PWSTest. Its
+      read-only unsigned x64 Setup SHA-256 is 6eb540218b58c7a6bb99f553eef7a5c59a6ba33bfa24eaa2fe97fd19cc945b5a.
+      Exact installed inventory, retained cases, literal guide, ordinary and marked outputs, original
+      four-source searchable outputs and protected collision retry passed. The exact restricted image
+      worker starts without the two PDF export imports. Native warm PNG, 270-degree cached rotation,
+      visible acknowledgement and cold ordinary comparisons remain inconclusive. The separate loaded
+      PNG run missed its target. The 44 selected integration cases, constrained workload and registered
+      exact candidate fixture validation passed. The completion audit leaves T05 and HT-06 open for
+      timing. PWS-0811 remains in review and no human retest is requested. Exact V7 receipts and scope
+      are under output/pws0811/phase-observer-installed/installed-acceptance-v5-20261112.
+    - >-
+      Supplemental exact V7 upper bounds were 2428.286 ms for quiet warm PNG paint, 631.889 ms
+      for the first persisted 270-degree paint, and 5626.493 ms for cold ordinary save.
+      The 270-degree cache member was unchanged across a normal restart. The new three-page
+      ordinary PDF independently reopened and rendered and matched the prior reviewed PDF byte for
+      byte. These host comparisons and visible acknowledgement remain inconclusive. Two native PNG
+      observers stopped at the file-picker foreground transition before accepting any pixels.
+      The earlier loaded PNG miss and SCAM recognition limitation retain their recorded scope.
+      The exact V7 AppContainer comparison attributed a 148.820 ms median Ready improvement
+      to deferring four unrelated PDF and OCR imports across three paired runs.
+      Private V8 ee49ac3e3461023444f01b972c1efeeb2759a360 carries the measured change and the
+      verified low-storage assertion correction. Its read-only unsigned x64 Setup SHA-256 is
+      21d478a7b115cffc6aa796011de7cee80f70f350d92ebb461711d9f0365afef8.
+      Follow-up evidence is under output/pws0811/phase-observer-installed/v7-timing-followup-20261112.
+    - >-
+      V8 installed through exact limited PWSTest Setup in offline PWS-Test. All 3201 payload
+      and 2445 runtime members matched, and 430 retained entries including 31 cases matched
+      across removal and replacement. Installed ordinary PDF reopened and rendered byte-identical
+      to the V7 result. The installed V8 guide form and scan import, note placement and ordinary
+      save, English searchable export and local viewer searches were verified. PAGE 206 returns
+      one hit and SCAN PAGE 206 returns zero, with raw SCAM PAGE 206 retained. Registered static,
+      150 focused unit, exact-candidate fixture, and constrained native checks passed.
+      The cold timing observer refusal supplies no save-time verdict. PWS-0811 remains in review.
+    - >-
+      Exact V8 native integration passed 52 tests. The first persisted 270-degree preview
+      passed at 397.73 ms after a normal restart. Quiet warm PNG paint upper bounds were
+      2173.337, 1921.845 and 1785.717 ms across three fresh cases. The first bound is
+      inconclusive and the latter two meet 2 seconds. A separate 2037.094 ms bound is
+      inconclusive. All three warm cohort import acknowledgements and the quiet cold ordinary
+      acknowledgement at 224.552 ms meet 250 ms. Cold PNG acknowledgement remains inconclusive.
+      The quiet cold ordinary save failed 5 seconds. The exact manifest still had the prior
+      revision and history count at 5030.293 ms after Enter returned. Named completion was
+      visible by 5238.929 ms, and the added record and independently reopened PDF verified.
+      A separate quiet installed PNG phase run proved an exact empty manifest at 2020.610 ms
+      and correct preview pixels by 2229.367 ms. Its image worker grant took 676.083 ms and
+      launch return to validated Ready took 701.471 ms on the same guest QPC.
+      T05 and HT-06 remain open. The original thresholds and earlier loaded PNG miss are retained.
+    - >-
+      V9 98f17838ae28bd45bfb3fd2b64a5ccf090fcd2ae uses the measured fixed structural PDF worker
+      grant. Its frozen unsigned Setup SHA-256 is
+      c787c4573992bd98b0bc1ef967f22fe16ade2d82faca10ae9b2b8978e8e231ef.
+      Installed inventory matched 3202 payload and 2446 runtime files. All 519 retained entries,
+      including 39 cases, matched through replacement. Registered static and fixture checks and
+      202 focused unit tests passed. The actual installed cold ordinary save passed at 3934.691 ms
+      and acknowledgement at 227.392 ms. The independently reopened and rendered three-page PDF
+      matched the verified V8 bytes. V9 cold PNG paint passed at 1992.906 ms. Quiet warm PNG upper
+      bounds 2125.756 and 2045.874 ms are inconclusive, and 1907.625 ms passes. A separate armed
+      run passed at 1857.327 ms. T05 and HT-06 remain open for warm consistency and acknowledgement.
+    - >-
+      V10 35066580f81dea306fa5e06bebcdf6fd2f39fb77 batches three source reservations under one
+      fresh inventory. Its read-only unsigned Setup SHA-256 is
+      36a845198b0c39deef52607c514219bd061763211b5dfe97e5b9fdc167e99415. Limited PWSTest Setup and
+      Start verified 3202 payload and 2446 runtime members and preserved 585 entries across
+      45 cases, samples and exports. Registered static, fixture and constrained checks passed.
+      606 focused units, 110 affected native integration tests, and 52 security tests passed.
+      The symbolic-link privilege skips retained the junction coverage. First persisted
+      270-degree paint passed at 479.969 ms, cold PNG paint at 1914.371 ms, and cold ordinary
+      save at 4896.251 ms. The three preset warm paint upper bounds were 2109.358, 1991.930
+      and 2375.357 ms, with one pass and two inconclusive. All four preset PNG acknowledgements
+      and the ordinary acknowledgement met 250 ms. A separate comparable quiet phase run
+      proved a paint miss from 2025.124 through 2297.488 ms. Its acknowledgement remains
+      inconclusive. V10 guide and ordinary derivatives independently reopened and rendered.
+      PAGE 206 found one hit and SCAN PAGE 206 found zero, with raw SCAM PAGE 206 preserved.
+      T05 and HT-06 remain open. The V10 staged normalization-only diagnostic improved Ready
+      in all three untraced pairs while preserving the exact fixed grant and output.
+    - >-
+      V11 aee7d37dab59342cc16dd7baf132351b242337ce routes installed image inspection and
+      normalization through a narrow worker sharing the existing exact image grant.
+      Its read-only unsigned Setup SHA-256 is
+      a12f4ed39b343765f7861e5cdce4eb8a5c337d330d3e5b5714789a5b54556a8e. Actual limited Setup
+      and Start verified 3202 payload and 2446 runtime members and preserved 652 entries
+      across 51 cases, samples and exports. Registered static and fixture checks, 149 focused
+      units, 53 security tests, 11 native integrations and constrained workload passed.
+      A security test skipped for reparse-point privilege. Current fresh PNG and JPEG import,
+      persisted JPEG transform, ordinary PDF and English guide output passed. Local reader
+      PAGE 206 hit once and SCAN PAGE 206 did not match raw SCAM PAGE 206.
+      Cold PNG paint passed at 2239.146 ms and first cold ordinary at 4337.491 ms. Preset
+      warm paint upper bounds 2052.511, 1992.017 and 2246.093 ms leave one pass and two
+      inconclusive. The separate quiet 2051.966 ms upper bound is inconclusive. All three
+      warm acknowledgements passed. Cold acknowledgements and the 585.175 ms first
+      persisted 270-degree timing remain inconclusive. T05 and HT-06 remain open.
+    - >-
+      V12 28c254b8a472184ae0817c28a223c7f9a1aa91e8 repairs the proven inbound transport wake
+      delay. The exact paired host trace showed a 34.663 ms median Ready-queue improvement,
+      seven wrong-waiter events in controls and zero in variants, with unchanged grant, pixels,
+      immutable originals and cleanup. The read-only unsigned Setup SHA-256 is
+      581997b97904b0aa71813da230fd1240dddc5d86e70f1c7735e5b1aa690bc7ed. Actual limited Setup and
+      Start verified 3202 payload and 2446 runtime members and preserved 719 entries across
+      57 cases, samples and exports. Registered static, fixture and constrained lanes passed,
+      with 203 focused unit, 53 security and nine native integration passes. One security
+      test skipped for reparse-point privilege. Cold ordinary save passed at 4315.361 ms,
+      cold PNG at 2071.756 ms and first persisted 270-degree paint at 485.622 ms. All five
+      preset acknowledgements passed, maximum 239.948 ms. Preset warm paint upper bounds
+      2176.431, 1843.381 and 1926.838 ms leave one inconclusive and two passes. A separate
+      armed run has a source-ordered diagnostic miss between 2088.360 and 2118.984 ms, with
+      the original manifest-witness bound retained. The current ordinary, JPEG and guide
+      OCR outputs verified. Raw SCAM PAGE 206 remains documented. T05 and HT-06 remain
+      open for warm PNG, and no human retest is requested.
+    - >-
+      On 2026-11-25 the maintainer reported the V12 second-PC trial successful and supplied
+      feedback plus a 29844-byte PDF, SHA-256
+      c789e5d4533cc30e57e7873f6cef0514d41752b41a9d6c090e36a1b163214d6a.
+      Exact supplied Setup, guide and four fixtures match the original kit. Independent bounded
+      Poppler and strict pikepdf checks verified all four pages, digital text, 90-degree blue-page
+      rotation and invisible OCR on both scans. Actual order is form, blue PDF, PNG, PDF scan;
+      the guide requested PNG second. Each scan retains PAGE 206 and raw SCAM PAGE 206.
+      Approximately ten initial Add file errors remain an unresolved T01/T11 intake finding.
+      The error message is not remembered and the failure cause is unproved. Page scrolling discoverability is recorded in the historical feedback. The later TRACE
+      decision and installed verification are tracked under PWS-0813. Receiving runtime/environment and offline
+      status were not independently collected. T05/HT-06 remain partial and PWS-0811 stays in
+      review. The canonical continuation and output/pws0811/second-pc-feedback-20261125 bind
+      the received observations and actual output checks. No product change or new build.
+    - >-
+      On 2026-11-26 one cold application launch of installed pws0813-trace-engineering-b8
+      in the disconnected PWSTest standard-user console imported form.pdf, 01-page.pdf,
+      03-scan.png and ocr-scan.pdf on their first submissions in a fresh case. UI completions,
+      revisions 0 through 4, four active pages in order and matching original and case-copy
+      SHA-256 values are recorded in output/pws0811/b8-cold-import-20261126 and the canonical
+      continuation. The original V12 Add file finding stays open under T01/T11 and HT-07/HT-16.
 - id: PWS-0812
   milestone: M8
   title: Verify installed R16 ordinary PDF and English OCR offline

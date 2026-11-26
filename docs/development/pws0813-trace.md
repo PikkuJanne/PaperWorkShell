@@ -604,3 +604,20 @@ PWS-0813 is done for the private native replacement. The representative installe
 the standard launch, saved cases, comparisons, package, bounded console runtime, keyboard and native
 scaling. PWS-0811 remains in review. PWS-0808 and public release retain their separate dependencies.
 The primary checkout and older immutable candidates stayed in place.
+
+## Development baseline reconciliation
+
+The clean baseline branch `codex/pws-0813-development-baseline` starts at closeout
+`0919421eec02011d1483bdbacbd438af45e8a343`. The private B8 installer remains bound
+to `acc0b2621259975c6d418807488ce239b338ac05` and the installed verification above.
+
+The previous checkout at `2e70ec0e7174dab342f6df43d7b4d685f84a3259` is an ancestor.
+Its source and test changes are present in TRACE history. The reconciliation brings
+forward the distinct PWS-0811 evidence, including the November 26 B8 Add rehearsal,
+and corrects the starter prompts. See the
+[current PWS-0811 continuation](pws0811-repairs-20261106.md#current-continuation--installed-application).
+
+The Windows checkout now follows the existing LF policy for the affected sources.
+Explicit checkout attributes preserve the reviewed upstream notice and provenance
+bytes. Earlier checkout work and installed evidence are still available at their
+original locations.

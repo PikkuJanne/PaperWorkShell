@@ -47,13 +47,13 @@ unchecked and explicitly checked after inspection and the lock-held barrier.
 
 **Finite A9 refusal reading and A11 removal-review/result reading now pass at
 recorded scope.** A9 raw `d8fc47f0e45287367138b247d1ad3612c46cc4e34ac21d6897ec6a98e2309222`
-and [Root join8aaa](../../output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json)
+and Root join8aaa at `output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json`
 (`8aaa2f06ffd865701512b5e2d021382b6f489faf7ecfa5a054ac46409414b697`)
 record full refusal text/OK and ordinary Enter after disclosed taskbar activation
 and the target's native menu/Escape/Tab; the initial stale Explorer context remains.
-A11 [V3 strict collection](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json)
+A11 V3 strict collection at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json`
 (`62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c`)
-and [Root join55868](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json)
+and Root join55868 at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json`
 (`55868afb07f0cd67864e782ac0628f025b648fce27e710109bc45ae7786aab8c`)
 bind CUA009-020: spoken unchecked opt-in, Inspect, one available/one unavailable,
 read-only inventory, separate unchecked confirmation and a lock-held result of
@@ -82,9 +82,9 @@ empty registry-default key. The correction only parses the exact pinned installe
 record using a bounded inbox .NET dictionary reader; five managed models and the
 actual corrected probe pass without product or registry/ACL/policy mutation.
 Independent case/work byte archives and Root member reviews are **COMPLETE**:
-[case review6a94](../../output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json)
+case review6a94 at `output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json`
 (`6a94ac1d264b59a0e6956af642b98ba2ed60ad0168a5f6fd17a6d5124603138e`)
-verifies 24 members/ten files/744,147 bytes; [work reviewddc1](../../output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json)
+verifies 24 members/ten files/744,147 bytes; work reviewddc1 at `output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json`
 (`ddc1cd36c7d235b208b903f9983ad5d4da0d42be2a244e68a4db04b7d54c1179`)
 verifies 22 members/eight files/83,095 bytes including all six externals. The actual
 uppercase VERIFIED-EXPORT.PDF was preserved, not renamed. The earlier composite

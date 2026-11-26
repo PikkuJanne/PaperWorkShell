@@ -58,12 +58,12 @@ category/default/external comparison passes40868e40.
 
 Finite **A9 full refusal reading and A11 review/result reading now pass at their
 recorded scope**. A9 raw `d8fc47f0...09222` and
-[Root join8aaa](../../output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json)
+Root join8aaa at `output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json`
 (`8aaa2f06ffd865701512b5e2d021382b6f489faf7ecfa5a054ac46409414b697`)
 record full error text/OK and Enter after taskbar/native-menu activation.
-A11 [strict V3 mechanics](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json)
+A11 strict V3 mechanics at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json`
 (`62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c`)
-and [Root join55868](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json)
+and Root join55868 at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json`
 (`55868afb07f0cd67864e782ac0628f025b648fce27e710109bc45ae7786aab8c`)
 bind spoken one available/one unavailable, read-only inventory, separate unchecked
 confirmation, checked Delete and zero deleted/two remaining/one failed-partial,
@@ -74,9 +74,9 @@ activation remain recorded; this is not keyboard-only launch, universal reader
 reliability or a proved cause. Failed V1/V2 retries remain failed; earlier gaps
 and all original evidence stay preserved.
 
-Independent [case review6a94](../../output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json)
+Independent case review6a94 at `output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json`
 (`6a94ac1d264b59a0e6956af642b98ba2ed60ad0168a5f6fd17a6d5124603138e`)
-and [work reviewddc1](../../output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json)
+and work reviewddc1 at `output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json`
 (`ddc1cd36c7d235b208b903f9983ad5d4da0d42be2a244e68a4db04b7d54c1179`)
 complete byte preservation/member hashes for the two retained cases and owned
 work/six external files. Failed backup attempts remain preserved. Strict

@@ -109,16 +109,16 @@ retroactively made passes by successful cleanup.
 
 **Finite A9 error reading now passes:** raw
 `d8fc47f0e45287367138b247d1ad3612c46cc4e34ac21d6897ec6a98e2309222`
-and [Root factual join](../../output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json)
+and Root factual join at `output/pws0802/x64-scope-20261104/r9-error-reader-focus-v1/actual-host-join-v1.json`
 `8aaa2f06ffd865701512b5e2d021382b6f489faf7ecfa5a054ac46409414b697`
 bind the full refusal message/OK reading and ordinary Enter/native1 after disclosed
 Setup taskbar activation and its own native menu/Escape/Tab. Speech Viewer remained
 untouched; the initial stale Explorer context is retained.
 
-**Finite A11 review/result reading now passes:** [V3 strict collection](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json)
+**Finite A11 review/result reading now passes:** V3 strict collection at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-collected-v1.json`
 `62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c`,
 raw `73d0fb64ee2ac477164093886a81b33fa901835d3f2d3afd1df982fbe6f73ec9`
-and [Root joined observations](../../output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json)
+and Root joined observations at `output/pws0802/x64-scope-20261104/r9-review-reader-focus-v3/actual-host-join-v1.json`
 `55868afb07f0cd67864e782ac0628f025b648fce27e710109bc45ae7786aab8c`
 bind CUA013/014/015/016/019/020: one available/one unavailable spoken inspection,
 read-only inventory, separate unchecked confirmation, explicitly checked Delete,
@@ -158,11 +158,11 @@ empty registry-default key. The correction only parses the exact pinned installe
 record using a bounded inbox .NET dictionary reader; five managed models and the
 actual corrected probe pass without product or registry/ACL/policy mutation.
 Independent final case/work byte preservation and member review are **COMPLETE**.
-[Root case review](../../output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json)
+Root case review at `output/pws0802/x64-scope-20261104/r9-retirement-v2/root-case-review-v1.json`
 `6a94ac1d264b59a0e6956af642b98ba2ed60ad0168a5f6fd17a6d5124603138e`
 verifies case ZIP `4d0067d9f2ad5dbd8dda29da47c2492908bec36b07bdb6a3f4430e49c3e67beb`
 (749,203 bytes, 24 members, ten files/744,147 bytes).
-[Root work review](../../output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json)
+Root work review at `output/pws0802/x64-scope-20261104/r9-work-archive-v3/root-work-review-v1.json`
 `ddc1cd36c7d235b208b903f9983ad5d4da0d42be2a244e68a4db04b7d54c1179`
 verifies work ZIP `13736b5f43deebadaeac9bb5b37b72d0c662754ea6e6693f1bfa5c5a9d48f653`
 (87,641 bytes, 22 members, eight files/83,095 bytes), every member and all six
