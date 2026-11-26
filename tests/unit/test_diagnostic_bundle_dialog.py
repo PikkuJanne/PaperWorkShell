@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Event
 from time import monotonic
 from typing import cast
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -150,6 +151,44 @@ def test_canceling_location_picker_never_starts_publication(
         dialog._consent.setChecked(True)
         dialog._choose_save()
         assert not dialog.busy and writer.writes == []
+    finally:
+        dialog.deleteLater()
+        application.processEvents()
+
+
+def test_save_picker_starts_in_user_folder_with_no_prefilled_filename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    application = app()
+    writer = Writer()
+    write = Mock(wraps=writer.write)
+    monkeypatch.setattr(writer, "write", write)
+    dialog = DiagnosticBundleDialog(DiagnosticBundleService(SanitizedDiagnosticLogger(), writer))
+    home = tmp_path / "user-home"
+    home.mkdir()
+    selected = home / "reviewed.zip"
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    def choose_path(
+        _parent: DiagnosticBundleDialog,
+        _caption: str,
+        initial_path: str,
+        file_filter: str,
+        *,
+        options: QFileDialog.Option,
+    ) -> tuple[str, str]:
+        assert Path(initial_path) == home
+        assert options & QFileDialog.Option.DontConfirmOverwrite
+        return str(selected), file_filter
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", choose_path)
+    try:
+        assert dialog._preview is not None
+        dialog._consent.setChecked(True)
+        dialog._choose_save()
+        idle(dialog)
+        write.assert_called_once_with(dialog._preview, selected, cancellation=ANY)
+        assert writer.writes == [dialog._preview.archive]
     finally:
         dialog.deleteLater()
         application.processEvents()

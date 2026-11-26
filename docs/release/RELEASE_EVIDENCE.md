@@ -228,8 +228,18 @@ standard-user Windows 11 Pro x64 26300.9711 guest. Ordinary PDF export refused a
 destination, then saved a verified PDF with a new name. The support preview and consent worked.
 Saving the support ZIP failed at two fresh fixed-local destinations, and neither attempt left a
 ZIP. The closure record preserves both failures and the description-only reporting fallback.
-PWS-0807 still requires successful creation and privacy verification on the exact public candidate.
 [Documentation walkthrough evidence](../development/pws0806-documentation.md#installed-documentation-walkthroughs).
+
+PWS-0807 isolated the native picker retaining its suggested ZIP filename in the installed working
+directory. With a temporary in-memory change to start at the user's home folder with an empty
+filename, the same accessibility edit selected the requested path. The installed B8 writer
+committed the exact reviewed two-file ZIP. The same change is in source and passed the focused
+regression. Candidate diagnostics verification remains pending.
+[TRACE B8 diagnostics investigation](../development/pws0807-diagnostics-investigation.md).
+
+The [PWS-0807 matrix](../development/pws0807-rc-matrix.md) records the environment inventory,
+existing engineering results, synthetic rehearsal sample, and prerequisites for the signed-candidate
+runs.
 
 ## Current development evidence available for later reconciliation
 

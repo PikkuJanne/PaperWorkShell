@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 542764,
-      "sha256": "66472b655182101d0fb0f152becde55ea88407b96d67596e366d7ccbeeafcdc4"
+      "bytes": 543908,
+      "sha256": "5a0ba9e524051fff1435724ef91d9965890aff09bc34d585d0271cea3f02e853"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 36533,
-      "sha256": "a8c85234e53fc3699a4e6d8ed7a600cee42214c0d1345a9cf25bb0b8d0f4a8ce"
+      "bytes": 37169,
+      "sha256": "dfb994a8003f3385bd5ba300097b08a2e6bd5351f115e3143614d33726351075"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 9564,
-      "sha256": "d30c7e0409bf3e066cc4f3dc0b93dc53748c28d79aca89427b9b49c0dcfa05da"
+      "bytes": 9744,
+      "sha256": "cc44c6efa9fddbf9cf49fa38eb6ee8719afdf9a1cb53d9482ead039fb0c70d18"
     },
     {
       "path": "LOW_SPEC.md",
@@ -480,8 +480,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 752,
-      "sha256": "e5d0a9595525dacaf83c4347e3414be4465d6af014f9eae71974716aca1aa6b8"
+      "bytes": 756,
+      "sha256": "60805562f7583e15bab1a376b7ed7a31353d86db788cfd09f84f3567d97c7c3f"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -662,6 +662,16 @@
       "path": "docs/development/pws0806-documentation.md",
       "bytes": 6845,
       "sha256": "cea6f568b6ccdd26643d30ca1256c8aca44d62e2430a1bc758e7c8b278c8fc03"
+    },
+    {
+      "path": "docs/development/pws0807-diagnostics-investigation.md",
+      "bytes": 9211,
+      "sha256": "0933aa07d57ee2507f86d1c652c3a2f9b88965cbf735924f1c632b6947eebaeb"
+    },
+    {
+      "path": "docs/development/pws0807-rc-matrix.md",
+      "bytes": 17558,
+      "sha256": "97ca9241b944b46168bccefc279eb3133deee173f07f9ea216fe9698d51e2436"
     }
   ],
   "validation": {

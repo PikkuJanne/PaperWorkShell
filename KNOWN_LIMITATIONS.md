@@ -117,10 +117,12 @@ PaperWorkShell is in engineering development. Public supported versions, a maint
 commitment, and a private vulnerability-reporting route are pending. Internal recipients can ask
 the maintainer who supplied their build through their existing private channel. [Security and reporting](SECURITY.md).
 
-On the standard-user TRACE B8 engineering build, the support preview opened and required consent,
-but saving the ZIP failed in two fixed local folders. Start with the description-only reporting
-steps if this happens. [Care and recovery](docs/user/CARE_AND_RECOVERY.md#create-a-support-bundle)
-and [TRACE B8 walkthrough results](docs/development/pws0806-documentation.md#installed-documentation-walkthroughs).
+On the standard-user TRACE B8 engineering build, the support preview opened and required consent.
+Two saves failed in the walkthrough. The investigation reproduced the native picker retaining its
+suggested filename in the installed runtime folder after an accessibility edit. The source fix
+starts the picker in the user's home folder with a blank filename. If your build reports a save
+failure, use description-only reporting. [Care and recovery](docs/user/CARE_AND_RECOVERY.md#create-a-support-bundle)
+and [TRACE B8 investigation](docs/development/pws0807-diagnostics-investigation.md).
 
 The Milestone 6 source gate covers a narrow permanent-removal workflow for one affected active
 PDF page. Availability and claims for installed builds depend on the exact build and its release

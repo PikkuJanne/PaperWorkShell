@@ -215,10 +215,11 @@ class DiagnosticBundleDialog(QDialog):
     def _choose_save(self) -> None:
         if self._preview is None or self._thread is not None or not self._consent.isChecked():
             return
+        # A prefilled filename can override an accessibility edit in the Windows picker.
         destination, _selected = QFileDialog.getSaveFileName(
             self,
             tr("Save reviewed support bundle"),
-            "PaperWorkShell-support.zip",
+            str(Path.home()),
             tr("ZIP archives (*.zip)"),
             options=QFileDialog.Option.DontConfirmOverwrite,
         )

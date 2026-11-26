@@ -6414,6 +6414,18 @@ tasks:
     - PWS-0806 observed support ZIP publication fail at two fixed local destinations on
       exact TRACE B8. Verify successful local save, exact preview contents, privacy, and safe
       failure on the candidate. See docs/development/pws0806-documentation.md.
+    - PWS-0807 reproduced the native picker retaining its suggested name in the B8 runtime
+      folder after an accessibility edit. An empty filename in the user home directory let the
+      installed B8 writer save the exact reviewed ZIP. The source regression failed before the
+      fix and 37 focused tests passed after it. See docs/development/pws0807-diagnostics-investigation.md.
+    - The scenario matrix, environment inventory and verified synthetic rehearsal kit are recorded
+      in docs/development/pws0807-rc-matrix.md. The current offline Pro guest reports NTFS quota
+      capability in a read-only probe. Actual installer-target disk exhaustion still needs an
+      authorized disposable configuration. Exact signed-candidate qualification requires PWS-0802.
+    - The exact B8 installed-runtime constrained-v1 smoke passed PDF/PNG intake, previews,
+      verified output, OCR, unavailable-input and no-overwrite checks, and preservation.
+      The receipt records final case/cache sizes and zero temporary residue. Peak resource
+      measurements, slow I/O, disk exhaustion, and signed release qualification remain pending.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 release gate
