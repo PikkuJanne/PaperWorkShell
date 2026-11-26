@@ -1,8 +1,7 @@
 # PaperWorkShell security and vulnerability reporting
 
-This draft describes reporting for internal builds and how PaperWorkShell handles a report.
-Public distribution, supported release versions, and a private route for public reports are
-pending. An engineering build has the support scope in its handover. [Release status and known limits](KNOWN_LIMITATIONS.md#release-and-acceptance-status).
+PaperWorkShell is in engineering development. No public release is currently designated for
+support. Each internal build has the support scope in its handover. [Release status and known limits](KNOWN_LIMITATIONS.md#release-and-acceptance-status).
 
 ## Report privately
 

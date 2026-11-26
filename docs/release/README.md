@@ -19,8 +19,16 @@ cross-project dependency.
   — current scope, preserved R7 build epoch and remaining release work.
 - [Finite x64 qualification matrix](../development/pws0802-x64-qualification-20261104.md)
   — accepted packaged evidence and the remaining in-scope checks.
+- [TRACE B8 setup evidence](../development/pws0814-automated-setup.md) — exact engineering
+  package, standard-user same-build repair and reuse, and one offline ordinary PDF workflow.
+- [Engineering update evidence](../development/pws0803-authenticated-updates.md) — authenticated
+  local activation, case preservation, offline export, recovery and replay refusal for exact R1/R2.
+- [User guide](../user/USER_GUIDE.md), [care and recovery](../user/CARE_AND_RECOVERY.md),
+  [known limitations](../../KNOWN_LIMITATIONS.md), and [security policy](../../SECURITY.md) —
+  current workflow, privacy, maintenance status and reporting guidance.
 - [ThirdLife alignment](../../THIRDLIFE_ALIGNMENT.md) — portfolio boundary and late-binding
-  interpretation.
+  interpretation. See [source traceability](../portfolio/SOURCE_TRACEABILITY.md) and
+  [non-gating future notes](../portfolio/THIRDLIFE_FUTURE_NOTES.md).
 - [PWS-0802 complete-runtime implementation and qualification](../development/pws0802-community-runtime-20261103.md)
   — preserved unsigned internal R7 and separately corrected R9, exact identity,
   settled Microsoft route and actual scoped qualification, separately from the
@@ -64,8 +72,13 @@ The retained R7 installer is 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,
 with actual signature status **NotSigned**. The 2026-11-04 source-policy documents
 are newer than its embedded build metadata; no installer rebuild or evidence rewrite
-is implied. The actual engineering guest was Windows 11 Enterprise 26100.9711 x64
-with a genuine standard account. Windows 11 Pro 26300.9711 describes the host only.
-R7's instrumented-guest observations and R6's clean document evidence retain their
-separate scopes and audited reuse boundary.
+is implied. The R7 engineering guest was Windows 11 Enterprise 26100.9711 x64
+with a genuine standard account. Windows 11 Pro 26300.9711 was the host for that
+rehearsal. R7's instrumented-guest observations and R6's clean document evidence
+retain their separate scopes and audited reuse boundary.
+
+The later TRACE B8 setup and PWS-0803 offline update rehearsals used a Windows 11
+Pro x64 26300.9711 guest with a standard-user desktop. Both retain their exact
+engineering artifact scope. The [Windows support matrix](WINDOWS11_X64_SUPPORT.md)
+records the environments and evidence separately.
 

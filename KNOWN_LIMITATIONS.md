@@ -113,9 +113,14 @@ Production signing, production update trust, supported release editions/builds, 
 packaged release matrix are pending. [Setup evidence](docs/development/pws0814-automated-setup.md),
 [update evidence](docs/development/pws0803-authenticated-updates.md), and [release interface](docs/release/RELEASE_INTERFACE.md).
 
-Public supported versions, a maintenance commitment, and a private vulnerability-reporting route
-are pending. Internal recipients can ask the maintainer who supplied their build through their
-existing private channel. [Security and reporting draft](SECURITY.md).
+PaperWorkShell is in engineering development. Public supported versions, a maintenance
+commitment, and a private vulnerability-reporting route are pending. Internal recipients can ask
+the maintainer who supplied their build through their existing private channel. [Security and reporting](SECURITY.md).
+
+On the standard-user TRACE B8 engineering build, the support preview opened and required consent,
+but saving the ZIP failed in two fixed local folders. Start with the description-only reporting
+steps if this happens. [Care and recovery](docs/user/CARE_AND_RECOVERY.md#create-a-support-bundle)
+and [TRACE B8 walkthrough results](docs/development/pws0806-documentation.md#installed-documentation-walkthroughs).
 
 The Milestone 6 source gate covers a narrow permanent-removal workflow for one affected active
 PDF page. Availability and claims for installed builds depend on the exact build and its release

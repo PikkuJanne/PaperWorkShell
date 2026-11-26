@@ -13,6 +13,7 @@ to change that boundary.
 |---|---|---|
 | Windows 11 Enterprise 26100.9711, Windows Sandbox, actual standard account | Native x64 / AMD64 | Accepted R6 clean workflow/interruption and R7 scoped baseline remain preserved. Fresh R9 actual standard guest has install/full 3,195, native GUI input, notices and interactive-repair prefixes; confirmed partial deletion mechanics also pass. Default-preserve removal and bounded removed-state comparisons pass. Finite A9 refusal/A11 review-result reading and independent case/work archives are complete with pointer activation disclosed; real low-disk and signing remain open; no complete release pass. |
 | Windows 11 Pro 26300.9711 development host, filtered administrator process | Native x64 | Earlier host-only evidence. It does not establish a clean environment or an actual standard account. |
+| Windows 11 Pro 26300.9711, disconnected Hyper-V guest, standard-user desktop | Native x64 | Exact unsigned TRACE B8 passed same-build repair, reuse, launch and one offline ordinary PDF workflow. In a separate rehearsal, engineering R1 and the isolated test-signed R2 runtime passed authenticated local activation, an offline ordinary PDF export, restoration of R1 and replay refusal. Case files matched their baselines in both rehearsals. [TRACE B8 setup](../development/pws0814-automated-setup.md) and [engineering update proof](../development/pws0803-authenticated-updates.md). |
 | Windows 11 x64 release artifact after production signing | Native x64 | Required final-byte signature, inventory and affected qualification checks remain unrun until a qualified signing route is connected. |
 | Earlier proposed execution on ARM64 | Outside scope | Earlier unrun scenario superseded by PWS-D043. No pass or future prerequisite is inferred. |
 
@@ -29,7 +30,7 @@ The existing installer uses `ArchitecturesAllowed=x64os` and
 defines `x64os` as native x64 Windows, excluding execution on ARM64 through
 emulation. The scope correction therefore requires no installer-byte change.
 
-## Newest experimental unsigned R9
+## Historical PWS-0802 experimental unsigned R9
 
 `pws0802-internal-20261104-r9` is built, **512,732,779 bytes**, SHA-256
 `d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4`,

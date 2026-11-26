@@ -245,7 +245,7 @@ release-grade packaged qualification remains separate.
 
 | Item | Release value |
 |---|---|
-| Creation path | Current TRACE interface: **Settings → Create support bundle…**. Exact packaged release verification pending. |
+| Creation path | TRACE offers **Create support bundle…** in **Settings** and **Help**. Exact public release verification pending. |
 | User preview before creation | Required |
 | Default destination | Explicit user-selected local file; no automatic submission |
 | Included categories | Exact preview of `summary.txt` and `allowlist.txt`; numeric versions by default, other closed typed diagnostic fields only when actually recorded; no file collector |

@@ -1,6 +1,6 @@
 # PaperWorkShell user guide
 
-**Draft for the TRACE workbench.** PaperWorkShell is a standalone Windows 11 x64
+**Guide for TRACE engineering builds.** PaperWorkShell is a standalone Windows 11 x64
 application. It works offline without an account, versions independently, and
 keeps your cases and document processing on your computer. It runs independently
 of ThirdLife and its other applications. There is no current ThirdLife
@@ -12,20 +12,23 @@ compatibility claim. Use the setup instructions for the build you received.
 1. Open **PaperWorkShell** from Windows Start. At **Choose a case**, select
    **New case** (Ctrl+N), enter a **Case name**, and choose **Create case**. A
    separate case keeps each packet and its saved edits together.
-2. Choose **Add file** (Ctrl+I), select one PDF, JPEG, or PNG, and wait for its
-   pages to appear. Repeat for each file. PaperWorkShell copies each supported
-   input into the case and keeps your source files unchanged.
-3. In **Pages**, select a page and review **Planned**. Use **Move up** or
-   **Move down** (Alt+Up or Alt+Down) to change its output position. **Rotate
-   selected page 90°** (Ctrl+R) changes its orientation. **Remove page** (Delete)
-   takes it out of the packet while preserving the imported copy.
-4. Choose **Export PDF** (Ctrl+Shift+E). Read the page order, select **Choose PDF
-   file**, and give the output a new filename. Wait for the checked result.
+2. Choose **Add → Add file** (Ctrl+I), select one PDF, JPEG, or PNG, and wait for
+   its pages to appear and the case to save. Repeat for each file. PaperWorkShell
+   copies each supported input into the case and keeps your source files unchanged.
+3. In **Pages**, select a page and review **Planned**. Open **Organize** and use
+   **Move up** or **Move down** (Alt+Up or Alt+Down) to change its output position.
+   **Rotate selected page 90°** (Ctrl+R) changes its orientation. **Remove page**
+   (Delete) takes it out of the packet while preserving the imported copy.
+4. Open **Export** and choose the PDF command for the current page count, such as
+   **Export 1-page PDF** (Ctrl+Shift+E). In **Export PDF**, read the page order,
+   select **Choose PDF file**, and give the output a new filename. Wait for the
+   saved result. If the filename already exists, the existing file stays in
+   place. Choose a different name and export again.
 5. Choose **Open PDF** to look through the pages in your PDF reader or **Open
    folder** to find the saved file. Check page order, orientation, completeness,
-   legibility, and any text or marks you added. Use **Close case** to return to
-   the chooser. To resume later, select the named case and choose **Open case**
-   (Ctrl+O).
+   legibility, and any text or marks you added. Choose **Add → Close case** to
+   return to the chooser. To resume later, select the named case and choose
+   **Open case** (Ctrl+O).
 
 For a recipient with specific requirements, compare its current instructions
 with your planned files before you start. Use the checklist workflow below when
@@ -39,9 +42,10 @@ files yourself after reviewing them.
 - **Source** shows the original page. **Planned** shows saved changes and
   supported visual marks. Open the mark editor when a placement needs closer
   inspection. **Exported** shows the checks for the verified PDF. After you
-  reopen a case, use **Select exported PDF** to match the file to the saved
-  result by size and SHA-256. A missing or changed file requires a fresh export
-  if you need another verified copy.
+  reopen a case, use **Select exported PDF** there to match the file to the
+  saved result by size and SHA-256. **Open exported PDF** checks it and opens
+  it in your PDF reader. If the selected file is missing or fails to match,
+  select another copy of the verified file or export a new one.
 - **Reorder pages** (Ctrl+Shift+O) opens a proposed order with visible move
   buttons. Confirm only after the order looks right. **Undo** (Ctrl+Z) and
   **Redo** (Ctrl+Y) apply to organizer actions in the current session.

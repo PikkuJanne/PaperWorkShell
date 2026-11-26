@@ -60,18 +60,18 @@
     },
     {
       "path": "docs/release/README.md",
-      "bytes": 4611,
-      "sha256": "09c3ac96b8806325f9d08503324034b75856275de3701241ccc1ebac7ab888c0"
+      "bytes": 5689,
+      "sha256": "68c12a8050c56766460b62abb3ffda27f7ea6151d002ed8a6a8aabda243acf57"
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 35811,
-      "sha256": "180e1ff6b2224f382d4eb80e4768c3bb2511a5c3ed6311e473b609456a9195a5"
+      "bytes": 36533,
+      "sha256": "a8c85234e53fc3699a4e6d8ed7a600cee42214c0d1345a9cf25bb0b8d0f4a8ce"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 21128,
-      "sha256": "e7550f9e0ec12b88aff2eab3bf898779751d18398796ac6f20e3de4490180f8f"
+      "bytes": 21130,
+      "sha256": "83eb2648150d7a609ec167f698929770170d0ef8927dea175ff8f03e85f656ee"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -90,8 +90,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 9114,
-      "sha256": "9a6fdea2a7df614b5d832dc4fbdc5fc5bc06b8b35a02943e86a44f70d46f3536"
+      "bytes": 9564,
+      "sha256": "d30c7e0409bf3e066cc4f3dc0b93dc53748c28d79aca89427b9b49c0dcfa05da"
     },
     {
       "path": "LOW_SPEC.md",
@@ -520,8 +520,8 @@
     },
     {
       "path": "docs/architecture/support-bundle.md",
-      "bytes": 4777,
-      "sha256": "5c2617bee9ce23194e29c4406e8da6bdf3eaa6b50deea9a8e357227a8c4359d3"
+      "bytes": 4808,
+      "sha256": "41ff148a85253e2277c2ed5e02cbc3ee69348c7719becf52802e96f538abc0fa"
     },
     {
       "path": "packaging/windows/inno-attribution-privacy-v1.json",
@@ -590,8 +590,8 @@
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 8348,
-      "sha256": "6154d161912dde06a12015359a256a545c5cb0327ddb0495a393dcc0cdd8d64e"
+      "bytes": 8945,
+      "sha256": "ac6ee97cc536718b9618a5d6540f82cf3e012d987d1f54e4f967552c2b5de922"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
@@ -645,23 +645,23 @@
     },
     {
       "path": "SECURITY.md",
-      "bytes": 3487,
-      "sha256": "e5cee13bfba3c371bdb3a42187ba4c59e5430fee91f0b22d8c03517c38ea50b8"
+      "bytes": 3394,
+      "sha256": "fee3f511330da55f953ee14ad69c289f166b9198c43a19ac30a1d4b92f3c409b"
     },
     {
       "path": "docs/user/USER_GUIDE.md",
-      "bytes": 12174,
-      "sha256": "db6d0a25534348227eab6e908d5d6e756c40903995e97b7a008275334f87a447"
+      "bytes": 12555,
+      "sha256": "fdab95c4f78e991d93f38124e65606e312471851eeadc7231e074d2653b94f7b"
     },
     {
       "path": "docs/user/CARE_AND_RECOVERY.md",
-      "bytes": 16008,
-      "sha256": "89b335d838407af7d30bde1d78faaae962c28527923f6dbf0db1c86558643825"
+      "bytes": 16879,
+      "sha256": "1bd1550d01b97bf25d6e94ac3b367ba5ec61bf00631f5c69752bccfb1b3c267c"
     },
     {
       "path": "docs/development/pws0806-documentation.md",
-      "bytes": 3914,
-      "sha256": "43499e07d33da2795d0f8b1a3bc6b23f420fefdd7c70aa9dc8fbeefc9fd08cd6"
+      "bytes": 6845,
+      "sha256": "cea6f568b6ccdd26643d30ca1256c8aca44d62e2430a1bc758e7c8b278c8fc03"
     }
   ],
   "validation": {

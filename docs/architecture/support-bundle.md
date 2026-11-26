@@ -1,7 +1,7 @@
 # Local previewable support bundle
 
-PWS-0805 implements PWS-D027, PWS-D039 and PWS-D042. In the desktop Help menu,
-choose **Create support bundle**. Opening the dialog creates no file. It displays
+PWS-0805 implements PWS-D027, PWS-D039 and PWS-D042. In the TRACE workbench, choose
+**Create support bundle…** from **Settings** or **Help**. Opening the dialog creates no file. It displays
 the exact two member names, sizes, SHA-256 hashes, archive size/hash, categories
 and complete safe file contents. After review, select the unchecked consent
 control and **Choose location and save**. Canceling review or the location picker

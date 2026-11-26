@@ -1,9 +1,8 @@
 # Care, recovery, and support
 
-Draft guidance for the Windows 11 x64 PaperWorkShell workflow. Use the instructions
-for the build you received. Public release support, exact Windows editions and
-builds, and release-specific removal evidence are recorded in the draft
-[release interface](../release/RELEASE_INTERFACE.md).
+This guide covers the current Windows 11 x64 engineering workflow. Use the
+instructions supplied with your build. The draft [release interface](../release/RELEASE_INTERFACE.md)
+tracks public support, exact Windows editions and builds, and removal evidence.
 
 PaperWorkShell works offline under your Windows account and versions independently.
 You control your local source files, cases, and exports. ThirdLife and other
@@ -83,16 +82,19 @@ backups may remain. Case deletion cannot be undone through PaperWorkShell.
   until its contents have been checked.
 - Opening a supported older case upgrades its private case records and retains the
   exact old manifest in the same case. Its imported source files and saved editing
-  intent carry forward. If the app refuses an unsupported or damaged case, leave
-  the records intact. Use a compatible PaperWorkShell build or report the problem.
-  An older manifest is private recovery evidence and automatic downgrade is unsupported.
+  intent carry forward. If the app reports a newer, unsupported case version,
+  leave the records intact and ask the maintainer which build supports it. If the
+  case is damaged or the reason is unclear, leave the files in place and report the
+  message. PaperWorkShell keeps older manifests as private recovery evidence and
+  does not automatically downgrade a case.
 
 See the [startup recovery](../architecture/startup-recovery-and-diagnostics.md) and
 [case migration](../architecture/case-migration.md) contracts.
 
 ## Create a support bundle
 
-1. In the main window, open **Settings → Create support bundle…**. This opens a preview.
+1. In the main window, choose **Create support bundle…** from **Settings** or **Help**.
+   This opens a preview. With the English interface, press Alt+H and then S to use Help.
 2. Read the two file names and their complete contents. `summary.txt` includes
    approved status codes, counts and software versions when available.
    `allowlist.txt` explains the included and excluded fields. The preview also
@@ -100,15 +102,19 @@ See the [startup recovery](../architecture/startup-recovery-and-diagnostics.md) 
 3. If you choose to save a copy, tick **I reviewed these exact files and choose to
    save them locally** and choose **Choose location and save**. Pick a new ZIP
    filename on a supported local drive. **Close without saving** leaves no ZIP.
-   The app saves the reviewed ZIP to your selected folder and sends nothing.
+   The app saves the reviewed ZIP to your selected folder and sends nothing. If
+   saving fails, choose a fresh filename or another folder on a fixed local drive.
 
-When asking for help, start with the build, the action, the visible result, and
-steps using made-up example files. Keep real documents, screenshots with content,
-case folders, migration records, ordinary logs, and passphrases private. Share
-only the reviewed support ZIP if appropriate through an agreed private route.
-Keep or delete your local copy when you are finished.
+When asking for help with an internal build, use the existing private channel
+with the maintainer who supplied it. Start with the build, the action, the visible
+result, and steps using made-up example files. Send that description on its own
+if a ZIP is unavailable or unnecessary. If you choose to share the reviewed ZIP,
+use the same private channel. Keep real documents, names, file paths, screenshots
+with content, case folders, migration records, routine logs, and passphrases
+private. Keep or delete your local ZIP when finished.
 [Support bundle contents and behavior](../architecture/support-bundle.md).
-[Security reporting](../../SECURITY.md).
+[How to report a security issue privately](../../SECURITY.md#report-privately).
+[TRACE B8 support-bundle limitation](../../KNOWN_LIMITATIONS.md#release-and-acceptance-status).
 
 ## Install, repair, update, or remove the application
 
@@ -148,17 +154,19 @@ qualification. [Engineering update verification](../development/pws0803-authenti
 ### Remove PaperWorkShell
 
 Close the app. If the installation has update slots, use **Remove installed updates**
-before uninstalling. From Windows **Settings → Apps → Installed apps**, use
-**Uninstall** for PaperWorkShell under the same Windows account. Read the
-**Remove PaperWorkShell** review before continuing.
+before uninstalling. Under the same Windows account, open Windows **Settings →
+Apps → Installed apps** and select **Uninstall** for PaperWorkShell. Run removal
+with ordinary user permissions. Read **Remove PaperWorkShell** before continuing.
 
 - To preserve cases, choose **Keep cases and continue application removal**.
   A compatible reinstall under the same Windows account can reopen preserved
   cases through **Open case**.
-- To request managed-case deletion, select the review checkbox, choose
-  **Review case deletion**, and read the inventory. Only after checking what will
-  remain, acknowledge the separate deletion confirmation and choose
-  **Delete reviewed cases**.
+- To request deletion of all cases available in the review, select
+  **Review deletion of my PaperWorkShell-managed cases on this computer**, then
+  choose **Review case deletion**. Read the reported counts. The review includes
+  all eligible cases together and has no individual case selection. If you want
+  to retain any of them, choose the keep option. Otherwise, acknowledge the
+  separate deletion confirmation and choose **Delete reviewed cases**.
 - **Cancel application removal** can stop before the next case if deletion has
   started. Completed deletions cannot be undone. If any case is unavailable,
   unsafe, or partly removed, note the result. **Continue application removal;
@@ -181,7 +189,7 @@ Exact public-candidate verification is pending.
 |---|---|---|
 | External originals | The folders you selected during import. PaperWorkShell keeps these files unchanged. | The person who owns the files manages them independently. Case deletion and uninstall leave them in place. |
 | Imported copies and signature image assets | `<case>originals\`, using random internal filenames. Referenced copies are kept with the case. | Keep-cases uninstall preserves them. Confirmed whole-case deletion includes them. Authenticated, unreferenced leftovers may be cleaned during recovery. |
-| Case records, editing intent, review, and export history | `<case>manifest.json`, `<case>journal\`, and `<case>export-history.json`. These include page order, transforms, overlays, checklist/constraints, recovery, and assisted-use consent and expiry. Assisted expiry keeps the stored files. | Keep-cases uninstall preserves them. Confirmed whole-case deletion includes them. Some records may remain after partial removal. |
+| Case records, editing intent, review, and export history | `<case>manifest.json`, `<case>journal\`, and `<case>export-history.json`. These include page order, transforms, overlays, checklist and constraints, and recovery. The journal file `assisted-use-v1.json` holds assisted-use consent, expiry, and a passphrase verifier. Assisted expiry keeps the stored files. | Keep-cases uninstall preserves them. Confirmed whole-case deletion includes them. Some records may remain after partial removal. |
 | Migration backups | Version-specific `migration-source-v1.json`, `migration-source-v2.json`, or `migration-source-v3.json` under `<case>journal\`. A backup is retained after a migration and may already exist after an interrupted upgrade. | These follow the case disposition. Temporary-file and cache cleanup preserve the backups. |
 | Preview and processing derivatives and caches | `<case>cache\thumbnails\`, `<case>cache\previews\`, and bounded session previews. The app can regenerate previews from case data. Processing intermediates, including OCR where applicable, use the authorized temporary locations below. | Cache or session cleanup can discard disposable files. Files still inside the case follow the case disposition. |
 | Case and worker temporary data | `<case>temp\` and Windows AppContainer worker-private temporary storage. Worker access recovery uses `%LOCALAPPDATA%\PaperWorkShell.WorkerAclRecovery.v1`. Normal lifecycle cleanup removes eligible work. Uncertain recovery evidence may be retained. | Case temporary files follow the case disposition if still present. The worker's own shutdown and recovery handle its private storage and access records. Exact public-candidate worker residue remains TBD. |

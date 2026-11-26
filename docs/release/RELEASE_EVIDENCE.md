@@ -221,6 +221,16 @@ The release matrix still needs exact public-candidate evidence for installed upd
 production trust, Authenticode signatures, failure recovery, and setup and removal. The public
 release identity and status fields remain draft.
 
+### TRACE B8 documentation walkthroughs
+
+PWS-0806 exercised the installed TRACE B8 novice and support routes on the disconnected
+standard-user Windows 11 Pro x64 26300.9711 guest. Ordinary PDF export refused an existing
+destination, then saved a verified PDF with a new name. The support preview and consent worked.
+Saving the support ZIP failed at two fresh fixed-local destinations, and neither attempt left a
+ZIP. The closure record preserves both failures and the description-only reporting fallback.
+PWS-0807 still requires successful creation and privacy verification on the exact public candidate.
+[Documentation walkthrough evidence](../development/pws0806-documentation.md#installed-documentation-walkthroughs).
+
 ## Current development evidence available for later reconciliation
 
 The following evidence is real but is not a completed M8 release package:

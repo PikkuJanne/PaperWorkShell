@@ -41,15 +41,42 @@ TRACE **Settings** menu contains both **Keyboard guide** and **Create support bu
 This step prepared the source-grounded drafts. No new packaged interaction, independent
 novice or support-person observation, or public distribution was performed.
 
+## Installed documentation walkthroughs
+
+On 2026-11-26, independent agent desk reviews followed the novice and support guides against
+current source and the prior engineering records. Codex then exercised both roles in the
+disconnected Windows 11 Pro x64 26300.9711 guest on its genuine standard-user desktop. The
+retained [B8 setup evidence](pws0814-automated-setup.md) binds the installed runtime marker
+`c5499f269b524a169848cc27681c1cee019cbfb75f04f6fbe30979a07c1363a3` to the exact unsigned
+installer above. The desktop probe checked the marker, foreground process, and token. This was
+an agent-operated documentation check using keyboard input and UI Automation. Human usability
+and NVDA evidence retain their earlier scope.
+
+| Walkthrough | Observation |
+| --- | --- |
+| Novice, successful route | From the installed chooser, Ctrl+N created a synthetic case. Ctrl+I imported the checked-in `born-digital.pdf` and the saved case reached one active page. Ctrl+Shift+E reached the same export dialog as **Export 1-page PDF…**. A fresh filename produced a verified PDF, with **Open PDF** available and the saved result recorded in case history. |
+| Novice, recovery route | Export first refused an occupied destination with `PDF_EXPORT_DESTINATION_EXISTS` and asked for another name. The file stayed intact. The fresh-name retry succeeded. The 744-byte output (`e255e4aa2fe57f955cb9096490e31b1801f3a97ac568870991f7a6ad0fb957cf`) reopened strictly with one page and no syntax findings. Poppler text extraction and its 120 dpi render each matched the input. The external original and immutable case copy retained their original SHA-256. |
+| Support, preview and fallback | The Settings popup query did not locate its item through the probe. The alternate keyboard route, Alt+H then S in English, opened the exact-file preview. Save was disabled before consent and enabled afterward. Two attempts at new names in distinct fixed local folders returned the safe-save error. No ZIP or unexpected file appeared in the walkthrough folders. A description-only report was drafted using the B8 and Windows build, synthetic steps, actual result, and error information. No report was sent. |
+
+The guides now explain the page-count action, filename-conflict retry, alternate support-menu
+route, description-only reporting, recovery for damaged versus future-version cases, and the
+scope of uninstall deletion. The [known limitations](../../KNOWN_LIMITATIONS.md) and
+[release evidence](../release/RELEASE_EVIDENCE.md) retain the B8 support ZIP write failure.
+The previously verified source support writer and synthetic ZIP stay scoped to their evidence.
+This walkthrough established the safe reporting fallback. Successful installed ZIP creation
+still needs candidate verification under PWS-0807.
+
+The local evidence under `output/pws0806/trace-b8-walkthrough` includes the desktop receipts,
+independent PDF inspection, synthetic report draft, and case-preservation receipts. After the
+synthetic case closed with all changes saved, the owned pre-walkthrough checkpoint
+`PWS0806-before-documentation-walkthrough-20261126` was restored for cleanup. The exact B8 marker
+and aggregate digest of all 353 pre-existing case files matched the baseline.
+
 ## Next step
 
-Run one bounded PWS-0806 documentation walkthrough. Start with the two draft guides and
-the [human-testing policy](human-testing.md). Prepare a short, keyboard-accessible novice route
-from first launch to an ordinary PDF and a support-person route from a synthetic problem to the
-support-bundle preview and a private report draft. Use the existing `born-digital.pdf` fixture and
-a fresh external destination. Reuse the existing TRACE B8 setup and R1/R2 operation results
-only within their recorded scopes. Check current UI labels, safe failure recovery, and the guide's
-instructions for what may be shared. Record who or what actually performed each observation.
-Make guide corrections disclosed by that walkthrough and run the documentation, graph and
-portfolio checks. Public reporting contact, qualified candidate claims and publication remain
-separate release work. STOP.
+PWS-0806's engineering documentation and walkthrough are complete. The release sheets remain
+draft for the exact public candidate. Public support commitments and the reporting route require
+maintainer approval. PWS-0807 remains planned behind PWS-0802. Its independent matrix preparation
+can carry the TRACE B8 support ZIP failure into the packaged diagnostics scenario. The first
+candidate action is to verify preview, successful local ZIP creation, and privacy under a standard
+user on the exact build. No new dependency-ready task opens from the documentation closure.
