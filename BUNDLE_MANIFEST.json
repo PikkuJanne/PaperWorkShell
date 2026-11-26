@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 533598,
-      "sha256": "a8db91a9d805263073649f0b6cff680bd17638cf2effa090afb2bdcde1d39ec5"
+      "bytes": 533891,
+      "sha256": "9d1acdd9d777dafbef0d48819bdced87122c5a51723e0fa62a1dd71137809eb6"
     },
     {
       "path": "TASKS.schema.json",
@@ -620,8 +620,8 @@
     },
     {
       "path": "docs/adr/0021-bounded-repository-scan-groups.md",
-      "bytes": 7844,
-      "sha256": "6e51575cce913b9dca10a0473b157fc0821b84662467ec5a5fa5a728b69ef9aa"
+      "bytes": 9792,
+      "sha256": "d618c6a7b3b533518d8e59873c2d13f3d0698c811eed29f45396b9b202cb9d8a"
     }
   ],
   "validation": {

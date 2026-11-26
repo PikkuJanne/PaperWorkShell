@@ -44,7 +44,7 @@ from tools.pws0207_quality_evaluation import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-BASELINE_PATH = PROJECT_ROOT / "benchmarks" / "pws0207-quality-findings-v1.json"
+BASELINE_PATH = PROJECT_ROOT / "benchmarks" / "pws0207-quality-findings-d168db80-v1.json"
 EXPECTED_CORPUS_SHA256 = "36fad4f6a94e06971ea9e8e3226df18f92050e8f6f14ba1a1dd5b5b4056bfd8e"
 EXPECTED_PROFILE_SHA256 = "ac8a174ad72892f7a519090d0497d6382c4e67d34fb1f5b6638fb82f420901b8"
 EXPECTED_COUNTS = {

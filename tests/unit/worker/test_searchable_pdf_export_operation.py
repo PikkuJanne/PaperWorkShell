@@ -883,6 +883,8 @@ def test_nested_image_error_mapping_is_exhaustive_stable_and_sanitized() -> None
         ImagePageErrorCode.METADATA_INVALID: PdfExportErrorCode.SOURCE_INCONSISTENT,
         ImagePageErrorCode.GEOMETRY_INVALID: PdfExportErrorCode.TRANSFORM_UNSUPPORTED,
         ImagePageErrorCode.LIMIT_EXCEEDED: PdfExportErrorCode.LIMIT_EXCEEDED,
+        # Export checks its own temporary capacity before invoking the image adapter.
+        ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY: PdfExportErrorCode.INTERNAL_ERROR,
         ImagePageErrorCode.MALFORMED: PdfExportErrorCode.SOURCE_INCONSISTENT,
         ImagePageErrorCode.UNSUPPORTED: PdfExportErrorCode.SOURCE_UNSUPPORTED,
         ImagePageErrorCode.CANCELLED: PdfExportErrorCode.CANCELLED,

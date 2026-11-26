@@ -229,7 +229,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
                 "GIT_CONFIG_KEY_0": "commit.gpgSign",
                 "GIT_CONFIG_VALUE_0": "true",
             }
-            with patch.dict(os.environ, overrides, clear=False):
+            with patch("os.environ", {**os.environ, **overrides}):
                 result = _secret_violation(root)
 
             self.assertEqual(b"preserve-external-index", outside_index.read_bytes())
@@ -318,6 +318,95 @@ class SecretScanningSecurityTests(unittest.TestCase):
         self.assertIn("SECRET_SCAN_FINDING", output)
         self.assertNotIn(canary, output)
         self.assertNotIn("linked-root-ref.txt", output)
+
+    def test_linked_ref_transport_preserves_context_sensitive_shared_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            root, linked = base / "main", base / "linked"
+            root.mkdir()
+            git = _initialize_repository(root)
+
+            def run(cwd: Path, *arguments: str) -> bytes:
+                return subprocess.run(
+                    (git, *arguments), cwd=cwd, check=True, capture_output=True
+                ).stdout
+
+            first = run(root, "rev-parse", "HEAD").strip().decode("ascii")
+            run(root, "worktree", "add", "--detach", str(linked))
+            (root / "later.txt").write_bytes(b"second synthetic revision\n")
+            _commit_all(git, root, "second synthetic revision")
+            second = run(root, "rev-parse", "HEAD").strip().decode("ascii")
+            local_names = (
+                "refs/bisect/example/nested",
+                "refs/rewritten/example/nested",
+                "refs/worktree/example/nested",
+            )
+            for name in local_names:
+                run(linked, "update-ref", name, first)
+            run(root, "update-ref", local_names[-1], second)
+            run(linked, "update-ref", "ORIG_HEAD", second)
+            run(root, "symbolic-ref", "refs/tags/shared-symbolic", local_names[-1])
+            run(root, "symbolic-ref", "refs/tags/linked-symbolic", local_names[0])
+
+            original_records = [
+                record
+                for worktree in (root, linked)
+                for record in run(
+                    worktree,
+                    "for-each-ref",
+                    "--include-root-refs",
+                    "--format=%(refname)%09%(objectname)",
+                ).splitlines()
+            ]
+            transported_records: list[bytes] = []
+            capture_metadata = dev_tools._capture_git_metadata
+
+            def capture(
+                budget: _SecretScanEnumerationBudget,
+                arguments: Sequence[str],
+                *,
+                cwd: Path,
+                input_bytes: bytes | None = None,
+            ) -> subprocess.CompletedProcess[bytes]:
+                completed = capture_metadata(budget, arguments, cwd=cwd, input_bytes=input_bytes)
+                if arguments[1] == "for-each-ref":
+                    transported_records.extend(completed.stdout.splitlines())
+                return completed
+
+            with patch.object(dev_tools, "_capture_git_metadata", side_effect=capture):
+                dev_tools._history_roots(git, root, _SecretScanEnumerationBudget())
+
+        expected_context_rows = {
+            f"{name}\t{first}".encode("ascii")
+            for name in (*local_names, "refs/tags/shared-symbolic", "refs/tags/linked-symbolic")
+        }
+        expected_context_rows.update(
+            f"{name}\t{second}".encode("ascii")
+            for name in ("ORIG_HEAD", "refs/tags/shared-symbolic")
+        )
+        self.assertTrue(expected_context_rows.issubset(transported_records))
+        self.assertEqual(set(original_records), set(transported_records))
+        self.assertLess(len(transported_records), len(original_records))
+
+    def test_registered_worktree_with_different_common_directory_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            root, linked = base / "main", base / "linked"
+            root.mkdir()
+            git = _initialize_repository(root)
+            subprocess.run(
+                (git, "worktree", "add", "--detach", str(linked)),
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            (linked / ".git").unlink()
+            _initialize_repository(linked)
+
+            with self.assertRaises(SecretScanError) as raised:
+                dev_tools._history_roots(git, root, _SecretScanEnumerationBudget())
+
+        self.assertEqual("SECRET_SCAN_REPOSITORY_MISMATCH", raised.exception.code)
 
     def test_repository_state_changes_fail_closed(self) -> None:
         def build_mutator(
@@ -511,12 +600,15 @@ class SecretScanningSecurityTests(unittest.TestCase):
         self.assertEqual("SECRET_SCAN_INPUT_TOO_LARGE", excessive_records.exception.code)
 
         work_budget = _SecretScanEnumerationBudget()
-        with patch("tools.dev.MAX_SECRET_SCAN_WORK_BYTES", 2):
-            work_budget.consume_work(2)
-            with self.assertRaises(SecretScanError) as excessive_work:
-                work_budget.consume_work(1)
+        work_limit = 768 * 1024 * 1024
+        work_budget.consume_work(work_limit - 1)
+        work_budget.consume_work(1)
+        with self.assertRaises(SecretScanError) as excessive_work:
+            work_budget.consume_work(1)
 
         self.assertEqual("SECRET_SCAN_INPUT_TOO_LARGE", excessive_work.exception.code)
+        self.assertIn("768 MiB", excessive_work.exception.message)
+        self.assertEqual(work_limit, work_budget.work_bytes)
 
         deadline_budget = _SecretScanEnumerationBudget(started_at=0)
         with (
@@ -2356,7 +2448,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
             captured_stdout = io.StringIO()
             captured_stderr = io.StringIO()
             with (
-                patch.dict(os.environ, {"GIT_TEST_COMMIT_GRAPH": "1"}, clear=False),
+                patch("os.environ", {**os.environ, "GIT_TEST_COMMIT_GRAPH": "1"}),
                 redirect_stdout(captured_stdout),
                 redirect_stderr(captured_stderr),
             ):

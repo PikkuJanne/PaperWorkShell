@@ -27,7 +27,8 @@ MAX_SECRET_SCAN_ITEMS: Final = 10_000
 MAX_SECRET_SCAN_LOGICAL_GROUPS: Final = 2
 MAX_SECRET_SCAN_METADATA_RECORDS: Final = 50_000
 MAX_SECRET_SCAN_METADATA_BYTES: Final = 16 * 1024 * 1024
-MAX_SECRET_SCAN_WORK_BYTES: Final = 512 * 1024 * 1024
+MAX_SECRET_SCAN_WORK_MIB: Final = 768
+MAX_SECRET_SCAN_WORK_BYTES: Final = MAX_SECRET_SCAN_WORK_MIB * 1024 * 1024
 MAX_SECRET_SCAN_SECONDS: Final = 10 * 60
 MAX_SCANNER_DIAGNOSTIC_BYTES: Final = 1024 * 1024
 SCANNER_SUBPROCESS_TIMEOUT_SECONDS: Final = 120
@@ -39,6 +40,7 @@ RAW_SCAN_SENTINEL: Final = b"PaperWorkShell raw-byte scan\n"
 MAX_SECRET_SCAN_BATCH_BYTES: Final = MAX_SECRET_SCAN_BYTES + len(RAW_SCAN_SENTINEL) + 1
 MAX_GIT_OBJECT_BATCH_ITEMS: Final = 64
 MAX_GIT_OBJECT_BATCH_BODY_BYTES: Final = 1024 * 1024
+GIT_REF_ROW_FORMAT: Final = "%(refname)%09%(objectname)"
 TRUSTED_GITLEAKS_CONFIG_NAME: Final = "trusted-gitleaks.toml"
 WINDOWS_FORBIDDEN_COMPONENT_CHARACTERS: Final = frozenset('<>:"\\|?*')
 WINDOWS_RESERVED_BASENAMES: Final = frozenset(
@@ -386,7 +388,7 @@ class _SecretScanEnumerationBudget:
         if byte_count < 0 or self.work_bytes + byte_count > MAX_SECRET_SCAN_WORK_BYTES:
             raise SecretScanError(
                 "SECRET_SCAN_INPUT_TOO_LARGE",
-                "Repository scanning exceeds the 512 MiB logical-work limit.",
+                f"Repository scanning exceeds the {MAX_SECRET_SCAN_WORK_MIB} MiB logical-work limit.",
             )
 
     def consume_work(self, byte_count: int) -> None:
@@ -1566,18 +1568,28 @@ def _require_git_worktree_root(
     git: str,
     root: Path,
     budget: _SecretScanEnumerationBudget,
-) -> None:
+) -> Path:
     completed = _capture_git_metadata(
         budget,
-        (git, "rev-parse", "--path-format=absolute", "--show-toplevel"),
+        (git, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"),
         cwd=root,
     )
     budget.consume_records(completed.stdout, b"\n")
-    records = [record for record in completed.stdout.splitlines() if record]
-    if completed.returncode != 0 or len(records) != 1 or b"\0" in records[0]:
+    records = completed.stdout.splitlines()
+    if (
+        completed.returncode != 0
+        or len(records) != 2
+        or any(not record or b"\0" in record for record in records)
+    ):
         raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git worktree inspection failed.")
     try:
-        observed_root = Path(os.fsdecode(records[0])).resolve(strict=True)
+        observed_root, common_directory = (Path(os.fsdecode(record)) for record in records)
+        if not observed_root.is_absolute() or not common_directory.is_absolute():
+            raise OSError("Git returned a relative directory")
+        observed_root = observed_root.resolve(strict=True)
+        common_directory = common_directory.resolve(strict=True)
+        if not common_directory.is_dir():
+            raise OSError("Git common directory is unavailable")
     except OSError as error:
         raise SecretScanError(
             "SECRET_SCAN_GIT_FAILED", "Git worktree inspection failed."
@@ -1587,6 +1599,7 @@ def _require_git_worktree_root(
             "SECRET_SCAN_REPOSITORY_MISMATCH",
             "Git worktree configuration does not match the requested repository root.",
         )
+    return common_directory
 
 
 def _registered_worktree_roots(
@@ -1602,7 +1615,7 @@ def _registered_worktree_roots(
     if completed.returncode != 0:
         raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git worktree enumeration failed.")
     budget.consume_records(completed.stdout, b"\0")
-    worktree_roots: set[Path] = set()
+    common_directories: dict[Path, Path] = {}
     for record in completed.stdout.split(b"\0"):
         if not record.startswith(b"worktree "):
             continue
@@ -1615,13 +1628,17 @@ def _registered_worktree_roots(
             raise SecretScanError(
                 "SECRET_SCAN_GIT_FAILED", "A registered Git worktree is unavailable."
             ) from error
-        if not worktree_root.is_dir() or worktree_root in worktree_roots:
+        if not worktree_root.is_dir() or worktree_root in common_directories:
             raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git worktree data is invalid.")
-        _require_git_worktree_root(git, worktree_root, budget)
-        worktree_roots.add(worktree_root)
-    if root not in worktree_roots:
+        common_directories[worktree_root] = _require_git_worktree_root(git, worktree_root, budget)
+    if root not in common_directories:
         raise SecretScanError("SECRET_SCAN_GIT_FAILED", "Git worktree data is incomplete.")
-    return tuple(sorted(worktree_roots, key=lambda path: os.path.normcase(str(path))))
+    if any(directory != common_directories[root] for directory in common_directories.values()):
+        raise SecretScanError(
+            "SECRET_SCAN_REPOSITORY_MISMATCH",
+            "A registered Git worktree does not share the requested repository's common directory.",
+        )
+    return tuple(sorted(common_directories, key=lambda path: os.path.normcase(str(path))))
 
 
 def _require_local_ref_storage(
@@ -1681,6 +1698,21 @@ def _peel_object_ids(
     return peeled_ids
 
 
+def _additional_worktree_ref_format() -> str:
+    """Emit every local ref and every symbolic ref, which can resolve locally."""
+    local = ""
+    for namespace in ("refs/bisect", "refs/worktree", "refs/rewritten"):
+        local = (
+            f"%(if:equals={namespace})%(refname:rstrip=-2)"
+            f"%(then){GIT_REF_ROW_FORMAT}%(else){local}%(end)"
+        )
+    return (
+        f"%(if)%(symref)%(then){GIT_REF_ROW_FORMAT}%(else)"
+        # Root refs have no slash and therefore an empty leading-component strip.
+        f"%(if)%(refname:lstrip=1)%(then){local}%(else){GIT_REF_ROW_FORMAT}%(end)%(end)"
+    )
+
+
 def _history_roots(
     git: str,
     root: Path,
@@ -1690,14 +1722,23 @@ def _history_roots(
     ref_names: set[bytes] = set()
     ordinary_ids: set[str] = set()
     extra_ids: set[str] = set()
+    local_ref_format = _additional_worktree_ref_format()
     for worktree_root in worktree_roots:
+        # One authenticated common-directory member supplies all shared direct refs.
+        # Keep each member's local and context-sensitive symbolic results, and
+        # suppress only the repeated shared direct rows before transport.
+        ref_arguments = (
+            (f"--format={GIT_REF_ROW_FORMAT}",)
+            if worktree_root == root
+            else ("--omit-empty", f"--format={local_ref_format}")
+        )
         completed = _capture_git_metadata(
             budget,
             (
                 git,
                 "for-each-ref",
                 "--include-root-refs",
-                "--format=%(refname)%09%(objectname)",
+                *ref_arguments,
             ),
             cwd=worktree_root,
         )

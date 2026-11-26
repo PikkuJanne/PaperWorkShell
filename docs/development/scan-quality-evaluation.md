@@ -417,9 +417,12 @@ benchmark or change its metrics merely to satisfy a test.
 Pytest accepts `--pws0207-baseline NEW_RECEIPT` to supply that explicit evidence
 input. The existing unit assertion still checks canonical bytes, the full current
 corpus/profile/metrics and the unchanged strict implementation-revision validator.
-The default remains the checked-in historical baseline. No dirty-source allowance,
-index bypass or skipped assertion is introduced. `GIT_INDEX_FILE` is intentionally
-not inherited by the validator and cannot substitute for an exact candidate index.
+The default selects the checked-in [TRACE development baseline receipt](../../benchmarks/pws0207-quality-findings-d168db80-v1.json)
+for `d168db80b93164eb05312bff8adcefce3f3ba0bc`. That receipt has the same
+corpus, profile and metrics as the accepted historical receipt and binds the
+TRACE baseline's implementation surfaces. Each receipt remains available for
+its own revision. The validator requires an exact candidate index and ignores
+`GIT_INDEX_FILE`.
 
 The registered `tools/dev.py test-unit` command can receive this option through
 pytest's standard `PYTEST_ADDOPTS` in its subprocess environment. When using a shared

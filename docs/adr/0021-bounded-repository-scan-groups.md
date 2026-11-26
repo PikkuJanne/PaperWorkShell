@@ -2,7 +2,8 @@
 
 - Status: Accepted policy amendment; complete-root verification remains required
 - Date: 2026-11-06
-- Task: PWS-0811
+- Amended: 2026-11-26 with maintainer approval for the TRACE development baseline
+- Tasks: PWS-0811, PWS-0813
 - Decisions preserved: PWS-D003, PWS-D034, PWS-D035, PWS-D041, PWS-D042
 
 ## Evidence and scope
@@ -41,7 +42,7 @@ tool invocations. Mirror item counts refer to scanned input files, not all gener
 directory inodes. Existing validated-path and metadata bounds still govern directory
 complexity.
 
-Every group shares the same 50 MiB per-input/payload ceiling, 512 MiB cumulative
+Every group shares the same 50 MiB per-input/payload ceiling, 768 MiB cumulative
 logical-work budget, 16 MiB metadata transport cap, 50,000 raw-record cap and
 ten-minute invocation deadline. No counter or deadline restarts between groups.
 Raw digest epochs flush successfully before forgetting prior dedup proofs. An epoch
@@ -49,6 +50,23 @@ may rescan repeated bytes, which remain charged. Bodies and optional dedup entri
 never grow without their existing finite bounds. More than two logical groups or
 an excessive category/path/cache remains a failure. Descriptor metadata may grow
 inside the same finite transport limits; identical total heap use is not claimed.
+
+## TRACE baseline work-cap amendment
+
+On 2026-11-26 the maintainer approved raising the cumulative development
+scan work limit from 512 MiB to 768 MiB. The retained full-ref TRACE baseline
+requires at least 682,706,001 bytes for Git blob reads, raw scanner submissions,
+original path mirror bodies and the three current-file reads. Even one mirror
+write per distinct blob would require 679,264,545 bytes. The previous scan
+rejected its 581,099,879-byte historical/index forecast before current-file
+preflight. The new cap accommodates that forecast, all three live reads, and
+bounded additional current-file, framing and configuration work.
+
+All input coverage, actual charges, per-input and batch limits, raw record and
+metadata byte limits, logical item limits, the deadline, and final mutation
+checks remain in force. This applies only to the repository development gates.
+The measurement and exact checkout are recorded in the
+[TRACE continuation](../development/pws0813-trace.md#adr-0021-scan-capacity-diagnosis).
 
 ## Private alias payload reuse
 
@@ -106,6 +124,20 @@ The result is a coherent initial/final same-index snapshot. The incidental separ
 timed cached-path observations are removed, so an ABA visible only at those former
 extra points is not claimed as observed. The scan was and remains a bounded snapshot
 check rather than an atomic lock or a guarantee against unobserved transient writes.
+
+## Shared Git ref transport
+
+Each initial and final snapshot checks the resolved common Git directory of
+every registered worktree. The requested worktree emits the complete ref set.
+Other members emit all root refs, worktree-local ref namespaces and symbolic
+refs. This preserves symbolic refs whose value or resolution depends on the
+worktree. Independent `FETCH_HEAD` and `MERGE_HEAD` reads and the terminal
+worktree and ref comparison remain. A different common directory fails closed.
+All transported records still count against 50,000. The full linked TRACE
+baseline replay reduced ref rows from 5,110 to 245 per snapshot, preserving all
+203 ref-name and object pairs. The filtered snapshots remove repeated direct
+shared ref observations within each capture. The initial and final observations
+of shared refs remain mandatory.
 
 ## Verification required
 

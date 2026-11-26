@@ -276,7 +276,7 @@ remain bounded at 10,000. A successful serial flush precedes a new dedup epoch; 
 completed proof may cause a charged rescan, never an omission. Logical groups are not a claim of
 exactly two physical tool invocations or 10,000 total filesystem inodes. Descriptor metadata may
 grow inside the same finite transport caps. No budget resets between groups.
-One 512 MiB logical-work budget also covers source/configuration reads, Git-object reads, bounded
+One 768 MiB logical-work budget also covers source/configuration reads, Git-object reads, bounded
 scanner batches, mirror writes, and repeated path associations; anticipated historical/index work
 plus known ref/path inputs and framing overhead are combined with completed preflight work and
 rejected before Gitleaks starts. The historical/index path forecast accounts for one Git-object
@@ -288,9 +288,8 @@ count two are required; unsupported or uncertain linking fails closed. All origi
 files still receive their separate scans. Alias CPU and all deadlines remain enforced.
 One ten-minute scan-wide deadline covers enumeration, filesystem work, tool probes, and scanning,
 with each subprocess receiving only the remaining time and a
-terminal deadline check. The larger deadline accommodates the complete reviewed history without
-changing any byte, metadata, logical-work, child-process, or cleanup limit. The later ADR 0021
-logical-item amendment is explicit above and does not amend worker/document ResourcePolicy.
+terminal deadline check. ADR 0021 records the logical-item admission and development work-cap
+amendments. Worker and document ResourcePolicy budgets retain their own scope.
 Deterministic per-item mirror namespaces avoid quadratic path-conflict batching.
 The local policy has one reviewed false-positive exception: the inherited `generic-api-key` rule
 may ignore only the exact extracted value `PRIVATE-PARENT-PWS0104-CANARY`, a fixed public label
@@ -299,7 +298,10 @@ family. The security lane scans the exact value successfully and proves that a o
 neighbor plus a runtime-assembled realistic access-key shape still fail.
 Refs, registered worktrees, the selected index, tracked/untracked path sets, and scanned
 working-file digests are snapshotted and rechecked; mutations observed between those checkpoints
-fail closed. Each initial/final validated stage-zero index capture also supplies its ordered
+fail closed. At each capture, all registered worktrees must resolve to the same Git common
+directory. The requested worktree supplies shared direct refs. Every worktree still supplies
+its root, local, and context-sensitive symbolic refs, plus its `FETCH_HEAD` and `MERGE_HEAD`.
+Each initial/final validated stage-zero index capture also supplies its ordered
 tracked path list; no duplicate `ls-files --cached` transport is needed. Full index and explicit
 derived membership equality, independent untracked membership and all three live-file reads
 remain. The former extra, separately timed cached-path observation points are removed rather

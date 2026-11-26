@@ -6,7 +6,8 @@
   quality-gate closure after bounded repository-history growth; 2026-08-27 by PWS-0308 for one
   exact historical source-recipe digest exception; 2026-11-06 by PWS-0811 through
   [ADR 0021](0021-bounded-repository-scan-groups.md) for bounded serial logical groups
-  and verified private alias payload reuse
+  and verified private alias payload reuse; 2026-11-26 by PWS-0813 through ADR 0021
+  for the 768 MiB development work cap and shared ref transport
 - Task: PWS-0003
 - Decisions: PWS-D003, PWS-D034, PWS-D035
 
@@ -78,7 +79,7 @@ machine-independent limits without inventing physical-hardware equivalence.
    index entries and current paths, at most 20,000 total. Individual categories, combined path
    coverage and resident raw/dedup inputs remain bounded at 10,000. Logical groups can require
    multiple physical byte chunks; descriptor metadata can grow inside the unchanged finite
-   transport caps. A 512 MiB logical-work budget covers source/configuration and Git-object
+   transport caps. A 768 MiB logical-work budget covers source/configuration and Git-object
    reads, scanner inputs, mirror writes, and repeated path associations; anticipated
    historical/index work, known ref/path inputs, and framing overhead are combined with completed
    preflight work and rejected before Gitleaks starts. Historical/index path forecasts charge one
@@ -88,9 +89,9 @@ machine-independent limits without inventing physical-hardware equivalence.
    reads, checks, actual work charges and shared budgets remain. One ten-minute scan-wide deadline covers enumeration,
    filesystem work, tool probes, and scanning, and each subprocess receives only the
    remaining time before a terminal deadline check. This keeps the complete scan finite after the
-   reviewed history grew beyond the original five-minute capacity. The later ADR 0021 item-policy
-   amendment changes only logical admission as stated; byte, metadata, logical-work, child-process
-   and cleanup limits remain unchanged and are never reset across groups. Historical mirror entries use
+   reviewed history grew beyond the original five-minute capacity. ADR 0021 records the later
+   logical admission and development work-cap amendments. The same byte, record, work, deadline,
+   child-process and cleanup budgets apply across all groups. Historical mirror entries use
    deterministic per-item namespaces so batch construction is linear.
    The only repository-specific false-positive exception targets the inherited `generic-api-key`
    rule and the exact extracted secret `PRIVATE-PARENT-PWS0104-CANARY`. That fixed public value is

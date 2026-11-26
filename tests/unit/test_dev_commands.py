@@ -215,7 +215,7 @@ class DeveloperCommandRegistryTests(unittest.TestCase):
                 "GIT_TEST_COMMIT_GRAPH": "1",
             }
         )
-        with patch.dict(os.environ, overrides, clear=False):
+        with patch("tools.dev.os.environ", {**os.environ, **overrides}):
             child_environment = _scanner_environment()
 
         for name in overrides.keys() - {"GIT_CONFIG_COUNT"}:

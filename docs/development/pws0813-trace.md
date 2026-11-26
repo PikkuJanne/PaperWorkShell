@@ -644,11 +644,12 @@ the application source with the installer source shows only CRLF-to-LF changes.
 - The registered schemas, localization, dependency and release inventories, task
   graph, Pillow runtime, documentation, portfolio boundary, M1 report, PWS-0208
   workload, renderer benchmark and negative self-test checks passed.
-- The shared Git repository failed `validate-fixtures` and `scan-secrets` at the
-  existing 512 MiB logical-work limit. In a fresh single-branch clone of the
-  reconciled checkpoint, `validate-fixtures` passed and `scan-secrets` reached the
-  same limit. An isolated clone of `0919421e` also reached that limit during
-  `scan-secrets`, which establishes that the failure predates reconciliation.
+- The shared Git repository failed `validate-fixtures` with a wrapped capacity
+  error and `scan-secrets` at the 512 MiB logical-work limit. In a fresh
+  single-branch clone of the reconciled checkpoint, `validate-fixtures` passed
+  and `scan-secrets` reached the same limit. An isolated clone of `0919421e`
+  also reached that limit during `scan-secrets`, which establishes that the
+  secret-scan failure predates reconciliation.
 
 The command logs and the PWS-0207 candidate receipt are in
 `output/pws0813/development-baseline-checks` in the primary checkout. The baseline
@@ -656,7 +657,78 @@ branch is clean. Shared promotion is pending because required checks failed.
 Local `main` and `origin/main` remain at `060cc36`. PWS-0813 retains its private
 installed closure and PWS-0811 remains in review.
 
-The next bounded baseline step is to diagnose the unchanged scan-work limit
-against the retained full repository using ADR 0021. Preserve its coverage,
-history and limits. Record the result in this continuation and rerun the affected
-checks if a narrow correction is found.
+### ADR 0021 scan-capacity diagnosis
+
+The 2026-11-26 PWS-0813 diagnosis used the clean
+`codex/pws-0813-development-baseline` linked worktree at
+`ab8be9356e78c824ab11efa7e50be26e99918991`. The branch had advanced one
+PWS-0811 evidence commit from the requested `41d20e3db677668e9896d55e6890d193c8398f82`.
+It retained 36 registered worktrees, 142 selected ref names, 5,231 historical
+path/blob associations, 4,829 historical blobs, 415 commit/tag objects, and
+2,201 tracked paths with zero nonignored untracked paths. The private B8
+candidate remains bound to `acc0b2621259975c6d418807488ce239b338ac05`.
+
+The serial diagnostic ran the existing gate bodies with numeric budget
+observation. Both returned exit 1 under [ADR 0021](../adr/0021-bounded-repository-scan-groups.md).
+
+| Gate | Observed failure | Accounting |
+| --- | --- | --- |
+| `scan-secrets` | First historical/index forecast, before Gitleaks or current-file preflight | 168 bytes charged plus 581,099,879 bytes forecast. This exceeds 536,870,912 by 44,229,135 bytes. |
+| `validate-fixtures` | Final index capture reached the separate 50,000-record limit | 49,572 records and 261,504,173 work bytes charged. The final index starts with 2,201 stage rows, which would raise the count to 51,773. A full metadata replay projects 59,323 records including the final ref checks. |
+
+For the existing secret-scan operations, Git blob reads, raw scanner blob
+submission, original path mirror bodies, and the three required current-file
+reads alone total at least 682,706,001 bytes on this snapshot. Even counting
+only one mirror body per distinct blob leaves 679,264,545 bytes. The same
+calculation puts the isolated TRACE closeout clone at 598,191,771 bytes after
+hypothetical mirror reuse. These estimates exclude commit and tag work,
+framing, sentinels, link metadata, and configuration work. Correcting the
+conservative forecast for repeated path strings or framing would leave the
+required work above the limit. Reusing historical blob metadata for the
+initial index would save 1,806 fixture records and still leave the fixture
+snapshot over its cap.
+
+The diagnosis found no narrow correction under the former work cap. It
+preserved the scanner, limits, input selection, Git history, candidate and
+earlier receipts. The diagnostic results and metadata replay are in
+`output/pws0813/development-baseline-checks/scan-budget-diagnosis-fixture.log`,
+`output/pws0813/development-baseline-checks/scan-budget-diagnosis-secrets.log`,
+and `output/pws0813/development-baseline-checks/adr0021-capacity-metadata.md`.
+### Baseline corrections
+
+The maintainer approved a 768 MiB cumulative development scan work cap in
+[ADR 0021](../adr/0021-bounded-repository-scan-groups.md#trace-baseline-work-cap-amendment).
+The scanner preserves each work charge, all raw and path-aware input coverage,
+and every other limit. Each initial and final snapshot now transports common
+direct refs once and retains root, local, and symbolic refs from every
+authenticated linked worktree. The real Git regression compares the exact
+ref-name/object pair set against the former transport. It exercises symbolic
+refs that resolve differently across worktrees and a registered path that
+resolves to a different Git common directory.
+
+The image-normalize unit test now verifies the existing retryable
+`PREVIEW_STORAGE_CAPACITY` result and empty output. The searchable-export
+mapping test specifies the closed internal-error fallback for that preview-only
+code. All 119 focused worker tests passed. The private B8 production source and
+artifact retain their installed evidence. The PWS-0207 unit assertion uses the
+separate checked-in `d168db80` receipt, whose revision-bound implementation
+surfaces validate against this checkout. The historical receipt retains its own
+revision. The Git-environment tests use a replacement mapping for synthetic
+overrides so Windows preserves inherited empty configuration values for later
+tests.
+
+Both full linked-root scan commands passed with the revised policy before the
+final test and evidence edits. Fixture validation used 296,015,387 work bytes
+and 49,667 records. Secret scanning used 685,054,702 work bytes and 49,677
+records. It covered 4,829 historical blobs, 415 commit/tag objects, 5,231
+historical path/blob pairs, 1,806 index blobs, and 2,201 working paths. Each
+recorded source, index, ref and worktree anchor matched before and after. All
+147 focused scan and quality-entry tests passed with two local directory-link
+capability skips and 176 passing subtests. The five deliberate quality
+violations were detected.
+
+The earlier and final verification receipts are under
+`output/pws0813/development-baseline-checks/finish-pws0813` in the primary
+checkout. The final run records the source commit and actual linked-root scope.
+The PWS-0813 installed closure, PWS-0811 review and signed release prerequisites
+retain their individual evidence and task state.

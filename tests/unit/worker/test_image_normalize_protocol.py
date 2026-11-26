@@ -575,15 +575,37 @@ def test_image_normalize_handler_disposes_handles_before_skipped_dispatch(
 
 
 @pytest.mark.parametrize(
-    ("code", "expected_outcome"),
+    ("code", "expected_outcome", "expected_error"),
     (
-        (ImagePageErrorCode.CANCELLED, OperationOutcome.CANCELLED),
-        (ImagePageErrorCode.TIMED_OUT, OperationOutcome.TIMED_OUT),
+        (ImagePageErrorCode.CANCELLED, OperationOutcome.CANCELLED, None),
+        (
+            ImagePageErrorCode.TIMED_OUT,
+            OperationOutcome.TIMED_OUT,
+            ErrorPayload(
+                ErrorCode.WORKER_OPERATION_TIMED_OUT,
+                ErrorCategory.RESOURCE_LIMIT,
+                RetryAction.RESTART_WORKER,
+                True,
+                (),
+            ),
+        ),
+        (
+            ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY,
+            OperationOutcome.FAILED,
+            ErrorPayload(
+                ErrorCode.WORKER_OPERATION_FAILED,
+                ErrorCategory.RESOURCE_LIMIT,
+                RetryAction.RETRY,
+                False,
+                (),
+            ),
+        ),
     ),
 )
-def test_image_normalize_handler_maps_cooperative_domain_failures(
+def test_image_normalize_handler_maps_terminal_domain_failures(
     code: ImagePageErrorCode,
     expected_outcome: OperationOutcome,
+    expected_error: ErrorPayload | None,
 ) -> None:
     def fail(
         _context: OperationContext,
@@ -595,8 +617,7 @@ def test_image_normalize_handler_maps_cooperative_domain_failures(
         _context()
     )
 
-    assert result.outcome is expected_outcome
-    assert result.outputs == ()
+    assert result == OperationResultPayload(expected_outcome, (), expected_error)
 
 
 @pytest.mark.parametrize(
@@ -604,7 +625,12 @@ def test_image_normalize_handler_maps_cooperative_domain_failures(
     tuple(
         code
         for code in ImagePageErrorCode
-        if code not in {ImagePageErrorCode.CANCELLED, ImagePageErrorCode.TIMED_OUT}
+        if code
+        not in {
+            ImagePageErrorCode.CANCELLED,
+            ImagePageErrorCode.TIMED_OUT,
+            ImagePageErrorCode.PREVIEW_STORAGE_CAPACITY,
+        }
     ),
 )
 def test_image_normalize_handler_propagates_closed_sanitized_domain_failure(
