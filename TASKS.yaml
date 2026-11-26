@@ -6079,7 +6079,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0005
@@ -6118,17 +6118,28 @@ tasks:
   - privacy
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-11-26'
+    revision: 6d07c91730ec500e2869f7aecbbb8f7d7e3ad436
+    commands:
+    - Focused update, Windows installer, signing, setup, interruption and accessibility tests
+      passed 200 cases.
+    - Native Windows launcher passed 17 tests. Windows worker containment passed 132 with one
+      host capability skip for synthetic directory-link creation.
+    - Registered format, lint, strict typing, import boundaries, schemas, dependency policy,
+      localization, task graph, documentation and portfolio checks passed.
+    - Installed offline PWS-Test standard-user run passed authenticated R1 to R2 activation,
+      normal launch, independent one-page PDF reopen, text and render verification, explicit
+      R1 recovery, replay refusal, and exact retention of 353 synthetic case files.
     notes:
-    - Use the installed package identity and repair contract with test-only trust
-      fixtures in isolation to develop and verify the authenticated update mechanism.
-      Qualify production-signed update bytes in the public release matrix.
-    - The first engineering increment verifies exact signed local metadata and package bytes
-      against supplied channel, UTC time and release-sequence policy. Isolated Ed25519 tests
-      exercise rejection without installing. The proposed trust and recovery design and next
-      action are recorded in docs/development/pws0803-authenticated-updates.md.
+    - ADR 0022 and docs/development/pws0803-authenticated-updates.md record the local update
+      channel, exact artifacts, case preservation, audit, and installed failure and recovery scope.
+    - The exact engineering installer and update used isolated CNG ECDSA P-256 trust. The
+      installed replay refusal kept the sequence floor and selector unchanged. The later
+      precise localized replay wording passed focused widget regression testing.
+    - The PWS-Test guest returned to its exact earlier TRACE B8 state with the original case
+      inventory and preserved checkpoints. Host proof preceded the restore.
+    - Production trust provisioning, signed public artifacts and release qualification remain
+      with the owning release tasks. The update has no ThirdLife requirement or compatibility claim.
 - id: PWS-0804
   milestone: M8
   title: Implement case migration and release-to-release recovery tests

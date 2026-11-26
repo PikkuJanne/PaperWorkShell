@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 539462,
-      "sha256": "cad5237ef8dd4f19eaaddf03d69e0b467e9aefc56a98b7c7eb57c1dc6c81f1d3"
+      "bytes": 540427,
+      "sha256": "4d0cb0137b693d6e166f7a96c3bbc119553a9f4291a2ae4031a26c1557feec7c"
     },
     {
       "path": "TASKS.schema.json",
@@ -640,8 +640,8 @@
     },
     {
       "path": "docs/development/pws0803-authenticated-updates.md",
-      "bytes": 3085,
-      "sha256": "06d09568e127a8ee600bad8690506e3e1fff0b67f0f29bf984d1c8aae6a4876a"
+      "bytes": 7347,
+      "sha256": "16d4409f04b42835109a3fd816cd8076fc716424fd245640563aa283cee09d51"
     }
   ],
   "validation": {
