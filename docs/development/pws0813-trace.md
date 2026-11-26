@@ -732,3 +732,24 @@ The earlier and final verification receipts are under
 checkout. The final run records the source commit and actual linked-root scope.
 The PWS-0813 installed closure, PWS-0811 review and signed release prerequisites
 retain their individual evidence and task state.
+
+### Hosted promotion checks
+
+GitHub Actions run `45802865498` at `a6feb93485f9286edd5f0f0141ac4b899217fca7`
+failed both Windows jobs. The core job passed the unit suite and reported
+eight security failures. Seven scanner test cases used Windows short-path
+spellings for synthetic temporary roots. The remaining case used a truncated
+PAX archive that declared fewer bytes than the builder's metadata cap and
+depended on the CPython patch release's read pattern. The correction resolves
+the three scanner fixture roots and constructs a PAX header one byte above the
+actual metadata cap. The archive test verifies the precise limit result, rejects
+delegation of the oversized header to the standard-library parser, and checks
+that staging leaves no partial output.
+
+The integration job passed 734 tests with 40 capability or fixture skips and
+failed the final temporary-storage completeness check in the native sanitization
+recovery test. The earlier cancellation, timeout, termination, output-bound,
+verified retry, and memory checks passed in that test. The incomplete
+measurement remains a failed gate. The follow-up uses the same hosted suites
+and requires both jobs to pass before `main` advances. Evidence is under
+`output/pws0813/development-baseline-checks/promotion-a6feb93`.

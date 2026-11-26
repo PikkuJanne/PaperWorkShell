@@ -774,7 +774,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
     def test_completed_mirror_reuse_fits_lower_budget_and_preserves_all_source_reads(self) -> None:
         for relative_path in (Path("unchanged.bin"), Path("node_modules/gitleaks.toml.tf")):
             with self.subTest(path=relative_path), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve(strict=True)
                 git = _initialize_repository(root)
                 payload = b"synthetic clean bytes\n".ljust(32 * 1024, b"x")
                 source = root / relative_path
@@ -858,7 +858,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
         original = b"synthetic original bytes\n"
         for association in ("exact", "case", "path", "changed"):
             with self.subTest(association=association), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                root = Path(temporary).resolve(strict=True)
                 relative_path = Path("config.tf")
                 content = b"synthetic changed bytes\n" if association == "changed" else original
                 (root / relative_path).write_bytes(content)
@@ -971,7 +971,7 @@ class SecretScanningSecurityTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve(strict=True)
             git = _initialize_repository(root)
             relative_path = Path("recreated.tf")
             source = root / relative_path

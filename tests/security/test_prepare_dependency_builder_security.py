@@ -16,7 +16,7 @@ import pytest
 
 from tests.unit.test_prepare_dependency_builder import artifact, make_inputs, write_review
 from tools import prepare_dependency_builder as builder
-from tools.release_artifacts import CHUNK_BYTES, ReleaseArtifactError
+from tools.release_artifacts import ReleaseArtifactError
 
 
 def test_bootstrap_imports_without_any_third_party_packages(tmp_path: Path) -> None:
@@ -87,11 +87,21 @@ def test_gpg_tar_rejects_unsafe_or_unbound_selected_content_without_surviving_pa
 ) -> None:
     root, cache, tools = make_inputs(tmp_path, monkeypatch)
     source = cache / "Git-synthetic.tar.bz2"
+    expected_error = None
     if kind in {"oversized_pax", "expanded_limit"}:
         member = tarfile.TarInfo("synthetic")
-        member.size = CHUNK_BYTES * 2 if kind == "oversized_pax" else builder.MAX_TAR_BYTES + 1
-        member.type = tarfile.XHDTYPE if kind == "oversized_pax" else tarfile.REGTYPE
-        source.write_bytes(bz2.compress(member.tobuf() + b"\0" * 1024))
+        if kind == "oversized_pax":
+            member.size = builder.MAX_TAR_METADATA_BYTES + 1
+            member.type = tarfile.XHDTYPE
+
+            def read_pax_body(*_args: object) -> None:
+                pytest.fail("Oversized PAX metadata reached the stdlib parser")
+
+            monkeypatch.setattr(tarfile.TarInfo, "_proc_pax", read_pax_body)
+        else:
+            member.size = builder.MAX_TAR_BYTES + 1
+        source.write_bytes(bz2.compress(member.tobuf(format=tarfile.GNU_FORMAT) + b"\0" * 1024))
+        expected_error = "RELEASE_BUILDER_LIMIT"
     else:
         with tarfile.open(source, "w:bz2") as archive:
             for index, item in enumerate(tools):
@@ -116,7 +126,7 @@ def test_gpg_tar_rejects_unsafe_or_unbound_selected_content_without_surviving_pa
         if kind == "digest":
             tools[0]["sha256"] = "0" * 64
     write_review(root, 3, {"artifacts": [artifact(source)], "tool_files": tools})
-    with pytest.raises(ReleaseArtifactError):
+    with pytest.raises(ReleaseArtifactError, match=expected_error):
         builder.prepare_builder(root / "output/new", [cache], root=root)
     assert not (root / "output/new").exists()
     assert not list((root / "output").glob("pws-builder-*"))
