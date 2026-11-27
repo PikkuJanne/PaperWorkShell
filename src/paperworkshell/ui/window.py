@@ -2814,9 +2814,19 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_split.select_pane(selected)
         if selected == "document":
             self._refresh_trace_document()
-            self._trace_document_stack.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
+            for control in self._trace_document_focus_targets():
+                if self._focus_widget_is_available(control):
+                    control.setFocus(Qt.FocusReason.OtherFocusReason)
+                    self._ensure_widget_visible(control)
+                    break
         elif selected == "pages":
             self._trace_left_tabs.currentWidget().setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _trace_document_focus_targets(self) -> tuple[QWidget, ...]:
+        view = self._trace_document_stack.currentWidget()
+        if self._trace_lens in {"source", "planned"}:
+            return self._trace_next_button, self._trace_previous_button, view
+        return (view,)
 
     def _action_button(self, text: str, object_name: str, description: str) -> QPushButton:
         button = QPushButton(tr(text))
@@ -8835,9 +8845,7 @@ class PaperWorkShellWindow(QMainWindow):
             if self._model.rowCount() > 0:
                 candidates = (
                     self._page_view,
-                    self._trace_next_button,
-                    self._trace_previous_button,
-                    self._trace_document_stack.currentWidget(),
+                    *self._trace_document_focus_targets(),
                     self._import_button,
                     self._close_case_button,
                 )

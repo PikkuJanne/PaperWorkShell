@@ -131,6 +131,17 @@ def test_compact_document_shows_page_count_and_navigation_before_scrolling(
         assert not previous.isEnabled() and following.isEnabled()
         if not window._page_view.isVisible():
             assert following.hasFocus()
+            pages_control = window.findChild(QWidget, "tracePane-pages")
+            document_control = window.findChild(QWidget, "tracePane-document")
+            assert pages_control is not None and document_control is not None
+            QTest.keyClick(pages_control, Qt.Key.Key_Space)
+            assert window._page_view.isVisible()
+            QTest.keyClick(document_control, Qt.Key.Key_Space)
+            application.processEvents()
+            assert following.hasFocus()
+            for control in (position, following):
+                visible_bounds = QRect(control.mapTo(viewport, QPoint()), control.size())
+                assert viewport.rect().contains(visible_bounds)
 
         following.setFocus()
         QTest.keyClick(following, Qt.Key.Key_Space)
