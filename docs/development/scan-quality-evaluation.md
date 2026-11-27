@@ -417,12 +417,12 @@ benchmark or change its metrics merely to satisfy a test.
 Pytest accepts `--pws0207-baseline NEW_RECEIPT` to supply that explicit evidence
 input. The existing unit assertion still checks canonical bytes, the full current
 corpus/profile/metrics and the unchanged strict implementation-revision validator.
-The default selects the [PWS-0816 development receipt](../../benchmarks/pws0207-quality-findings-1ccc80bd-v1.json)
-for `1ccc80bd8f9788da592fcb02c8aeb8463a74aeda`. The evaluator rechecked the
-corpus, profile and metrics at that exact source revision. The
-[TRACE development receipt](../../benchmarks/pws0207-quality-findings-d168db80-v1.json)
-remains tied to `d168db80b93164eb05312bff8adcefce3f3ba0bc`. The validator
-requires the exact candidate index and ignores `GIT_INDEX_FILE`.
+The default selects the [PWS-0816 R3 development receipt](../../benchmarks/pws0207-quality-findings-1e21c225-v1.json)
+for `1e21c225c71a8776f458aba634bd85f7bec154b0`. The evaluator rechecked the
+corpus, profile and metrics at that exact source revision. Earlier receipts
+remain available for [PWS-0816 R2](../../benchmarks/pws0207-quality-findings-1ccc80bd-v1.json)
+and the [TRACE development baseline](../../benchmarks/pws0207-quality-findings-d168db80-v1.json).
+The validator requires the exact candidate index and ignores `GIT_INDEX_FILE`.
 
 The registered `tools/dev.py test-unit` command can receive this option through
 pytest's standard `PYTEST_ADDOPTS` in its subprocess environment. When using a shared
