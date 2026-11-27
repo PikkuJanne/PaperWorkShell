@@ -31,8 +31,9 @@ class OrdinaryPdfExportErrorCode(StrEnum):
 _MESSAGES: Final = {
     OrdinaryPdfExportErrorCode.COMBINATION_UNSUPPORTED: (
         "This version cannot combine text or marks with searchable scans, scan improvements, "
-        "or picture files in one export. Nothing was exported. Export the marked PDF pages "
-        "in a separate case without OCR, or keep this case and cancel. Saved edits are preserved."
+        "or picture files in one export. Nothing was exported. For marked PDF pages without "
+        "scan improvements, turn off searchable text. Use separate page ranges for pictures "
+        "or pages that need searchable text. Saved edits are preserved."
     ),
     OrdinaryPdfExportErrorCode.SEARCHABLE_REQUIRED: (
         "These scan improvements require the searchable PDF pipeline in this version. "

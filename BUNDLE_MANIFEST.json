@@ -490,8 +490,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 752,
-      "sha256": "ec5563e0e29323f85566cecde35becef9a3a1204affa63559de2093020687c71"
+      "bytes": 755,
+      "sha256": "973578d7deb9b84e7a6ca7874a0c8e39a88c0afc3f358f6534ecee7980037cf7"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",

@@ -68,6 +68,7 @@ def test_mixed_marks_fail_before_export_instead_of_losing_any_mark() -> None:
     with pytest.raises(OrdinaryPdfExportError) as raised:
         select_ordinary_pdf_pipeline(snapshot, make_searchable=False)
     assert raised.value.code is OrdinaryPdfExportErrorCode.COMBINATION_UNSUPPORTED
+    assert "Use separate page ranges" in raised.value.safe_message
     marked_range = PdfExportSelection(snapshot.case_id, snapshot.revision, (PAGE_IDS[0],))
     image_range = PdfExportSelection(snapshot.case_id, snapshot.revision, (IMAGE_PAGE_ID,))
     assert (
