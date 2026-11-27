@@ -439,7 +439,7 @@ Foundation acceptance or production signing has occurred in this continuation.
 | Clean install | Diagnostics R1 on offline Windows 11 Pro x64 26300.9711, Smart App Control Off | Prepared per-user setup bundle | Native installer exit 0. All 3,219 payload files verified. | [R1 setup evidence](#diagnostics-r1-installer) |
 | Standard-user launch | Same R1 clean installation | Prepared setup launcher and installed Start menu shortcut | Each opened a responsive desktop with the actual standard-user token and exited normally. | [R1 launch evidence](#diagnostics-r1-installer) |
 | Component information | Diagnostics R1 on the offline Pro guest | Installed **PaperWorkShell notices** shortcut | Opened the local viewer showing the product version, candidate, component and licence selector, and read-only notice control. | `r1-installer-completion/notices-content.txt` |
-| Visible import of supported synthetic file | **TBD** | **TBD** | Pending | **TBD** |
+| Visible import of supported synthetic files | Diagnostics R1 on offline Windows 11 Pro x64 26300.9711 | Standard user, **New case**, then **Add file** for PDF, JPEG and PNG | Each selection added one saved page. The three external and three managed files matched their manifest digests after export. | [R1 mixed-input workflow](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export) |
 | OS-level open of supported sample, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Open portable workspace/project, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Same-build repair | Diagnostics R1, Pro x64 26300.9711, a bundled recipient-terms file missing | Matching prepared bundle with `--repair` | Restored the missing file, exited 0, verified all 3,219 payload files and opened the installed desktop. | `r1-installer-completion/Repair.json`, SHA-256 `a7fa782531a30a46a6a8ed19ecedd8f7b2ec72c3929afccafd68284217d8c97c` |
@@ -504,12 +504,12 @@ category on the exact completion candidate.
 - R1 stored the synthetic case under `%LOCALAPPDATA%\PaperWorkShell\Cases`.
   The sampled access controls on the program, runtime, app-data and Cases
   directories showed zero broad-group write grants.
-- Immutable-original location and hash verification: implemented case convention; candidate result
-  **TBD**
+- On diagnostics R1, the three files in the new case's `originals` directory
+  matched the separately hashed external PDF, JPEG and PNG and the manifest
+  bindings before and after ordinary PDF export. [R1 mixed-input workflow](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export)
 - Cache/temp/log/support-bundle locations: case cache/temp known; remaining locations **TBD**
 - Retention and cleanup policy: **TBD**
 - Migration/rollback backup location and cleanup: **TBD**
-- Original byte-for-byte preservation result: **TBD for candidate**
 - Atomic save and crash-recovery result: **TBD for candidate**
 - R1 preserve removal retained the case manifest, journal, original and cached
   thumbnails. Confirmed deletion removed all five managed files. The zero-byte
@@ -522,7 +522,7 @@ category on the exact completion candidate.
 | Workload | Input hashes | Expected output | Output hashes | Verification | Evidence |
 |---|---|---|---|---|---|
 | Canonical document-package workflow | **TBD** | PDF/ZIP/summary **TBD** | **TBD** | Pending | **TBD** |
-| Mixed PDF/JPEG/PNG workflow | **TBD** | **TBD** | **TBD** | Pending | **TBD** |
+| Mixed PDF/JPEG/PNG on diagnostics R1 | [Three source digests](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export) | One ordinary PDF in import order | `3d61f6c0de2ac9dfae907b6688adbf03fd4fac5cd5b5357f7d1f91a2fcbed493` | Strict PDF reopen and Poppler both counted three pages. Independent rendering matched PDF, upright JPEG and PNG in sequence. | `r1-primary-workflow/verifier/actual/reopen.json`, SHA-256 `14117595c11c4c7ade81c61985064d4ef10183cb5dec4c8aa02a08adbb9a1132` |
 | Interruption and recovery | **TBD** | Recovered case and verified export | **TBD** | Pending | **TBD** |
 | Malformed/hostile input | **TBD** | Safe failure; no corrupt case | N/A | Pending | **TBD** |
 | Low-space/slow-I/O workflow | **TBD** | Safe failure or verified completion | **TBD** | Pending | **TBD** |

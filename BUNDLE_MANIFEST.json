@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 548934,
-      "sha256": "511c032faab08160458aeecd638164eb69b67b912057621129460c770d6f2253"
+      "bytes": 549463,
+      "sha256": "57b3dde16d87d7c8c4ce436059c58f8a75652fd4d6ffc46562d51b4d04c025b8"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 47455,
-      "sha256": "0407d4367781e05e3bfcb4b7eeb6de27d0dd5175ca72e8940274e67647ba88e5"
+      "bytes": 48334,
+      "sha256": "fa6515d667abf150567672971984571e3d18bc702b7c961cca3a7dd3d8df7052"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -675,13 +675,13 @@
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 19617,
-      "sha256": "b46ba8d1269d2fe69ce0cca4ba3bc22b80ef66ca41a12b1d2fa2423b96ad3d67"
+      "bytes": 19668,
+      "sha256": "719b799f8b4c9d329fee074c53203a1a7fbbaaae47aad47baacdc14f4ecb809d"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 18353,
-      "sha256": "410c21bccd9567dd84566a41947992e3d93d74ac98d2ea38ec097b1147f9dbd8"
+      "bytes": 21315,
+      "sha256": "2c70ad63480c20c890d80ddd8a6a4cbf6c0038f4663f49ab46045e52303414ba"
     }
   ],
   "validation": {

@@ -297,11 +297,63 @@ This completes PWS-0802 for the unsigned R1 installer on the tested Windows
 11 Pro x64 build 26300.9711 with Smart App Control Off. The release evidence
 index records the applicable installation and data-preservation results.
 
+## Installed mixed-input PDF export
+
+On 2026-11-27, the installed primary-workflow scenario passed for unsigned
+`pws0807-diagnostics-engineering-r1` from
+`e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec`. The installer, receipt and
+inventory matched the qualified build handoff. Authenticode reported
+`NotSigned`. All 3,219 installed payload files (650,881,153 bytes) matched
+the inventory on the disconnected Windows 11 Pro x64 build 26300.9711 guest.
+
+The standard user opened the installed Start menu shortcut in session 5 and
+created **R1 Primary Workflow**. Three separate **Add file** selections
+produced one, two and three saved active pages. Before export and again
+afterward, each external original and its managed copy matched the manifest
+and the corresponding rehearsal input.
+[Documented in-app actions](../user/USER_GUIDE.md#make-your-first-pdf)
+
+| Output page | Synthetic input | Bytes | SHA-256 of original and managed copy |
+| --- | --- | ---: | --- |
+| 1 | `born-digital.pdf` | 802 | `3f62fe484b8b389ec18afe115939d491f795e517195a7acf7fe5989075839c47` |
+| 2 | `upright-photo.jpg` | 31,457 | `1d67ddd29665430bbbbb469aa058dfccf3574e3aaa15867956e6febee6352584` |
+| 3 | `ocr-raster-text.png` | 21,992 | `f2976a85d04b992bd690d8a2b70faf8444197d87ce58a7a5687a778c97f3fd82` |
+
+**Export 3-page PDF** showed those sources in import order. Through **Choose
+PDF file**, the user saved `combined.pdf` at a fresh destination. The app
+reported three pages saved and recorded in case history. The 22,408-byte
+file copied to the host matched the guest SHA-256
+`3d61f6c0de2ac9dfae907b6688adbf03fd4fac5cd5b5357f7d1f91a2fcbed493`.
+
+On the host, pikepdf reopened the PDF with recovery disabled and reported
+three pages and zero syntax warnings. Poppler counted and rendered all
+three. Page 1 matched the source PDF's text and rendered pixels exactly.
+The embedded RGB pixels on pages 2 and 3 matched the upright JPEG and the
+PNG. The renders showed the upright arrow on page 2 and the scan marker on
+page 3. Verifier controls rejected swapped image pages and a missing page.
+
+The host retained the exported PDF, UI observations, fingerprint comparisons
+and renders under `output/pws0807/r1-primary-workflow` before restoration.
+The joined receipt `result.json` has SHA-256
+`0fd998d2cb5cfb632b17c4dce184f4726a92bf548db3355f994f9b30876e8ea5`.
+After the case and app closed, the saved test state was retained as checkpoint
+`PWS0807-R1-primary-mixed-saved-20261127`
+(`fc524ae1-7bb5-4ef5-921c-d8773f69f4f5`). The live VM returned to the
+original active R1 checkpoint `999a5747-66e2-4565-baee-5e619dce8656`.
+The installed marker and all 358 baseline case files matched by hash. The
+guest had zero active adapters, owned processes or observer tasks. All earlier
+checkpoints were retained.
+
+This result covers ordinary active-page export in import order on this
+R1 installation. Edited page plans, restart persistence, checklist package
+outputs, saved summaries and the remaining candidate matrix still need their
+own observations.
+
 ## Next operation
 
-Continue PWS-0807 with one part of the installed primary workflow. On the
-offline R1 standard-user desktop, import the synthetic PDF, JPEG and PNG using
-the documented in-app actions and verify the original and managed-copy hashes.
-Produce one combined PDF and independently reopen it to check the expected
-page count and order. Retain the receipt outside the guest and restore the
-verified active R1 state. The rest of the product matrix stays with PWS-0807.
+Use the saved mixed-input scenario checkpoint for one installed page-plan
+test on R1. Reopen **R1 Primary Workflow**, move the PNG before the JPEG,
+rotate the JPEG 90 degrees, save, and reopen after an application restart.
+Verify the persisted order and rotation through the app and an independently
+reopened fresh PDF. Retain the evidence on the host and return the VM to the
+verified active R1 checkpoint.

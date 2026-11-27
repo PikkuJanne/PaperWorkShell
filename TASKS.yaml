@@ -6480,6 +6480,12 @@ tasks:
       a new exact R1 process. The one-page synthetic case reopened with saved state and a
       completed preview. All 358 case files matched. The subsequent clean installation
       used its own verified starting state.
+    - On offline Windows 11 Pro x64 build 26300.9711, the installed R1 standard-user desktop
+      imported the synthetic PDF, JPEG and PNG with Add file. All three external sources,
+      managed copies and manifest SHA-256 values matched. Both host readers reopened the
+      22,408-byte ordinary PDF with three pages, and rendering confirmed the import order.
+      See docs/development/pws0807-unsigned-completion.md and the mixed-input entry in
+      docs/release/RELEASE_EVIDENCE.md. Checklist package exports remain open.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 product-completion gate
