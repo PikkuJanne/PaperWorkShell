@@ -6520,7 +6520,7 @@ tasks:
   kind: gate
   priority: P0
   effort: XL
-  status: ready
+  status: in_progress
   critical_path: true
   depends_on:
   - PWS-0409
@@ -6592,6 +6592,12 @@ tasks:
     - PWS-D043 fixes the required Windows 11 x64 scope. PWS-D044 supersedes the former
       trusted-signature requirement and preserves all applicable quality and x64 evidence.
       Product outcome, artifact signing status, and publication authorization have separate records.
+    - >-
+      Artifact admission passed for unsigned engineering R3, source
+      54e0b916ac069ce00a0ce200c43e07f3a76d1784. See
+      docs/gates/m8-product-completion-gate.md for the independent installer, receipt,
+      inventory, SBOM, interface and synthetic sample checks, and the sample manifest's
+      missing detail about grayscale compression. Formal M8 sign-off remains pending.
 - id: PWS-0809
   milestone: M8
   title: Integrate ThirdLife late-binding governance and release-envelope ownership

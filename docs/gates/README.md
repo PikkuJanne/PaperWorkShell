@@ -12,6 +12,7 @@ Milestone gate reports and their reproducible evidence belong in this directory.
 - [Milestone 5 compression and compatibility gate](m5-compression-compatibility-gate.md) — PWS-0507; PASS
 - [Milestone 6 permanent-removal gate](m6-permanent-redaction-gate.md) — PWS-0608; current source qualification PASS
 - [Milestone 7 accessibility and assisted-mode gate](m7-accessibility-assisted-gate.md) — PWS-0707; source-tree PASS
+- [Milestone 8 product-completion gate](m8-product-completion-gate.md) — PWS-0808; artifact admission PASS, gate in progress
 
 Each report records the reviewed revision and environment, prerequisite status, automated and
 manual evidence, known limitations, unresolved defects, owned future risks, and an explicit pass
