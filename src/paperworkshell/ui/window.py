@@ -1698,6 +1698,26 @@ class PaperWorkShellWindow(QMainWindow):
         content.setObjectName("traceDocumentPanel")
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+        page_navigation = WrappingActionLayout()
+        self._trace_previous_button = self._action_button(
+            "Previous page",
+            "tracePreviousPage",
+            "Select the preceding page in the assembled order.",
+        )
+        self._trace_next_button = self._action_button(
+            "Next page", "traceNextPage", "Select the next page in the assembled order."
+        )
+        self._trace_page_position = QLabel()
+        self._trace_page_position.setObjectName("tracePagePosition")
+        self._trace_page_position.setTextFormat(Qt.TextFormat.PlainText)
+        self._trace_page_position.hide()
+        self._trace_previous_button.clicked.connect(lambda: self._select_trace_adjacent(-1))
+        self._trace_next_button.clicked.connect(lambda: self._select_trace_adjacent(1))
+        page_navigation.addWidget(self._trace_previous_button)
+        page_navigation.addWidget(self._trace_page_position)
+        page_navigation.addWidget(self._trace_next_button)
+        layout.addLayout(page_navigation)
+
         lens_row = WrappingActionLayout()
         self._trace_lens_buttons: dict[str, QPushButton] = {}
         for key, title in (
@@ -1735,18 +1755,6 @@ class PaperWorkShellWindow(QMainWindow):
         layout.addWidget(self._selection_summary)
 
         navigation = WrappingActionLayout()
-        self._trace_previous_button = self._action_button(
-            "Previous page",
-            "tracePreviousPage",
-            "Select the preceding page in the assembled order.",
-        )
-        self._trace_next_button = self._action_button(
-            "Next page", "traceNextPage", "Select the next page in the assembled order."
-        )
-        self._trace_previous_button.clicked.connect(lambda: self._select_trace_adjacent(-1))
-        self._trace_next_button.clicked.connect(lambda: self._select_trace_adjacent(1))
-        navigation.addWidget(self._trace_previous_button)
-        navigation.addWidget(self._trace_next_button)
         self._trace_zoom = QSpinBox()
         self._trace_zoom.setObjectName("traceZoom")
         self._trace_zoom.setAccessibleName(tr("Zoom relative to fit"))
@@ -1892,9 +1900,16 @@ class PaperWorkShellWindow(QMainWindow):
         row = self._page_view.currentIndex().row() + offset
         page_id = self._model.page_id_at(row)
         if page_id is not None:
+            previous, following = self._trace_previous_button, self._trace_next_button
+            activated, reverse = (previous, following) if offset < 0 else (following, previous)
+            had_focus = activated.hasFocus()
             self._restore_page_selection(page_id)
             self._page_view.scrollTo(self._model.index(row, 0))
             self._trace_arrangement.scrollTo(self._model.index(row, 0))
+            if had_focus and not activated.isEnabled() and reverse.isEnabled():
+                reverse.setFocus(Qt.FocusReason.OtherFocusReason)
+            if self._trace_page_position.isVisible():
+                self._announcer.announce(self._trace_page_position.text())
 
     def _set_trace_lens(self, lens: str) -> None:
         self._trace_lens = lens
@@ -1925,6 +1940,17 @@ class PaperWorkShellWindow(QMainWindow):
         page_id = self._selected_page_id()
         pages = self._model.pages
         self._trace_recipe_pane.select_page(page_id)
+        has_page = 0 <= row < len(pages)
+        show_packet_position = has_page and self._trace_lens != "exported"
+        self._trace_page_position.setText(
+            tr("Page {value1} of {value2}", value1=row + 1, value2=len(pages))
+            if show_packet_position
+            else ""
+        )
+        self._trace_page_position.setVisible(show_packet_position)
+        show_page_navigation = self._trace_lens != "exported" or self._trace_evidence is not None
+        self._trace_previous_button.setVisible(show_page_navigation)
+        self._trace_next_button.setVisible(show_page_navigation)
         self._trace_previous_button.setEnabled(0 < row < len(pages))
         self._trace_next_button.setEnabled(0 <= row < len(pages) - 1)
         target = self._trace_canvas_target()

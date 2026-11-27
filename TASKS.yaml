@@ -6516,7 +6516,7 @@ tasks:
       The unsigned candidate has internal engineering status. PWS-0808 owns product-completion review.
 - id: PWS-0808
   milestone: M8
-  title: Run Milestone 8 v1.0 product-completion gate
+  title: Qualify the frozen Milestone 8 engineering candidate
   kind: gate
   priority: P0
   effort: XL
@@ -6545,8 +6545,8 @@ tasks:
   - PWS-D042
   - PWS-D043
   - PWS-D044
-  objective: Accept the identified unsigned v1.0 product when the approved milestone gates and quality criteria have
-    current evidence and the exact candidate's standalone black-box envelope is frozen.
+  objective: Qualify the identified unsigned engineering candidate against the approved milestone gates and quality
+    criteria within its recorded support scope, and freeze its standalone black-box envelope.
   deliverables:
   - Milestone 8/v1.0 gate report
   - Candidate artifact inventory, checksums, and actual observed signing status
@@ -6608,9 +6608,9 @@ tasks:
       54e0b916ac069ce00a0ce200c43e07f3a76d1784. See
       docs/gates/m8-product-completion-gate.md for the independent installer, receipt,
       inventory, SBOM, interface and synthetic sample checks, and the sample manifest's
-      companion clarification for grayscale compression. Formal M8 review accepted exact unsigned R3
-      for product completion on the documented Windows 11 Pro x64 configuration. R3 retains version
-      0.0.0 and channel engineering. Public distribution requires separate owner authorization.
+      companion clarification for grayscale compression. The formal review passed for exact unsigned R3
+      on the documented Windows 11 Pro x64 configuration and tested workflows. R3 retains version
+      0.0.0 and channel engineering. Product development continues in PWS-0815 and PWS-0816.
 - id: PWS-0809
   milestone: M8
   title: Integrate ThirdLife late-binding governance and release-envelope ownership
@@ -7667,3 +7667,91 @@ tasks:
       reopening, early failure paths, and successful verification and reuse on repeat.
     - Reuse the unsigned setup capability for exact-candidate checks under PWS-D044.
       Same-build repair and reuse evidence applies to TRACE B8 within its recorded scope.
+
+- id: PWS-0815
+  milestone: M8
+  title: Make TRACE page navigation discoverable at compact sizes
+  kind: implementation
+  priority: P0
+  effort: S
+  status: in_progress
+  critical_path: false
+  depends_on:
+  - PWS-0813
+  decision_refs:
+  - PWS-D002
+  - PWS-D011
+  - PWS-D030
+  - PWS-D041
+  objective: Address the recorded difficulty discovering further pages in the single-page
+    preview while preserving the current selection and bounded preview path.
+  deliverables:
+  - Visible packet position and accessible previous/next controls above the preview.
+  - Focused regression and installed comparison in the TRACE workbench.
+  acceptance_criteria:
+  - Opening a synthetic multipage case at a compact size shows position and total
+    and makes previous/next navigation available without first scrolling below the canvas.
+  - Keyboard navigation preserves stable page identity between Source and Planned, keeps
+    actionable focus at the boundaries, and does not change or save case content.
+  - Saved export checks retain their own file scope without misleading current-packet navigation.
+  verification:
+  - Reproduce the initial viewport gap and compare the successor on the standard-user offline desktop.
+  - Run the multi-page regression, accessibility tests, and registered static and documentation checks.
+  risk_tags:
+  - accessibility
+  - first-use
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes:
+    - docs/development/pws0815-trace-page-navigation.md records the second-PC feedback,
+      TRACE scope, comparison plan, and exact candidate results.
+
+- id: PWS-0816
+  milestone: M8
+  title: Export an assembled page range as a verified PDF
+  kind: implementation
+  priority: P1
+  effort: M
+  status: ready
+  critical_path: false
+  depends_on:
+  - PWS-0110
+  - PWS-0112
+  - PWS-0813
+  decision_refs:
+  - PWS-D002
+  - PWS-D009
+  - PWS-D011
+  - PWS-D029
+  - PWS-D030
+  - PWS-D041
+  objective: Deliver the roadmap page-splitting behavior through a normal document workflow
+    that can save a selected range while keeping the assembled case and its sources intact.
+  deliverables:
+  - An accessible range selection and verified derivative through the ordinary PDF workflow.
+  - Installed synthetic proof of selected page identity and order plus safe refusal.
+  acceptance_criteria:
+  - The user can save a selected assembled range in current order to a new PDF
+    with the applicable supported page intent and verification.
+  - Invalid ranges, unsupported combinations and occupied destinations fail safely.
+    The original files, current page order and existing outputs remain intact.
+  verification:
+  - Use a synthetic reordered packet. Reopen and render the selected-range output
+    independently and verify its page order, scope, and source integrity.
+  - Exercise range validation, applicable unsupported modes, cancellation, and destination collision.
+  risk_tags:
+  - export
+  - data-integrity
+  - accessibility
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes:
+    - ROADMAP.md sections 1.4 and M1 call for splitting. PWS-0110 covers pure group
+      intent. PWS-0407 and the R3 matrix cover category-based separate PDF export.
+      The ordinary TRACE organizer and PDF export have no assembled range entry point.

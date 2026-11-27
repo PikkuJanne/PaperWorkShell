@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 553609,
-      "sha256": "4e7f4d6fab32c1bf86b246c53f7f136867437b7f1c41a540b0914cccce5b96e7"
+      "bytes": 556955,
+      "sha256": "1bb83f7b6712b164f43e67f66e620c837a66d0ba3bc44a5b2401fdc765f90fc8"
     },
     {
       "path": "TASKS.schema.json",
@@ -405,8 +405,8 @@
     },
     {
       "path": "docs/gates/README.md",
-      "bytes": 1471,
-      "sha256": "0721ac2c4b2b628f84d2475478551411f27eabc8d566b46374256d5b701283f6"
+      "bytes": 1611,
+      "sha256": "e333f8c9bbd566feb950c495b03974c0a039ae49fef7e8e4e2abd3d637c396b4"
     },
     {
       "path": "docs/gates/m7-accessibility-assisted-gate.md",
@@ -490,8 +490,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 754,
-      "sha256": "a0e84de584482edce5378f96cebf6fade57204d17b3439399127091d4df56568"
+      "bytes": 763,
+      "sha256": "343c19b59fb602b527a8b00d2302a299938d83f830318a3e67d026affdccc1cb"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -665,8 +665,8 @@
     },
     {
       "path": "docs/user/USER_GUIDE.md",
-      "bytes": 12555,
-      "sha256": "fdab95c4f78e991d93f38124e65606e312471851eeadc7231e074d2653b94f7b"
+      "bytes": 12754,
+      "sha256": "8b63d350633aa99c8d067bcade66a50caf4554279ef5686285955c848356fd97"
     },
     {
       "path": "docs/user/CARE_AND_RECOVERY.md",
@@ -707,16 +707,23 @@
       "path": "docs/development/pws0807-unsigned-completion.md",
       "bytes": 23046,
       "sha256": "b1a95d73962664cde0e61fd111e1094c42c644264a0993af0fad3ccee65f89f7"
+    },
+    {
+      "path": "docs/development/pws0815-trace-page-navigation.md",
+      "bytes": 2398,
+      "sha256": "5ec9a908ab94c5d33c28335c612ee9d7aaef9004c42e3e24f7949fdc0a8fbf95"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 87,
-    "dependency_edge_count": 258,
+    "task_count": 89,
+    "dependency_edge_count": 262,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "ready_tasks": []
+    "ready_tasks": [
+      "PWS-0816"
+    ]
   },
   "notes": [
     "2026-11-26 unsigned product completion: PWS-D044 allows an exact unsigned Windows 11 x64 candidate to satisfy PWS-0808. TASKS.yaml and the current PWS-0807 continuation record the local R1 observations and remaining qualification. Earlier notes retain their historical scope.",

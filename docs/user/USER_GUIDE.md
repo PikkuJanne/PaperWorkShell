@@ -39,6 +39,9 @@ files yourself after reviewing them.
 
 - **Pages** shows the order you are assembling. **Sources** groups pages by
   imported document. **Arrange** exposes the page movement controls.
+- Above the document preview, **Page X of Y** gives your position in the packet.
+  Use **Previous page** or **Next page** to review it one page at a time. Choose
+  **Pages** to jump to another page.
 - **Source** shows the original page. **Planned** shows saved changes and
   supported visual marks. Open the mark editor when a placement needs closer
   inspection. **Exported** shows the checks for the verified PDF. After you

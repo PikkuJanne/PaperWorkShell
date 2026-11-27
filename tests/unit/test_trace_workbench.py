@@ -7,7 +7,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFileDialog, QLineEdit, QWidget
 
@@ -85,6 +85,71 @@ def test_narrow_workbench_keeps_document_pages_and_recipe_reachable() -> None:
         window._trace_select_pane("document")
         assert window._trace_document.isVisible()
         assert window._selected_page_id() == page.page_id
+    finally:
+        window._allow_close = True
+        window.close()
+        window.deleteLater()
+        application.processEvents()
+
+
+def test_compact_document_shows_page_count_and_navigation_before_scrolling() -> None:
+    application = cast(QApplication, QApplication.instance() or QApplication([]))
+    commands = OrganizerBackendCommands()
+    worker = OrganizerBackendWorker(lambda: (_ for _ in ()).throw(AssertionError("no backend")))
+    window = PaperWorkShellWindow(commands, worker)
+    case_id = uuid4()
+    pages = tuple(
+        OrganizerPageView(
+            uuid4(), position, 0, True, document_number=position, source_page_number=2
+        )
+        for position in range(1, 7)
+    )
+    window.resize(620, 560)
+    window._state_changed(OrganizerViewState(case_id, 1, pages, False, False, False))
+    window._set_controls_enabled(True)
+    window.show()
+    window.activateWindow()
+    application.processEvents()
+    try:
+        viewport = window._application_scroll.viewport()
+        previous = window._trace_previous_button
+        following = window._trace_next_button
+        for control in (previous, following):
+            visible_bounds = QRect(control.mapTo(viewport, QPoint()), control.size())
+            assert viewport.rect().contains(visible_bounds)
+
+        position = window._trace_page_position
+        assert position.text() == "Page 1 of 6"
+        assert viewport.rect().contains(QRect(position.mapTo(viewport, QPoint()), position.size()))
+        assert not previous.isEnabled() and following.isEnabled()
+
+        following.setFocus()
+        QTest.keyClick(following, Qt.Key.Key_Space)
+        assert window._selected_page_id() == pages[1].page_id
+        assert position.text() == "Page 2 of 6"
+        assert previous.isEnabled() and following.isEnabled()
+
+        QTest.keyClick(window._trace_lens_buttons["source"], Qt.Key.Key_Space)
+        assert position.text() == "Page 2 of 6"
+        assert "Source page 2 · Assembled page 2" in window._trace_document.accessibleDescription()
+        window._restore_page_selection(pages[-2].page_id)
+        following.setFocus()
+        QTest.keyClick(following, Qt.Key.Key_Space)
+        assert window._selected_page_id() == pages[-1].page_id
+        assert position.text() == "Page 6 of 6"
+        assert not following.isEnabled() and previous.hasFocus()
+        QTest.keyClick(previous, Qt.Key.Key_Space)
+        assert window._selected_page_id() == pages[-2].page_id
+
+        QTest.keyClick(window._trace_lens_buttons["exported"], Qt.Key.Key_Space)
+        assert not position.isVisible()
+        assert not previous.isVisible() and not following.isVisible()
+        QTest.keyClick(window._trace_lens_buttons["planned"], Qt.Key.Key_Space)
+        assert position.isVisible() and position.text() == "Page 5 of 6"
+
+        window._state_changed(OrganizerViewState(case_id, 2, (), False, False, False))
+        assert not position.isVisible()
+        assert not previous.isEnabled() and not following.isEnabled()
     finally:
         window._allow_close = True
         window.close()
