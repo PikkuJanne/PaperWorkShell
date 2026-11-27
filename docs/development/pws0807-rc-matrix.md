@@ -37,6 +37,15 @@ Control Off. The expected results were frozen before guest testing in
 | Cross-build replacement and migration | The default Keep uninstall preserved R1 before exact R3 installation. The 367 starting case files matched. R3 reopened the old three-page case and migrated separate v1, v2 and v3 cases to v4 with exact backups and preserved inputs, ordering and rotation. [Replacement](pws0807-r3-qualification.md#r1-replacement-and-case-migration) |
 | Installed screen reader and response | NVDA speech, native controls and focus agreed across ten scenario groups. All four real imports met the 250 ms acknowledgement target and the original larger-preview targets. [Installed NVDA and first preview](pws0807-r3-qualification.md#installed-nvda-and-first-preview) |
 
+The replacement walk-through also verified the same packages and diagnostics
+on the preserved R1 branch. All three older schema versions migrated with
+exact backups. The installed reader and guest timing receipts identify their
+exact interactions and measurement bounds. The original offline R1 was
+restored after external retention. See the [replacement and migration](pws0807-r3-qualification.md#r1-replacement-and-case-migration),
+[reader and preview measurements](pws0807-r3-qualification.md#installed-nvda-and-first-preview)
+and [engineering disposition](pws0807-r3-qualification.md#engineering-disposition-and-restored-r1).
+PWS-0808 owns the next gate review.
+
 ## Candidate and environment inventory
 
 | Environment or artifact | Available evidence | Use for PWS-0807 |

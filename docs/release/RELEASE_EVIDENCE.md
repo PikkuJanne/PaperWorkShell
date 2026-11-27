@@ -23,6 +23,28 @@ The [R3 qualification ledger](../development/pws0807-r3-qualification.md)
 records the actual starting environments, measurement methods and candidate
 limitations. The template metadata above applies to a future designated release.
 
+The engineering interface revision is `pws0807-r3-interface-1` and
+the sample ID is `paperworkshell-pws0807-r3-synthetic-v1`. The exact
+qualification revision and file manifest are recorded in the local
+`output/pws0807/r3-completion-evidence/qualification-index.json`.
+
+| R3 observation | Retained SHA-256 |
+| --- | --- |
+| Clean installation, same-build repair, actual disk exhaustion, preserve/reinstall and four-case reviewed removal | `0477ee070f583c1c1ae8628fa6edaccbcc78c0ca6591036f02eef4cfd1ade165` |
+| R1 replacement, installed exports and support workflow | `ec1419bef9ef2ba46480333443a727bde55b9fdcd0d81f7ae2c6d00195834b64` |
+| Supported case migration and exact backups | `79a19421769307a500e78c0e298c13e8f84be3a6a77d8dbaeb175e34b42bac3f` |
+| Frozen clean and replacement package comparisons | `64684c952b2fb096a911bebf2aac9f0b634d2432f88fef6f8ef2af0272079b32` · `f7c69c376c7d14a43bbc539793db31461197a47ada26dba21a5c1d43f4470722` |
+| Actual NVDA speech and phase-to-content review | `2ec7fc9e630f7dbad8f6cce000bb1e488994eb08622764a098723d951d91444d` · `2bbeb389e0fff2c3941679935b1b03c46ca2603bbd1858976e750fff192b93f7` |
+| Guest acknowledgement and first-preview measurements | `7c46d1648e16cb14b666b4a1e26a2201925eb53abafd5111dbd9b9937ce50a42` |
+| Normal and constrained resource qualification | `32ac283b2cef41d0e7596d93291cc6d5fe846cbbc172cf70743126245160b5ee` |
+| Independent permanent-removal check of installed output | `359f801211006ab1387a55761b6113846178cd3420ff781b064141210fdddb71` |
+| Final restored R1 guest and full payload check | `2c322594c5f9138d9bd495e9a945198e94f89a621312fd886b86a8a51182cfef` |
+
+The [R3 ledger](../development/pws0807-r3-qualification.md) records the
+actual methods, measurement bounds and disposition. The installed evidence
+covers Windows 11 Pro x64 26300.9711 with Smart App Control Off.
+The formal product-completion decision belongs to PWS-0808.
+
 ## Earlier R2 engineering evidence
 
 The [R2 qualification ledger](../development/pws0807-r2-qualification.md)

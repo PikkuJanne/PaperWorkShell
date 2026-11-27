@@ -511,7 +511,50 @@ captures, all eight review bounds and the independent source comparison
 are joined in `r3-completion-timing/response-times.json`, SHA-256
 `7c46d1648e16cb14b666b4a1e26a2201925eb53abafd5111dbd9b9937ce50a42`.
 
+## Source checks and candidate coverage
+
+The source and restricted-runtime suites have distinct environments.
+R3 passed formatting, linting and type checking of 995 files.
+The full source accessibility suite passed 370 tests. The affected unit
+suite passed 1,461 unique tests and the affected security suite passed
+223 after isolated replays. Three host symlink-capability security checks
+were skipped. Fixture and secret scanning covered the exact R3 history.
+The quality-pipeline self-test rejected all five deliberately invalid
+inputs.
+
+The integration reconciliation spans all 85 tracked modules. Sixty-six
+ran on the exact R3 source. Nineteen are bound to their unchanged R2
+implementations and results. Across the combined set the receipt records
+793 passed unique test IDs and 6 scoped skips.
+The receipt keeps original failures, skip reasons and eligible follow-ups.
+The full-distribution qpdf source tests were replayed with the independently
+verified developer installation. The five-file packaged qpdf runtime had
+its own native workload and inventory checks. The source qualification
+is `r3-tab-focus-evidence/source-qualification.json`, SHA-256
+`599ea999cd4020de51641277ae7cb578293a37083a7946a4e3f3596859f95f36`. The final payload identity and worker recovery journal were
+independently rechecked after the source suite.
+
+Three of the six integration skips reflect unavailable Windows link privileges.
+Two tests ran in the separate canonical R3 resource harness. The sixth
+depends on a specifically dated OCR staging directory. A separate replay
+with authenticated R3 qpdf and Tesseract passed the unchanged behavioral
+assertions for a four-page searchable mixed PDF, including one existing
+text page, three OCR pages, independent reopening and rendering, retained
+originals, privacy and cleanup. An initial collector naming error exited
+before the test. The subsequent receipt is
+`r3-tab-focus-evidence/r3-current-mixed-corpus-2.json`, SHA-256
+`6baa9d66319036e1ca639d856ef913c31254ffe321d40d22bbcbbfc9e75ce3a5`.
+
 ## Engineering disposition and restored R1
+
+PWS-0807 passed its ten engineering acceptance criteria on the recorded
+candidate and environments. No engineering release-blocking defect remains
+open. The disposition and its evidence by criterion are in
+`r3-completion-evidence/engineering-disposition.json`, SHA-256
+`5ff1d57a91268c6f8ba4f7a7d9ffb143d8b8142c3760d1f0f6bc9bfef58d3149`. The external freeze at
+`output/pws0807/r3-completion-evidence/qualification-index.json` binds the
+tracked documents at the qualification commit to the rehashed installer,
+receipt, inventory and retained source and observation records.
 
 All four R3 acknowledgement and preview comparisons passed. R1's split-PDF
 and ZIP timeouts and R2's Aquatic selected-tab failure remain attributed to

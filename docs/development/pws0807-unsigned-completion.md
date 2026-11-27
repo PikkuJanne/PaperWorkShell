@@ -1,13 +1,25 @@
 # PWS-0807 unsigned candidate continuation
 
-## Current engineering continuation
+## PWS-0807 outcome and next step
 
-R2 corrected R1's four-category split and ZIP timeouts. Its installed
-200% Windows Aquatic check exposed a separate keyboard-focus defect on the
-selected Pages tab. PWS-0807 continues on unsigned `pws0807-tab-focus-engineering-r3` from
-`54e0b916ac069ce00a0ce200c43e07f3a76d1784` for installed verification. The [R2 ledger](pws0807-r2-qualification.md)
-records the user's actual focus, the full-window pixel comparison, and
-the workflows that passed on the predecessor. The [R3 ledger](pws0807-r3-qualification.md) records the successor's qualification.
+PWS-0807 is complete for the unsigned engineering installer
+`pws0807-tab-focus-engineering-r3`, version 0.0.0, built from
+`54e0b916ac069ce00a0ce200c43e07f3a76d1784`. The [R3 ledger](pws0807-r3-qualification.md)
+and [matrix](pws0807-rc-matrix.md) record the clean and replacement results,
+source and component tests, measurement limits, historical reader evidence
+and restoration of the original offline R1 guest. The immutable [R1](pws0807-r1-qualification.md)
+and [R2](pws0807-r2-qualification.md) records retain their failed observations.
+The local evidence index under `output/pws0807/r3-completion-evidence/qualification-index.json`
+binds the exact installer, receipt, inventory, samples, interface and
+qualification commit. The engineering disposition found no open PWS-0807
+release-blocking defect within the recorded scope.
+
+**Next step — PWS-0808.** Independently reconcile the frozen R3 evidence
+index, build handoff, installer, SBOM, engineering interface and sample on
+`codex/pws-0807-unsigned-completion` and record artifact admission in the
+M8 gate report. The original R1 guest is active and can remain offline
+through that document and checksum review. Product-completion sign-off and
+external distribution remain separate owner decisions.
 
 ## 2026-11-26 owner correction
 

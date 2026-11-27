@@ -6380,7 +6380,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0802
@@ -6442,9 +6442,15 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-11-27'
+    revision: candidate:pws0807-tab-focus-engineering-r3
+    commands:
+    - tools/dev.py format-check, lint, typecheck, test-accessibility, validate-docs, validate-task-graph,
+      validate-schemas, validate-portfolio-boundary and validate-release-inventory
+    - Clean and replacement Lifecycle.ps1, installed desktop workflows, native NTFS quota setup,
+      Reviewed-Removal.ps1, Check-Support.py and independent PDF/package inspection
+    - Observe-After-Workflows.ps1, Run-QuietSeries.ps1, actual NVDA speech and QPC frame review,
+      Restore-VerifiedR1.ps1 and final evidence freeze
     notes:
     - PWS-D044 allows final packaged results on an exact unsigned candidate. Apply the R1
       diagnostics and installer results within their recorded scope.
@@ -6496,13 +6502,25 @@ tasks:
       are frozen. R2 failed keyboard focus on the selected Pages tab at 200 percent with Windows Aquatic.
       The full-window comparison is indexed in docs/development/pws0807-r2-qualification.md.
       R3 addresses the visible focus of the two workbench tab bars.
+    - Exact unsigned R3 from 54e0b916ac069ce00a0ce200c43e07f3a76d1784 passed the engineering
+      matrix on offline Windows 11 Pro x64 26300.9711. R3 resolved the native 200 percent Aquatic
+      selected-tab defect. Findings, resource measurements and the scope of reader and timing evidence
+      are in docs/development/pws0807-r3-qualification.md and docs/development/pws0807-rc-matrix.md.
+    - Clean and replacement installation, repair, quota failure and rollback, preserve/reinstall,
+      reviewed four-case removal, source immutability, all three checklist exports, migrations,
+      NVDA, diagnostics and independently verified permanent removal have candidate-bound receipts.
+      All 367 previous replacement case files survived. The final active R1 state retained
+      all 358 original case files and all 3219 inventoried R1 files after restoring the original checkpoint.
+    - The frozen installer, inventory, receipt, engineering interface and prospective sample are indexed
+      with an independent rehash in output/pws0807/r3-completion-evidence/qualification-index.json.
+      The unsigned candidate has internal engineering status. PWS-0808 owns product-completion review.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 product-completion gate
   kind: gate
   priority: P0
   effort: XL
-  status: planned
+  status: ready
   critical_path: true
   depends_on:
   - PWS-0409

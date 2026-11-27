@@ -280,6 +280,9 @@ class X64ReleaseScopeTests(unittest.TestCase):
                 "requested_action": "Prepare the existing isolated Windows 11 x64 test target.",
             },
         )
+        # This fixture represents the period before installer qualification.
+        for task_id in ("PWS-0807", "PWS-0808"):
+            _task(self.data, task_id)["status"] = "planned"
 
     def codes(self) -> set[str]:
         return {issue.code for issue in validate_data(self.data, self.schema, self.decisions)}

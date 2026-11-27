@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 550435,
-      "sha256": "0b0b0e617fc1c88d2b30b819801750ffa8956d6994066a2dcb0c618bd066f61b"
+      "bytes": 552188,
+      "sha256": "670bb7762aab1682037d49b0567d33ec22c7c7434a36e5bb39ee4f2bd7fb3e1b"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 51116,
-      "sha256": "6e40a15234e3eb2b356952ce1c764d6c236d30d8b3b40e4445f5088d621ddc9a"
+      "bytes": 53018,
+      "sha256": "35b480f38595b10742c4da82ecd76fe57107a70bc0c6569be3dc1e38ed3a5e5e"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -75,8 +75,8 @@
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 11670,
-      "sha256": "83dee947dd9b356595226927c59c9ef2fd2ba66545dea7b2b46648a441baa81d"
+      "bytes": 12000,
+      "sha256": "dfa312c9c4cd9092cc669a4bca510fa7ab75721c44f6e2eb79704fee2e0389e0"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -590,8 +590,8 @@
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 10709,
-      "sha256": "d4a5738a529bb9394143d3c2dbf3e3b0a957372d5af9c655b004f871df3e47ce"
+      "bytes": 10894,
+      "sha256": "f0afcef0b6c1022586a9ae7d25e9f0ebafef0a54e5c32128c9c000e7697155bf"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
@@ -685,18 +685,18 @@
     },
     {
       "path": "docs/development/pws0807-r3-qualification.md",
-      "bytes": 34311,
-      "sha256": "462ed9c474012d700b4a6707b281486889349a0f51f747a28b2287afdd0bcafd"
+      "bytes": 36911,
+      "sha256": "2dae0c21566247132e8800118835d1d600f5496fc2add40e7852ffb94b3047e4"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 25272,
-      "sha256": "b856821ef24f7889cc6085ac2020aae2db7e732913b85ed6969d9d32a14c8f87"
+      "bytes": 25939,
+      "sha256": "a71b4e22c329be24881c1643de76ed93b3fa589b8cf75dd509cee93d7c5ce666"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 22344,
-      "sha256": "1bca2c3dab74bd19fc1019ae9f353fe26f788e1121ab473d7ae06195870a1f34"
+      "bytes": 23046,
+      "sha256": "b1a95d73962664cde0e61fd111e1094c42c644264a0993af0fad3ccee65f89f7"
     }
   ],
   "validation": {
@@ -706,7 +706,9 @@
     "dependency_edge_count": 258,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "ready_tasks": []
+    "ready_tasks": [
+      "PWS-0808"
+    ]
   },
   "notes": [
     "2026-11-26 unsigned product completion: PWS-D044 allows an exact unsigned Windows 11 x64 candidate to satisfy PWS-0808. TASKS.yaml and the current PWS-0807 continuation record the local R1 observations and remaining qualification. Earlier notes retain their historical scope.",
