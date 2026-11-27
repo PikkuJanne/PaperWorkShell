@@ -34,8 +34,47 @@ These 2026-11-04 policy documents are newer than the immutable R7 build epoch.
 Its outer, embedded metadata, inventory, source archives, audits and original
 R6/R7 observations remain unchanged; historical ARM plans are not current support
 or pending qualifications. The actual engineering guest was Windows 11 Enterprise
-26100.9711 x64 with a genuine standard account. Windows 11 Pro 26300.9711 is
-host-only evidence. R7's existing instrumented guest is not a new clean-R7 result.
+26100.9711 x64 with a genuine standard account. The original R7 records used
+Windows 11 Pro 26300.9711 as a development host. The diagnostics R1 records
+below cover a separate offline Pro guest.
+
+### Diagnostics R1 installer
+
+PWS-0802 exercised the engineering build `pws0807-diagnostics-engineering-r1`
+from `e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec`. The candidate identifies
+PaperWorkShell version `0.0.0`, channel `engineering`, application ID
+`io.github.pikkujanne.paperworkshell`, and stable Inno upgrade identity
+`{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. The project-owned software is
+MIT licensed. Third-party components carry their own terms.
+
+| Exact R1 item | SHA-256 |
+|---|---|
+| Unsigned x64 installer, 513,022,419 bytes | `a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8` |
+| Installer receipt | `875894759adf79cd580c69a81018ca06c8a734e52f0fbd1754d2ec51bbd3220f` |
+| Resolved inventory, 3,219 payload files | `8a9e3202d479c11e4e678adb0c25e31eab1cd1718f036187e500a7dc44566420` |
+| Installed version marker | `c01268636ea37745e065516c82f892fc40fae418fdafaeae22cf814599bf6736` |
+| Source revision's `uv.lock` | `6b378cfc5ecf4d71d0191fc8e23d3ce01652ad5c06195d23bc86a196aafa7a3a` |
+| CycloneDX SBOM, `bom.cdx.json` | `226c9447c968b017ad9149eaa777ac91311c9bab136451348d1c302ebee3afdd` |
+| SPDX SBOM, `bom.spdx.json` | `93465465a52eacb2d61646719ebb96e981ab5d21900a9d73aad064f9d2591fc0` |
+| Build notice bundle, `THIRD_PARTY_NOTICES.txt` | `b7608b7de1c5bb4c503a70da6958419d3baef3991c1ef58d81c9aab1fbbe2475` |
+| Installed `notices/COMPONENTS.txt` | `c1467be762fe1cf73bb78b153b7912c79f0c1421db8167c19162bcfd8dcf34c9` |
+
+The artifact audit verified 650,881,153 expanded bytes, 178 build inputs, 345
+application files against the source revision, 957 components and their
+redistribution obligations, and 24 licence references. The verified SBOMs
+match the CycloneDX 1.6 and SPDX 2.3 schemas. All 956 third-party component
+records and 2,857 third-party payload files matched the audited R9 inputs.
+The Microsoft runtime consists of five reviewed objects at nine destinations.
+The receipt `output/pws0807/r1-installer-artifact-audit/result.json` has SHA-256
+`17e31531b63d33ef0801e489d0babbe0e384b0be8c9f8af486e05728e2a87e6c`.
+
+On the offline Windows 11 Pro x64 build 26300.9711 guest with Smart App Control
+Off, clean setup verified each installed payload file and the application opened
+from the user's Start menu. Authenticode reported `NotSigned` for the installer.
+The install, registration, shortcut and both ordinary launch observations are
+bound by `clean-installed-final.json`, SHA-256
+`def5577c19b8c88339c982ccfa2e22161edee639ebb4e42362bb44eb69d54784`.
+[PWS-0802 clean test record](../development/pws0807-unsigned-completion.md#pws-0802-clean-per-user-installation-and-launch).
 
 ## PWS-0802 unsigned internal installer
 
@@ -226,9 +265,9 @@ desktop. The following results are scoped to their specific packages and trust c
 | Unsigned `pws0813-trace-engineering-b8` | Same-build repair and reuse, standard-user launch, and one offline ordinary PDF export. Existing case files matched their prior hashes. | [PWS-0814 setup record and artifact identities](../development/pws0814-automated-setup.md) |
 | Unsigned `pws0803-updates-engineering-r1` bootstrap and isolated test-signed `pws0803-updates-engineering-r2` runtime ZIP | Local authenticated offer and explicit consent, activation, offline ordinary PDF export, restoration of R1 and refusal to replay the accepted R2 offer. All 353 pre-existing synthetic case files matched their prior hashes. | [PWS-0803 update record and artifact identities](../development/pws0803-authenticated-updates.md) |
 
-The completion matrix still needs exact-candidate evidence for local installer replacement,
-repair, recovery, setup and removal. The isolated update exercise retains its original trust
-configuration. The live production channel is disabled. Completion-candidate identity remains draft.
+The diagnostics R1 row below records the local installer replacement and the clean
+installation separately. The isolated update exercise used its own trust configuration.
+The live production channel is disabled.
 
 ### TRACE B8 documentation walkthroughs
 
@@ -385,7 +424,8 @@ staged dependency files confer no installation or ThirdLife compatibility claim.
 - Future B4 evidence that a newer unverified version is not automatically compatible: **TBD in
   ThirdLife, not a PaperWorkShell gate**
 
-The completion candidate's version, artifact identity and acceptance remain unproved.
+Diagnostics R1 has the engineering identity recorded above. PWS-0808 owns final
+product acceptance and the release evidence freeze.
 The following signing inquiry is historical under PWS-D044. The
 [authorized eligibility inquiry](../development/pws0802-foundation-inquiry-20261104.md)
 was submitted once through the official General message contact form; its
@@ -396,23 +436,29 @@ Foundation acceptance or production signing has occurred in this continuation.
 
 | Scenario | Exact environment | Public command/UI path | Result | Evidence reference |
 |---|---|---|---|---|
-| Clean install | **TBD** | **TBD** | Pending | **TBD** |
-| Standard-user launch | **TBD** | **TBD** | Pending | **TBD** |
+| Clean install | Diagnostics R1 on offline Windows 11 Pro x64 26300.9711, Smart App Control Off | Prepared per-user setup bundle | Native installer exit 0. All 3,219 payload files verified. | [R1 setup evidence](#diagnostics-r1-installer) |
+| Standard-user launch | Same R1 clean installation | Prepared setup launcher and installed Start menu shortcut | Each opened a responsive desktop with the actual standard-user token and exited normally. | [R1 launch evidence](#diagnostics-r1-installer) |
+| Component information | Diagnostics R1 on the offline Pro guest | Installed **PaperWorkShell notices** shortcut | Opened the local viewer showing the product version, candidate, component and licence selector, and read-only notice control. | `r1-installer-completion/notices-content.txt` |
 | Visible import of supported synthetic file | **TBD** | **TBD** | Pending | **TBD** |
 | OS-level open of supported sample, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Open portable workspace/project, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
-| Repair, if supported | **TBD** | **TBD** | Pending/not supported | **TBD** |
-| Local preserve-cases replacement | **TBD for completion candidate** | Per-user removal with **Keep cases**, then identified local installer | Scoped B8-to-R1 pass. Completion candidate pending. | [PWS-0807 R1](../development/pws0807-diagnostics-investigation.md#packaged-verification-on-unsigned-r1) |
+| Same-build repair | Diagnostics R1, Pro x64 26300.9711, a bundled recipient-terms file missing | Matching prepared bundle with `--repair` | Restored the missing file, exited 0, verified all 3,219 payload files and opened the installed desktop. | `r1-installer-completion/Repair.json`, SHA-256 `a7fa782531a30a46a6a8ed19ecedd8f7b2ec72c3929afccafd68284217d8c97c` |
+| Local preserve-cases replacement | TRACE B8 to diagnostics R1, Pro x64 26300.9711 | Per-user removal with **Keep cases**, then prepared R1 installer | Verified 353 preserved case files after removal and installed R1. | [PWS-0807 R1](../development/pws0807-unsigned-completion.md#prepared-r1-replacement) |
 | Interrupted/failed replacement recovery | **TBD** | **TBD** | Pending | **TBD** |
 | Live network update channel | Unsigned product scope | Disabled, no production trust | Confirm on exact candidate | Isolated [verifier rehearsal](../development/pws0803-authenticated-updates.md) |
 | Rollback, if supported | **TBD** | **TBD** | Pending/not supported | **TBD** |
-| Uninstall while preserving cases | **TBD** | **TBD** | Pending | **TBD** |
-| Explicit app-data removal | **TBD** | **TBD** | Pending | **TBD** |
-| Reinstall and reopen preserved case | **TBD** | **TBD** | Pending | **TBD** |
+| Uninstall while preserving cases | Diagnostics R1 on Pro x64 26300.9711, with a case created by the installed app | Per-user uninstaller, preserve cases | Installation root, registration and all three shortcuts removed. Five synthetic case files and three external files matched their original hashes. | `r1-installer-completion/state-native-removed.json` |
+| Explicit app-data removal | Diagnostics R1, Pro x64 26300.9711, one available synthetic case | Inspect cases, separately confirm deletion, acknowledge the result, then confirm native removal | One case fully deleted, zero remaining, zero failed or partial. Native removal exited 0. No case files, app root, registration or shortcuts remained. All three external file hashes and four file defaults matched. | `r1-installer-completion/deletion-text.txt` and `state-after-explicit-removal.json` |
+| Reinstall and reopen preserved case | Same guest and product-created case | Prepared setup, then **Open case** | Restored registration and shortcuts. The installed desktop reopened the saved one-page case. All five managed files and the external source, export and support ZIP matched. | `r1-installer-completion/state-native-reopened.json` |
 | Remove optional associations, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 
 Record prompts, privileges, restarts, and residue by category. Public evidence must use known-folder
 notation rather than real usernames or private absolute paths.
+
+A separate run preserved the bytes of a manually copied case. Its reopen
+reported `RECOVERY_SCAN_FAILED`. The successful reopen above used a case
+created by the installed R1 desktop. Actual disk exhaustion and recovery at
+R1's ordinary installation target require their own evidence.
 
 ## 4. Data-location and preservation evidence
 
@@ -421,8 +467,9 @@ retention, deletion and uninstall behavior. Record the packaged result and recei
 category on the exact completion candidate.
 
 - Configuration location and permissions: **TBD**
-- Case/workspace location and permissions: implemented architectural convention; packaged result
-  **TBD**
+- R1 stored the synthetic case under `%LOCALAPPDATA%\PaperWorkShell\Cases`.
+  The sampled access controls on the program, runtime, app-data and Cases
+  directories showed zero broad-group write grants.
 - Immutable-original location and hash verification: implemented case convention; candidate result
   **TBD**
 - Cache/temp/log/support-bundle locations: case cache/temp known; remaining locations **TBD**
@@ -430,7 +477,9 @@ category on the exact completion candidate.
 - Migration/rollback backup location and cleanup: **TBD**
 - Original byte-for-byte preservation result: **TBD for candidate**
 - Atomic save and crash-recovery result: **TBD for candidate**
-- Uninstall data-preservation result: **TBD**
+- R1 preserve removal retained the case manifest, journal, original and cached
+  thumbnails. Confirmed deletion removed all five managed files. The zero-byte
+  per-user lifecycle lock remained after both removal routes.
 - Evidence that ThirdLife is absent and neither owns nor migrates PaperWorkShell data: **TBD for
   packaged black-box matrix**
 

@@ -185,10 +185,87 @@ B8 replacement and R1 reuse observations retain their own starting states.
 Document workflows, same-build repair, uninstall, actual installer-target disk
 exhaustion, broader Windows coverage, and product acceptance remain separate.
 
+## PWS-0802 installer provenance and repair
+
+The independent R1 audit verified the unsigned installer, 3,219 staged files
+(650,881,153 bytes), 178 build inputs and 345 application source files. The
+component report, recipient notices and CycloneDX and SPDX SBOMs reproduced
+byte-for-byte. All 956 third-party component records and their 2,857 payload
+files matched the audited R9 records. The Microsoft runtime check covered five
+objects at nine destinations, and the compiler check verified the pinned
+upstream signer. The audit receipt is
+`output/pws0807/r1-installer-artifact-audit/result.json`, SHA-256
+`17e31531b63d33ef0801e489d0babbe0e384b0be8c9f8af486e05728e2a87e6c`.
+[R1 installer and component evidence](../release/RELEASE_EVIDENCE.md#diagnostics-r1-installer)
+
+On the offline Pro x64 guest, the standard-user installer found and restored a
+deliberately missing Microsoft recipient-terms file. Native repair exited 0,
+verified all 3,219 files and relaunched the desktop. The installed Notices
+shortcut opened the component and licence viewer. The installation root,
+runtime, application data and case root had no write grants for the checked
+Everyone, Authenticated Users or local Users groups. The engineering package
+has no configured update anchor.
+
+The first preserve/reinstall trial copied a synthetic case into the guest.
+All five file hashes survived removal and reinstallation, but the application
+reported `RECOVERY_SCAN_FAILED` when inspecting the copy. The file comparison
+established preservation only. The next trial used **New case** and **Add
+file** in the installed desktop to create a one-page case from the external
+synthetic PDF. Same-build repair then exited 0 and reopened that case with one
+active page and all changes saved. The host receipts for both trials are under
+`output/pws0807/r1-installer-completion`.
+
+The 328 focused installer, setup, removal, update and launcher tests passed.
+The reviewed native toolchain in the candidate build worktree supplied the 17
+native launcher tests that initially skipped in the continuation worktree.
+The historical R6 controlled interruption and authenticated same-build repair
+retain their original scope. Those observations and the R1 lifecycle-lease
+tests are indexed in `r1-installer-artifact-audit/lifecycle-and-recovery.json`
+under `output/pws0807` (SHA-256
+`698a3e212a75bbed51940cb9cd9a10645fe6689ff35c4138af4e7be081a599ad`).
+
+## PWS-0802 uninstall and reinstall
+
+The preserve uninstall exited 0. The per-user installation directory,
+registration, and all three Start menu shortcuts were absent. The five
+managed files in the application-created case retained their paths, sizes,
+and SHA-256 values. After reinstall verified all 3,219 payload files, the
+standard user reopened the same saved page through **Open case**.
+
+The interactive uninstall review then identified one available case and zero
+unavailable cases. After a separate confirmation, the application reported one
+fully deleted case, zero remaining, and zero failed or partial attempts.
+Native uninstall exited 0. The managed case directory and its files were gone.
+The external source PDF, exported PDF, and support ZIP retained their three
+original hashes through both removals. The four observed file defaults for
+PDF, JPG, JPEG, and PNG matched their starting values. The zero-byte profile
+lifecycle lock remained. The install, repair, and removal operations requested
+no restart in this guest.
+
+Setup refused a one-byte change to a copy of the installer and a mismatched
+inventory with `PWS_SETUP_ARTIFACT`. An alternate-stream path returned
+`PWS_SETUP_ENVIRONMENT`. All three returned exit 1 before an install operation.
+The native installer also rejected a destination override with exit 1 and
+left the requested destination absent. The final observation confirmed that the
+application remained removed and the external hashes and file defaults matched.
+
+The host summary `output/pws0807/r1-installer-completion/lifecycle-result.json`
+has SHA-256 `c39eda3f8562428e81121f07479e9c149247281879f8c3205f837861e3ea1d71`.
+The VM was returned to the saved active diagnostics state, checkpoint
+`999a5747-66e2-4565-baee-5e619dce8656`. Its marker and all 358 case files
+matched. The offline test ended with zero owned guest tasks or application
+processes. The results apply to R1 on the documented Pro x64 configuration.
+
 ## Next operation
 
-PWS-0802 and PWS-0807 remain in progress. PWS-0808 has the required product
-work as prerequisites. The next PWS-0802 check is exact R1 same-build repair
-from the retained clean-install checkpoint. Reconfirm the offline checkpoint,
-installed marker, and standard-user session before the repair. Preserve the
-active diagnostics R1 state. Record the repair and its scope independently.
+The remaining PWS-0802 operation is real bounded exhaustion of the ordinary
+installer target. The release-candidate matrix requires a separately authorized
+disposable target. The prepared route applies an NTFS quota to PWSTest on
+guest C: on a disposable branch of `PWS0802-R1-removed-product-case-20261127`
+(`1621732b-33d6-4719-ab0f-d99fcc0e968c`). The starting state is the
+verified preserve uninstall with the application-created case and three external
+files. The helpers and negative host-identity control are in
+`output/pws0807/r1-installer-exhaustion`. The proposed test covers refusal
+before installation, exhaustion while writing the payload, recovery after the
+quota is lifted, and data preservation. Host preparation and volume capability
+are recorded. The guest quota operation awaits maintainer authorization.

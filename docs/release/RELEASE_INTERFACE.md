@@ -21,8 +21,9 @@ supported” with a reason when an interface does not exist. Do not add a file-o
 workspace transfer, association, CLI, URI, or RPC only to fill this sheet. See the
 [portfolio boundary](../../THIRDLIFE_ALIGNMENT.md) and [evidence index](RELEASE_EVIDENCE.md).
 
-Current source-tree facts appear only as clearly labeled context. Project metadata `0.0.0` is a
-pre-alpha development value, not the product version for this sheet.
+The installer entries identify the engineering candidate examined for PWS-0802.
+Its installed marker reports version `0.0.0` and channel `engineering`.
+Public release designation and distribution require separate approval.
 
 For the current workflow and its limits, see the [user guide](../user/USER_GUIDE.md),
 [care and recovery guide](../user/CARE_AND_RECOVERY.md), and [security policy](../../SECURITY.md).
@@ -37,7 +38,7 @@ For the current workflow and its limits, see the [user guide](../user/USER_GUIDE
 | Release channel | **TBD — Development, Preview, or Stable** |
 | Publisher | Janne Vuorela |
 | Product licence | MIT for [authorized project-owned material](../../LICENSING.md); third-party terms preserved; official distribution free including commercial use |
-| Supported operating systems | Windows 11 only; supported release editions/builds require the [x64 support evidence](WINDOWS11_X64_SUPPORT.md) |
+| Supported operating systems | Windows 11. Diagnostics R1 installer observations cover Pro x64 build 26300.9711, offline, with Smart App Control Off. [Windows support matrix](WINDOWS11_X64_SUPPORT.md) |
 | Supported architectures | x86-64 (x64) only under PWS-D043; ARM64 native and emulated application routes are outside project scope |
 | Portfolio dependency | None; PaperWorkShell must run without ThirdLife or sibling applications |
 
@@ -52,17 +53,17 @@ the settled target from still-unproved edition/build and scenario coverage.
 
 | Item | Release value |
 |---|---|
-| Installer/package filename | **TBD** |
-| Package format | **TBD** |
-| Package size | **TBD** |
-| SHA-256 | **TBD** |
-| Observed PaperWorkShell publisher signing state | Current engineering builds are unsigned and have no publicly trusted publisher signature. Exact completion-candidate observation **TBD** until the artifact is identified. |
-| Artifact verification method | Compare size and SHA-256 with the independently retained build receipt and verify the installed payload inventory. Exact candidate reference **TBD**. |
-| Source revision/tag | **TBD** |
-| Dependency lock/SBOM reference | **TBD** |
+| Installer/package filename | `PaperWorkShell-pws0807-diagnostics-engineering-r1-win-x64-UNSIGNED.exe` |
+| Package format | Native x64 Inno Setup executable, per-user installation |
+| Package size | 513,022,419 bytes |
+| SHA-256 | `a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8` |
+| Observed PaperWorkShell publisher signing state | Authenticode reported `NotSigned` on the build host and in the clean guest. |
+| Artifact verification method | Match the retained installer receipt and resolved inventory, then verify all 3,219 payload files against that inventory. [R1 artifact evidence](RELEASE_EVIDENCE.md#diagnostics-r1-installer) |
+| Source revision | `e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec` |
+| Dependency lock/SBOM reference | Source revision's `uv.lock`, resolved package inventory, and accompanying CycloneDX and SPDX SBOMs. [R1 artifact evidence](RELEASE_EVIDENCE.md#diagnostics-r1-installer) |
 | Download source | No public download authorized. If publication is approved, record the actual delivery source. |
 | Offline-media source | **TBD or not supported with reason** |
-| Required external runtime | **TBD; release must not require development tools** |
+| Required external runtime | The standalone app and OCR runtimes ship with R1. The clean offline guest installed and launched R1 without a development environment. |
 
 The checked-in dependency inventory is a policy baseline, not the final release SBOM. An
 [unsigned internal engineering installer](../development/pws0802-community-runtime-20261103.md)
@@ -88,24 +89,23 @@ installer is unchanged. Actual engineering target evidence names Windows 11
 Enterprise 26100.9711 x64 and a genuine standard account. Pro 26300.9711 is a host
 observation, not another qualified guest. R7 used the existing instrumented guest;
 R6 clean offline document evidence is reused only within the audited unchanged
-runtime/worker/export boundary. The completion candidate's version and artifact identity
-remain TBD.
+runtime/worker/export boundary.
 
 ## 3. Install, update, repair, and remove
 
 | Item | Release value |
 |---|---|
-| Normal installation path or UI | **TBD** |
-| Privilege/elevation requirement | **TBD; elevation must be limited to the selected operation** |
-| Supported silent installation options | **TBD or not supported with reason** |
-| Default install location | **TBD** |
-| Restart requirement | **TBD** |
-| Update mechanism | Explicit local replacement via the verified per-user installer with **Keep cases** during removal, followed by reopen and applicable migration. The live update channel is disabled. Exact completion-candidate evidence **TBD**. |
-| Repair behavior | Close the app and use the matching setup bundle with `--repair`. Engineering TRACE B8 has scoped evidence. Exact completion-candidate result **TBD**. |
+| Normal installation path or UI | Run `Setup-PaperWorkShell.exe` with the prepared R1 bundle and the receipt digest from the trusted build reference. [Per-user setup](../../packaging/README.md#automated-per-user-setup) |
+| Privilege/elevation requirement | Clean install and launch ran in the signed-in standard user's desktop session. |
+| Supported silent installation options | After reviewing the bundled Microsoft terms, the prepared launcher accepts `--accept-microsoft-terms <terms-sha256>` for unattended installation. [Setup options](../../packaging/README.md#automated-per-user-setup) |
+| Default install location | `%LOCALAPPDATA%\Programs\PaperWorkShell`. The installer registers removal for the current user. |
+| Restart requirement | The observed clean install exited 0 and launched the desktop in the same session. |
+| Update mechanism | For local replacement, choose **Keep cases** during removal and install the prepared successor. B8-to-R1 replacement preserved all 353 baseline case files. R1 uses the local installer with the live update channel disabled. |
+| Repair behavior | Close the app and run the matching prepared bundle with `--repair`. On R1 this restored a missing bundled recipient-terms file, verified all 3,219 files and reopened the app. [Repair evidence](RELEASE_EVIDENCE.md#3-install-launch-update-repair-and-uninstall-evidence) |
 | Rollback behavior and limits | Follow documented local recovery and preserve cases. Case schema compatibility applies. Isolated authenticated-update rehearsal exercised **Restore previous version**. Exact completion-candidate recovery result **TBD**. |
-| Normal uninstall path or UI | **TBD** |
-| User choice about cases during uninstall | **TBD; separate explicit choice required** |
-| Data remaining after uninstall | **TBD by category** |
+| Normal uninstall path or UI | Open **Settings → Apps → Installed apps**, select PaperWorkShell and choose **Uninstall**. |
+| User choice about cases during uninstall | Keeping cases is the default. To delete managed cases, choose review, inspect the inventory, give separate confirmation and acknowledge the reported result before continuing application removal. |
+| Data remaining after uninstall | Preserve removal retained the case and its cached thumbnails, journal and immutable original. The zero-byte per-user lifecycle lock remained. The app root, per-user registration and three shortcuts were removed. |
 | Machine-wide services or scheduled tasks | None unless independently necessary and separately approved; **verify candidate** |
 
 The exact TRACE B8 engineering package supplies standard-user same-build repair and reuse
@@ -129,9 +129,9 @@ installer, updater, migration, or uninstall logic.
 
 | Item | Release value |
 |---|---|
-| Executable or normal launch path | **TBD** |
-| Start-menu/application-menu identity | **TBD** |
-| Normal interactive launch | Intended; exact packaged behavior **TBD** |
+| Executable or normal launch path | `%LOCALAPPDATA%\Programs\PaperWorkShell\runtime\PaperWorkShell.exe` |
+| Start-menu/application-menu identity | **PaperWorkShell** in the current user's Start menu |
+| Normal interactive launch | The installed shortcut opened a fresh responsive R1 desktop under the standard-user token. [Clean install and launch](../development/pws0807-unsigned-completion.md#pws-0802-clean-per-user-installation-and-launch) |
 | Supported file associations | **Not currently supported; any future policy requires independent product value, user control, and uninstall tests** |
 | Open user-selected PDF through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
 | Open user-selected JPEG/PNG through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
@@ -149,10 +149,15 @@ Exact release paths and every retention/deletion rule must be verified on the pa
 Public documentation uses known-folder notation and never contains a real username or private
 machine path.
 
-The [care and recovery guide](../user/CARE_AND_RECOVERY.md) records current location classes,
-retention, deletion and uninstall behavior by category. Exact completion-candidate paths, permissions,
-cleanup and uninstall residue remain **TBD**. Record verified values for each category and link the
-matching [data-location evidence](RELEASE_EVIDENCE.md#4-data-location-and-preservation-evidence).
+On diagnostics R1, preserve removal kept the product-created synthetic case
+under `%LOCALAPPDATA%\PaperWorkShell\Cases` and the zero-byte
+`%LOCALAPPDATA%\PaperWorkShell.lifecycle-v1.lock`. The three external source,
+export, and support-bundle files kept their hashes. The four checked PDF and
+image extension defaults also matched before and after removal. In the explicit
+deletion run the user confirmed one reviewed case. All its files were removed,
+and the three external files kept their hashes.
+[Care and recovery guide](../user/CARE_AND_RECOVERY.md) ·
+[Installer lifecycle evidence](RELEASE_EVIDENCE.md#3-install-launch-update-repair-and-uninstall-evidence).
 
 PaperWorkShell owns responsibility for its configuration and workspace formats, lifecycle, and
 migrations; users retain control of their local configuration and workspace content. ThirdLife may

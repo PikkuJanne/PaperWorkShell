@@ -5877,7 +5877,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: in_progress
+  status: blocked
   critical_path: true
   depends_on:
   - PWS-0801
@@ -5927,10 +5927,20 @@ tasks:
   - distribution-integrity
   - windows
   - release
-  blocker: null
+  blocker:
+    reason: The remaining actual installer-target exhaustion check requires approval for a disposable
+      guest C-volume NTFS quota test under the PWS-0807 matrix.
+    evidence:
+    - docs/development/pws0807-unsigned-completion.md records exact R1 clean installation, repair,
+      preserve uninstall, reinstall and reopen, confirmed case removal, input refusal and provenance.
+    - The retained offline preserve-removed checkpoint 1621732b-33d6-4719-ab0f-d99fcc0e968c
+      and bounded helpers are ready. The host identity refusal and earlier read-only volume
+      capability check do not exercise the installed failure or recovery under PWS-D044.
+    requested_action: Authorize the temporary PWSTest quota on the guest system volume in a disposable offline
+      checkpoint branch, or identify another authorized disposable Windows 11 x64 target for this test.
   evidence:
     completed_at: null
-    revision: candidate:pws0802-internal-20261103-r7
+    revision: candidate:pws0807-diagnostics-engineering-r1
     commands:
     - "R9 actual build and data audit PASS - pws0802-internal-20261104-r9;512732779B;SHA256d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4;NotSigned/internal. Receipt da8f1b8e69ccd5403758e1a83931121be485ff9fa6fe9cb17bd15f5958c7f426; inventoryfa337baa3ea03d251706a74ca20e61c1594d67822af4de41041026e03e6a0121/3195files/650130815B; independent5phaseaudit8e113985f492c35260f6f9f9320636b8571c58f1fea2cc296b04510a49409873. All956thirdparties/MS5objects9paths unchanged. NativeSystemDrive/guardedNotices fixes packaged; no PDF/COM/budgetfix. R7/R8 exact artifacts preserved."
     - "R9 actual standard-user episodes - Notices8aff2298deedbcd351220df7785ab79dacb8cf76ce6d96f9a4c1b277140075fd; firstnativeGUIinput85f3fea709eb0bff92c59ed937c8cb614872d588f8b3388675802bfce99e3e0c; interactiveRepair3b6c10c2d9867e28bf5f43f3ea829a4c78f3b5596dfed8b221263aefa05795f8; Cancel e8b55bc42efab32b6f873471b195dbf4abbc9d915987470c7dd78cf9d4028197; locked-caseconfirmeddeletion ae1040c87c90441b22068689f8b26bcb965aa68ce9051d53ace9208f3e5d415d; preserve75188e18537c4b8ae326fc15526eafcc7e8b3c10444e9c4140ec698e090e9065. All8strictmechanicalepisodes closed/noFallback/journal0. Ordinary verifiedPDF23444B/0fca8b80a936ba121763eece709db2ccc0632d2e86147f44e976e82747b2fa8a, not searchableOCRqualification. Two retainedcases/6externalsexact. Earlier episode reader gaps are superseded only by the separately bound finite supplements; failedtimeout/helperrecords retained. See currentx64ledger for exact remaining rows."
@@ -6073,8 +6083,15 @@ tasks:
       setup verified all 3219 payload files, and both desktop processes ran and exited
       normally as the standard user. The active diagnostics R1 state was restored with all
       358 case files matching. See docs/development/pws0807-unsigned-completion.md.
-      Exact R1 same-build repair, actual installer-target disk exhaustion, and broader
-      qualification remain open.
+    - Exact R1 repair recovered a missing notices file and reverified 3219 files. An
+      application-created one-page case reopened after same-build repair and after preserve
+      uninstall and reinstall. Separate deletion confirmation removed that case. Both removals
+      exited 0, kept three external hashes and four file defaults, and cleared the per-user
+      installation, registration and all three shortcuts. See docs/development/pws0807-unsigned-completion.md.
+    - The R1 artifact audit verified 3219 payload files, 178 build inputs, 957 component records and
+      both reproduced SBOMs. 328 focused source tests passed. The host lifecycle summary SHA-256 is
+      c39eda3f8562428e81121f07479e9c149247281879f8c3205f837861e3ea1d71. Actual installer-target
+      exhaustion and recovery still need execution on the separately authorized disposable branch.
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy

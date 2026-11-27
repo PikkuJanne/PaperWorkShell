@@ -18,6 +18,15 @@ identity, version and hashes remain TBD. [Task graph](../../TASKS.yaml) ·
 | Clean, contained Windows 11 x64 environments for the proposed support claims | Required exact editions and builds are TBD. Capture actual editions, builds, architecture, target scope, privileges, NVDA and PDF-reader versions, network state, and installed product baseline before each run. | Start from fresh user and machine state for clean installation. Use separately seeded states for update, migration, removal, and recovery. [Windows support boundary](../release/WINDOWS11_X64_SUPPORT.md) |
 | Contained Windows 11 x64 environment with bounded exhaustion of the ordinary fixed install volume | The Pro Hyper-V guest reports NTFS quota capability and one system partition record. This read-only check establishes a platform capability. A separately authorized, configured disposable target is still needed. Preserve the earlier unavailable Windows Sandbox result. | Exercise real pre-install refusal, exhaustion during installation or repair, recovery, and preserved case/external hashes. Restore only the owned test environment after retaining its receipts. [Installer low-disk record](pws0802-x64-qualification-20261104.md#exact-remaining-x64-observations-and-external-gates) |
 
+The 2026-11-27 PWS-0802 run adds clean per-user install, normal shortcut and
+Notices launch, same-build repair, preserve removal, reinstall and case reopen,
+and separately confirmed case deletion for diagnostics R1 on Pro 26300.9711.
+The installer and payload audit reproduced the component notices and both SBOMs.
+The preserved removed-state checkpoint `PWS0802-R1-removed-product-case-20261127`
+contains the application-created synthetic case and external preservation files
+for the bounded installer disk-exhaustion check.
+[R1 installer qualification](pws0807-unsigned-completion.md#pws-0802-installer-provenance-and-repair)
+
 Before testing, record the exact installer and payload inventory, source revision,
 lock, SBOM, component licenses, sizes, SHA-256 values and observed signing state.
 Compare the installer and inventory against the independently retained build
@@ -132,11 +141,10 @@ inventory](../release/RELEASE_EVIDENCE.md#6-synthetic-release-sample-package)
 1. Bind the exact unsigned candidate to its installer, source revision,
    receipt, payload inventory and observed signing state. Carry forward only
    observations within their proved candidate and scenario scope.
-2. Establish a clean authorized x64 target for installation and a contained
-   target with demonstrable bounded exhaustion at the ordinary install path.
-   The earlier Sandbox capability result and Hyper-V read-only probe leave
-   actual disk exhaustion unrun. Record clean install, setup and case migration
-   separately from B8 same-build repair and R1 replacement.
+2. Use the observed clean Pro x64 installation for the R1 installer row.
+   Exercise bounded exhaustion at the ordinary install path on a separately
+   authorized disposable target. Keep the pre-install refusal, failure during
+   installation or repair, subsequent recovery, and preservation receipts.
 3. Record all applicable product results and genuine failures against the exact
    candidate. Resolve supported editions/builds, version, reporting and remaining
    defects in the release documents for PWS-0808. External publication has its own

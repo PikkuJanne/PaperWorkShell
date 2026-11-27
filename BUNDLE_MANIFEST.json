@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 547388,
-      "sha256": "9ba006b591d3ff98e7ed9fd776a4d0e2537e1966ea3edec09a2e3b392ccbaacc"
+      "bytes": 549005,
+      "sha256": "8642f013da8e247b8a4eb245bfcebdbaf4ef6a65bde6bcb1a3be92eb37074b32"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,13 +65,13 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 40152,
-      "sha256": "b8e7fcfcbb43da59648e7c381d8a88235cd79616e6241c706792a9c398b8e155"
+      "bytes": 45253,
+      "sha256": "ce93e45137a12c6e66571e15113523ea59f433169afeec631607ebb1dbe79689"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 21990,
-      "sha256": "76c194a71ad72ed11dc963cf3fafa6a061a1cf9886a0676ededc26efccc1fd95"
+      "bytes": 24065,
+      "sha256": "31efc1aa22bf5e2585ce72c7fbbd1d2051f71e153a9dd82de4909d27e4dcbf04"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -590,8 +590,8 @@
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 9364,
-      "sha256": "e11c1018730498e5929f664ec9e4bc0cfdf4b99d439564c56204f1fbb24b3040"
+      "bytes": 9430,
+      "sha256": "f5cf25a689a714d7d1fa0f28714ade7703878f31ce737f6e0307a8a77928ff38"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
@@ -675,13 +675,13 @@
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 19516,
-      "sha256": "2033eab97a06f6622138d2e681925f86b22d5d7ccfa2281bded88f555739eb9a"
+      "bytes": 20079,
+      "sha256": "7df08f539a7ae3456f2110f0e5325797b9fe27509c3cbc27b3d532ff8d099a27"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 11261,
-      "sha256": "355337d1934ca76c2845515232fe70f79388438cb4f76895361e42180bded672"
+      "bytes": 16063,
+      "sha256": "07902cc21d06eff80d23e3f126593ea077ae382c85bde9bf5b9d8393ef61392a"
     }
   ],
   "validation": {
