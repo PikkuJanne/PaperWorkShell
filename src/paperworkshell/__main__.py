@@ -121,6 +121,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcome,
     PdfExportPlan,
     PdfExportProfile,
+    PdfExportSelection,
     reject_pdf_export,
 )
 from paperworkshell.domain.pdf_image_stages import PdfImageStageRequest
@@ -1062,6 +1063,7 @@ class _LazyPagesPdfExportService:
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink,
         make_searchable: bool = False,
+        selection: PdfExportSelection | None = None,
     ) -> PdfExportOutcome | FlattenedPdfExportOutcome | SearchablePdfExportOutcome:
         if self._worker_resources.closed:
             reject_pdf_export(PdfExportErrorCode.WORKER_FAILED, "export.runtime_closed")
@@ -1070,7 +1072,9 @@ class _LazyPagesPdfExportService:
         if deadline():
             reject_pdf_export(PdfExportErrorCode.TIMED_OUT, "export.runtime_deadline")
         loaded = WindowsManifestRepository(self._manager).load(case_id)
-        pipeline = select_ordinary_pdf_pipeline(loaded.snapshot, make_searchable=make_searchable)
+        pipeline = select_ordinary_pdf_pipeline(
+            loaded.snapshot, make_searchable=make_searchable, selection=selection
+        )
         if pipeline is OrdinaryPdfPipeline.SEARCHABLE:
             if not isinstance(self._sources, CommittedSearchablePdfSourceBatchStore):
                 reject_pdf_export(
@@ -1098,6 +1102,7 @@ class _LazyPagesPdfExportService:
                 cancellation=cancellation,
                 progress=progress,
                 require_ocr_success=True,
+                selection=selection,
             )
         if pipeline is OrdinaryPdfPipeline.FLATTENED:
             if self._rasterizer is None:
@@ -1124,6 +1129,7 @@ class _LazyPagesPdfExportService:
                 deadline=deadline,
                 cancellation=cancellation,
                 progress=progress,
+                selection=selection,
             )
         if self._service is None:
             composition = build_windows_pdf_export_worker_composition(
@@ -1150,6 +1156,7 @@ class _LazyPagesPdfExportService:
             deadline=deadline,
             cancellation=cancellation,
             progress=progress,
+            selection=selection,
         )
 
     def _retain(self, closer: Callable[[], None]) -> None:

@@ -42,6 +42,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcome,
     PdfExportOutcomeStatus,
     PdfExportProgress,
+    PdfExportSelection,
 )
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryPlanBinding,
@@ -69,6 +70,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfSourceSignatureState,
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
+    build_searchable_pdf_export_plan_for_pages,
 )
 from paperworkshell.domain.signed_source_policy import (
     SIGNED_SOURCE_CONFIRMATION_CODE,
@@ -106,21 +108,21 @@ def _plan() -> SearchablePdfExportPlan:
 
 
 def _report(plan: SearchablePdfExportPlan) -> SearchablePdfVerificationReport:
-    image, signed_pdf = plan.pages
-    return SearchablePdfVerificationReport.for_verified_plan(
-        plan,
-        output_sha256=hashlib.sha256(PAYLOAD).hexdigest(),
-        output_byte_size=len(PAYLOAD),
-        page_outcomes=(
-            SearchablePdfPageOutcome(
-                SearchablePdfPageEligibility(
-                    image.output_page_index,
-                    image.page_id,
-                    SearchablePdfPageEligibilityCode.OCR_REQUIRED_IMAGE_SOURCE,
-                ),
-                SearchablePdfPageOutcomeCode.OCR_TEXT_VERIFIED,
-                SearchablePdfPageSearchability.EXTRACTABLE_TEXT_PRESENT_OCR,
+    image = plan.pages[0]
+    outcomes = [
+        SearchablePdfPageOutcome(
+            SearchablePdfPageEligibility(
+                image.output_page_index,
+                image.page_id,
+                SearchablePdfPageEligibilityCode.OCR_REQUIRED_IMAGE_SOURCE,
             ),
+            SearchablePdfPageOutcomeCode.OCR_TEXT_VERIFIED,
+            SearchablePdfPageSearchability.EXTRACTABLE_TEXT_PRESENT_OCR,
+        )
+    ]
+    if len(plan.pages) == 2:
+        signed_pdf = plan.pages[1]
+        outcomes.append(
             SearchablePdfPageOutcome(
                 SearchablePdfPageEligibility(
                     signed_pdf.output_page_index,
@@ -130,8 +132,13 @@ def _report(plan: SearchablePdfExportPlan) -> SearchablePdfVerificationReport:
                 SearchablePdfPageOutcomeCode.OCR_BLOCKED_SIGNED_SOURCE_RETAINED,
                 SearchablePdfPageSearchability.NOT_VERIFIED,
                 SearchablePdfPageFailureCode.SIGNATURE_STATE_BLOCKED,
-            ),
-        ),
+            )
+        )
+    return SearchablePdfVerificationReport.for_verified_plan(
+        plan,
+        output_sha256=hashlib.sha256(PAYLOAD).hexdigest(),
+        output_byte_size=len(PAYLOAD),
+        page_outcomes=tuple(outcomes),
     )
 
 
@@ -500,6 +507,32 @@ def test_service_commits_verified_mixed_candidate_and_reuses_history_v1() -> Non
     assert retries.lease.closed
     assert progress[0].completed_pages == 0
     assert progress[-1].completed_pages == outcome.report.plan.page_count
+
+
+def test_searchable_range_keeps_ocr_and_history_inside_selected_pages() -> None:
+    snapshot = _snapshot()
+    selected_page = _plan().pages[0].page_id
+    selection = PdfExportSelection(CASE_ID, snapshot.revision, (selected_page,))
+    planned = build_searchable_pdf_export_plan_for_pages(snapshot, (selected_page,))
+    service, sources, broker, destination, history, _retries = _service(plan=planned)
+
+    outcome = service.export_pdf(
+        CASE_ID,
+        DESTINATION,
+        selection=selection,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+        require_ocr_success=True,
+    )
+
+    assert outcome.report.plan == planned
+    assert outcome.report.ocr_text_page_count == 1
+    assert outcome.report.needs_review_page_count == 0
+    assert len(planned.sources) == 1
+    assert sources.borrow_calls == broker.export_calls == 1
+    assert destination.committed
+    assert history.bindings[0].page_count == 1
+    assert not history.bindings[0].unsigned_derivative
 
 
 def test_service_binds_selected_multiple_language_set_into_plan_and_fingerprint() -> None:

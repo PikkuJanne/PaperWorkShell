@@ -33,7 +33,9 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcomeStatus,
     PdfExportProgress,
     PdfExportProgressPhase,
+    PdfExportSelection,
     reject_pdf_export,
+    require_pdf_export_selection,
 )
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
@@ -67,8 +69,10 @@ from paperworkshell.overlays.exporting import (
     FlattenedPdfExportPlan,
     FlattenedPdfExportVerificationReport,
     build_flattened_pdf_export_plan,
+    build_flattened_pdf_export_plan_for_pages,
     reject_flattened_pdf_export,
     required_visible_signature_assets,
+    required_visible_signature_assets_for_pages,
 )
 from paperworkshell.overlays.models import OverlayAssetRecord
 from paperworkshell.overlays.rendering import OverlayRasterAsset, OverlayRenderLimits
@@ -243,6 +247,7 @@ class FlattenedPdfExportService:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: FlattenedPdfExportProgressSink = _ignore_progress,
+        selection: PdfExportSelection | None = None,
     ) -> FlattenedPdfExportOutcome:
         """Return only after no-replace commit and destination reopen succeed."""
 
@@ -260,8 +265,13 @@ class FlattenedPdfExportService:
             )
         _require_active(deadline, cancellation)
         snapshot, manifest_ids = self._load_snapshot(case_id)
-        assets = required_visible_signature_assets(snapshot)
-        planning_plan = _build_planning_plan(snapshot, assets)
+        require_pdf_export_selection(snapshot, selection)
+        assets = (
+            required_visible_signature_assets(snapshot)
+            if selection is None
+            else required_visible_signature_assets_for_pages(snapshot, selection.page_ids)
+        )
+        planning_plan = _build_planning_plan(snapshot, assets, selection)
         self._require_input_reference_capacity(planning_plan, len(assets))
         self._confirm_signed_sources(snapshot, planning_plan)
         maximum_output_bytes = self._maximum_output_bytes()
@@ -291,9 +301,10 @@ class FlattenedPdfExportService:
             deadline=deadline,
             cancellation=cancellation,
         )
-        plan = build_flattened_pdf_export_plan(
+        plan = _build_export_plan(
             snapshot,
             {asset_id: source.metadata for asset_id, source in rasters.items()},
+            selection,
         )
         if plan.base_plan != planning_plan.base_plan or plan.pages != planning_plan.pages:
             reject_flattened_pdf_export(
@@ -718,10 +729,11 @@ def _history_binding(plan: FlattenedPdfExportPlan) -> PdfExportHistoryPlanBindin
 def _build_planning_plan(
     snapshot: ManifestSnapshot,
     assets: tuple[OverlayAssetRecord, ...],
+    selection: PdfExportSelection | None,
 ) -> FlattenedPdfExportPlan:
     """Resolve pages/sources before decode using inert metadata-only placeholders."""
 
-    return build_flattened_pdf_export_plan(
+    return _build_export_plan(
         snapshot,
         {
             asset.asset_id: OverlayRasterAsset(
@@ -734,7 +746,18 @@ def _build_planning_plan(
             )
             for asset in assets
         },
+        selection,
     )
+
+
+def _build_export_plan(
+    snapshot: ManifestSnapshot,
+    assets: Mapping[UUID, OverlayRasterAsset],
+    selection: PdfExportSelection | None,
+) -> FlattenedPdfExportPlan:
+    if selection is None:
+        return build_flattened_pdf_export_plan(snapshot, assets)
+    return build_flattened_pdf_export_plan_for_pages(snapshot, selection.page_ids, assets)
 
 
 def _require_candidate(

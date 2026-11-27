@@ -52,6 +52,10 @@ files yourself after reviewing them.
 - **Reorder pages** (Ctrl+Shift+O) opens a proposed order with visible move
   buttons. Confirm only after the order looks right. **Undo** (Ctrl+Z) and
   **Redo** (Ctrl+Y) apply to organizer actions in the current session.
+- To save part of a packet, open **Export PDF** and turn on **Export a page
+  range**. Enter the first and last assembled page numbers. Use the same
+  number in both fields to save one page. Review the range before choosing
+  a new filename. The full packet remains available in the case.
 - **Recipe** shows the saved steps and their settings. **Save recipe** records
   supported source slots, page selection, order, and rotation. To **Apply
   recipe**, first add the matching files in slot order. **Export PowerShell

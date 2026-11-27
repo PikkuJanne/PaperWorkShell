@@ -12,6 +12,7 @@ from paperworkshell.domain.page_operations import (
     NormalizedPageBox,
     PageCommandHistory,
 )
+from paperworkshell.domain.pdf_export import PdfExportSelection, require_pdf_export_selection
 from paperworkshell.domain.redaction import require_redaction_export_allowed
 from paperworkshell.overlays.models import OverlayCollection
 
@@ -58,13 +59,18 @@ def _reject(code: OrdinaryPdfExportErrorCode) -> Never:
 
 
 def select_ordinary_pdf_pipeline(
-    snapshot: ManifestSnapshot, *, make_searchable: bool
+    snapshot: ManifestSnapshot,
+    *,
+    make_searchable: bool,
+    selection: PdfExportSelection | None = None,
 ) -> OrdinaryPdfPipeline:
     """Inspect validated intent only; never parse source documents in the GUI."""
 
     require_redaction_export_allowed(snapshot.document)
+    require_pdf_export_selection(snapshot, selection)
     projection = PageCommandHistory.from_snapshot(snapshot).projection
-    active = tuple(projection.state_for(page_id) for page_id in projection.page_sequence)
+    page_ids = projection.page_sequence if selection is None else selection.page_ids
+    active = tuple(projection.state_for(page_id) for page_id in page_ids)
     collection = OverlayCollection.from_manifest_document(snapshot.document)
     has_marks = any(
         collection.visible_stack(

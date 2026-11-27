@@ -66,6 +66,7 @@ class TraceExportEvidence:
     checks: tuple[TraceCheck, ...]
     ocr_language_set_id: str | None = None
     execution_details: tuple[str, ...] = ()
+    selected_range: bool = False
 
     @property
     def page_count(self) -> int:
@@ -175,13 +176,28 @@ def trace_export_evidence(
     plan = outcome.state.trace_plan
     committed = outcome.committed_export
     report = committed.report
-    page_ids = tuple(page.page_id for page in outcome.state.pages)
-    if plan is None or len(page_ids) != report.page_count or not committed.destination_reopened:
+    selection = outcome.selection
+    if selection is None:
+        page_ids = tuple(page.page_id for page in outcome.state.pages)
+        plan_fingerprint = plan.fingerprint if plan is not None else None
+    else:
+        page_ids = selection.page_ids
+        plan_fingerprint = outcome.selected_range_plan_fingerprint
+    if (
+        plan_fingerprint is None
+        or len(page_ids) != report.page_count
+        or not committed.destination_reopened
+    ):
         return None
     try:
         history = decode_pdf_export_history_record(committed.history_retry.record_payload)
     except PdfExportHistoryError:
         # Preserve the already-completed export if a receipt cannot be displayed.
+        return None
+    if selection is not None and (
+        selection.case_id != committed.history_retry.case_id
+        or selection.revision != history.manifest_revision
+    ):
         return None
     checks = [
         TraceCheck(
@@ -206,6 +222,8 @@ def trace_export_evidence(
         if make_searchable
         else tr("Output option: export PDF without adding searchable text."),
     )
+    if selection is not None:
+        execution_details += (tr("Output scope: selected page range."),)
     ocr_language_set_id = None
     if searchable is not None:
         profile = searchable.plan.profile
@@ -241,7 +259,7 @@ def trace_export_evidence(
         committed.history_retry.case_id,
         committed.export_id,
         history.manifest_revision,
-        plan.fingerprint,
+        plan_fingerprint,
         report.semantic_fingerprint,
         destination,
         report.output_sha256,
@@ -251,4 +269,5 @@ def trace_export_evidence(
         tuple(checks),
         ocr_language_set_id,
         execution_details,
+        selected_range=selection is not None,
     )

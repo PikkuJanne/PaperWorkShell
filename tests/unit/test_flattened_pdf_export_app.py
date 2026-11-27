@@ -47,6 +47,7 @@ from paperworkshell.domain.pdf_export import (
     PdfExportPlan,
     PdfExportProgress,
     PdfExportProgressPhase,
+    PdfExportSelection,
 )
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryPlanBinding,
@@ -694,6 +695,37 @@ def test_signature_raster_flow_uses_exact_asset_facts_and_policy_edge() -> None:
     assert frozenset(stack.broker.rasters) == {ASSET_IDS[0]}
     assert stack.broker.plan is outcome.report.plan
     assert stack.broker.plan.assets[0].raster_asset == (stack.broker.rasters[ASSET_IDS[0]].metadata)
+
+
+def test_range_flattens_only_the_chosen_page_and_its_saved_marks() -> None:
+    document = _document(signature_assets=1)
+    source = cast(list[dict[str, object]], document["sources"])[0]
+    source["page_count"] = 2
+    second = "30000000-0000-4000-8000-000000000732"
+    cast(list[dict[str, object]], document["pages"]).append(
+        {"page_id": second, "source_id": str(SOURCE_ID), "source_page_index": 1}
+    )
+    document["page_sequence_base"] = document["page_sequence"] = [second, str(PAGE_ID)]
+    stack = _stack(document=document)
+    selection = PdfExportSelection(CASE_ID, stack.manifests.snapshot.revision, (PAGE_ID,))
+
+    outcome = stack.service.export_pdf(
+        CASE_ID,
+        DESTINATION,
+        selection=selection,
+        deadline=lambda: False,
+        cancellation=lambda: False,
+    )
+
+    plan = outcome.report.plan
+    assert tuple(page.base_page.page_id for page in plan.pages) == (PAGE_ID,)
+    assert plan.visible_overlay_count == 2
+    assert plan.placed_signature_image_count == 1
+    assert len(stack.rasterizer.requests) == 1
+    assert stack.rasterizer.requests[0].asset_id == ASSET_IDS[0]
+    assert stack.broker.plan is plan
+    assert stack.destination.commit_calls == 1
+    assert stack.history.binding is not None and stack.history.binding.page_count == 1
 
 
 def test_input_reference_capacity_accepts_255_bindings_and_rejects_256_before_work() -> None:

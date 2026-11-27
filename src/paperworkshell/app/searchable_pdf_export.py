@@ -35,7 +35,9 @@ from paperworkshell.domain.pdf_export import (
     PdfExportOutcomeStatus,
     PdfExportProgress,
     PdfExportProgressPhase,
+    PdfExportSelection,
     reject_pdf_export,
+    require_pdf_export_selection,
 )
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
@@ -59,6 +61,7 @@ from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfPageOutcomeCode,
     SearchablePdfVerificationReport,
     build_searchable_pdf_export_plan,
+    build_searchable_pdf_export_plan_for_pages,
     reject_searchable_pdf_export,
 )
 from paperworkshell.domain.signed_source_policy import (
@@ -220,6 +223,7 @@ class SearchablePdfExportService:
         progress: SearchablePdfExportProgressSink = _ignore_progress,
         profile: SearchablePdfExportProfile | None = None,
         require_ocr_success: bool = False,
+        selection: PdfExportSelection | None = None,
     ) -> SearchablePdfExportOutcome:
         """Return only after no-replace commit and destination reopen succeed."""
 
@@ -239,7 +243,7 @@ class SearchablePdfExportService:
             )
         _require_active(deadline, cancellation)
         selected_profile = self._select_profile(profile)
-        plan, manifest_ids = self._load_plan(case_id, selected_profile)
+        plan, manifest_ids = self._load_plan(case_id, selected_profile, selection)
         try:
             maximum_output_bytes = self._broker.maximum_output_bytes
         except BaseException:
@@ -516,6 +520,7 @@ class SearchablePdfExportService:
         self,
         case_id: UUID,
         profile: SearchablePdfExportProfile,
+        selection: PdfExportSelection | None,
     ) -> tuple[SearchablePdfExportPlan, frozenset[UUID]]:
         try:
             loaded = self._manifests.load(case_id)
@@ -524,7 +529,14 @@ class SearchablePdfExportService:
                     SearchablePdfExportErrorCode.MANIFEST_INVALID,
                     "searchable.manifest_load",
                 )
-            plan = build_searchable_pdf_export_plan(loaded.snapshot, profile=profile)
+            require_pdf_export_selection(loaded.snapshot, selection)
+            plan = (
+                build_searchable_pdf_export_plan(loaded.snapshot, profile=profile)
+                if selection is None
+                else build_searchable_pdf_export_plan_for_pages(
+                    loaded.snapshot, selection.page_ids, profile=profile
+                )
+            )
             require_signed_source_modification_confirmation(
                 loaded.snapshot,
                 tuple(
@@ -536,7 +548,7 @@ class SearchablePdfExportService:
                 ),
             )
             return plan, manifest_export_identifier_ids(loaded.snapshot.document)
-        except SearchablePdfExportError, RedactionError:
+        except PdfExportError, SearchablePdfExportError, RedactionError:
             raise
         except SignedSourcePolicyError:
             raise

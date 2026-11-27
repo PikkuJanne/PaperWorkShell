@@ -32,9 +32,12 @@ from paperworkshell.domain.pdf_export import (
     PdfExportProfile,
     PdfExportProgress,
     PdfExportProgressPhase,
+    PdfExportSelection,
     PdfExportVerificationReport,
     build_pdf_export_plan,
+    build_pdf_export_plan_for_pages,
     reject_pdf_export,
+    require_pdf_export_selection,
 )
 from paperworkshell.domain.pdf_export_history import (
     PdfExportHistoryError,
@@ -204,6 +207,7 @@ class PdfExportService:
         deadline: DeadlineProbe,
         cancellation: CancellationProbe,
         progress: PdfExportProgressSink = _ignore_progress,
+        selection: PdfExportSelection | None = None,
     ) -> PdfExportOutcome:
         """Return success only after destination reopen; history failure stays pending."""
 
@@ -217,7 +221,7 @@ class PdfExportService:
         ):
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.request")
         _require_active(deadline, cancellation)
-        plan, manifest_ids = self._load_plan(case_id)
+        plan, manifest_ids = self._load_plan(case_id, selection)
         estimated_output_bytes = sum(source.byte_size for source in plan.sources)
         capacity_failed = False
         try:
@@ -476,12 +480,21 @@ class PdfExportService:
                 "export.retry_inventory",
             )
 
-    def _load_plan(self, case_id: UUID) -> tuple[PdfExportPlan, frozenset[UUID]]:
+    def _load_plan(
+        self, case_id: UUID, selection: PdfExportSelection | None
+    ) -> tuple[PdfExportPlan, frozenset[UUID]]:
         try:
             loaded = self._manifests.load(case_id)
             if type(loaded) is not ManifestLoadResult or loaded.snapshot.case_id != case_id:
                 reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.manifest_load")
-            plan = build_pdf_export_plan(loaded.snapshot, profile=self._profile)
+            require_pdf_export_selection(loaded.snapshot, selection)
+            plan = (
+                build_pdf_export_plan(loaded.snapshot, profile=self._profile)
+                if selection is None
+                else build_pdf_export_plan_for_pages(
+                    loaded.snapshot, selection.page_ids, profile=self._profile
+                )
+            )
             require_signed_source_modification_confirmation(
                 loaded.snapshot,
                 tuple(

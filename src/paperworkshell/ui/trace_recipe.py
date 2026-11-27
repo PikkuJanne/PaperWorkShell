@@ -290,12 +290,13 @@ class TraceRecipePane(QWidget):
                 )
             )
         else:
+            message = (
+                mark("Verified page range · {value1} pages · Plan revision {value2}")
+                if evidence.selected_range
+                else mark("Verified PDF · {value1} pages · Plan revision {value2}")
+            )
             self._result_status.setText(
-                tr(
-                    "Verified PDF · {value1} pages · Plan revision {value2}",
-                    value1=evidence.page_count,
-                    value2=evidence.plan_revision,
-                )
+                tr(message, value1=evidence.page_count, value2=evidence.plan_revision)
             )
 
 

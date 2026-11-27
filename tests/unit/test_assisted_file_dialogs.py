@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QCheckBox, QFileDialog, QWidget
 
 from paperworkshell.domain.assisted_use import AssistedUseSnapshot, AssistedUseStatus
 from paperworkshell.ui.removal_export_review import RemovalExportReviewDialog
+from paperworkshell.ui.window import _PdfExportOptions
 from tests.unit.test_package_export_window import CASE_ID, _application, _open, _window
 from tests.unit.test_removal_export_desktop import _backend
 
@@ -31,7 +32,7 @@ def test_every_chooser_preserves_policy_and_uses_qt_ownership_during_assistance(
     picker: _Picker, assisted: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     with _window() as (window, commands, worker):
-        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: _PdfExportOptions(False))
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         if assisted:
             window._assisted_session.changed(
@@ -95,7 +96,9 @@ def test_every_chooser_preserves_policy_and_uses_qt_ownership_during_assistance(
             if picker == "import":
                 window._choose_import()
             elif picker == "pages":
-                monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
+                monkeypatch.setattr(
+                    window, "_ask_pdf_export_options", lambda: _PdfExportOptions(False)
+                )
                 window._choose_pages_pdf_export()
             elif picker == "removal":
                 window._choose_removal_destination(False)
@@ -113,7 +116,7 @@ def test_genuine_qt_owned_picker_is_hidden_on_external_foreground_loss(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with _window() as (window, commands, worker):
-        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: False)
+        monkeypatch.setattr(window, "_ask_pdf_export_options", lambda: _PdfExportOptions(False))
         commands.assisted_check_requested.disconnect(worker.check_assisted_use)
         controller = window._assisted_session
         controller.changed(

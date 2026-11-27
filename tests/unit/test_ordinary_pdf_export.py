@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import cast
+from uuid import UUID
 
 import pytest
 
@@ -12,13 +13,20 @@ from paperworkshell.app.ordinary_pdf_export import (
     OrdinaryPdfPipeline,
     select_ordinary_pdf_pipeline,
 )
+from paperworkshell.app.redaction_tools import RedactionToolsState
+from paperworkshell.domain.pdf_export import (
+    PdfExportError,
+    PdfExportErrorCode,
+    PdfExportSelection,
+)
+from paperworkshell.domain.redaction import RedactionError, RedactionErrorCode
 from paperworkshell.domain.searchable_pdf_export import (
     SearchablePdfExportError,
     SearchablePdfExportErrorCode,
 )
 from paperworkshell.ui.backend import sanitize_ui_failure
 from tests.unit.test_flattened_pdf_export import _snapshot as _marked_snapshot
-from tests.unit.test_organizer_backend import _document, _snapshot
+from tests.unit.test_organizer_backend import IMAGE_PAGE_ID, PAGE_IDS, _document, _snapshot
 from tests.unit.test_searchable_pdf_export_service import CASE_ID, DESTINATION, _service
 
 
@@ -51,14 +59,48 @@ def test_saved_visible_pdf_marks_select_flattened_pipeline() -> None:
 
 
 def test_mixed_marks_fail_before_export_instead_of_losing_any_mark() -> None:
-    document = _document(include_image=True)
+    document = _document(page_count=1, include_image=True)
     marked = _marked_snapshot().document
     record = dict(cast(list[dict[str, object]], marked["overlays"])[0])
     record["page_id"] = cast(list[str], document["page_sequence"])[0]
     document["overlays"] = [record]
+    snapshot = _snapshot(document)
     with pytest.raises(OrdinaryPdfExportError) as raised:
-        select_ordinary_pdf_pipeline(_snapshot(document), make_searchable=False)
+        select_ordinary_pdf_pipeline(snapshot, make_searchable=False)
     assert raised.value.code is OrdinaryPdfExportErrorCode.COMBINATION_UNSUPPORTED
+    marked_range = PdfExportSelection(snapshot.case_id, snapshot.revision, (PAGE_IDS[0],))
+    image_range = PdfExportSelection(snapshot.case_id, snapshot.revision, (IMAGE_PAGE_ID,))
+    assert (
+        select_ordinary_pdf_pipeline(snapshot, make_searchable=False, selection=marked_range)
+        is OrdinaryPdfPipeline.FLATTENED
+    )
+    assert (
+        select_ordinary_pdf_pipeline(snapshot, make_searchable=False, selection=image_range)
+        is OrdinaryPdfPipeline.STRUCTURAL
+    )
+    with pytest.raises(OrdinaryPdfExportError) as incompatible:
+        select_ordinary_pdf_pipeline(snapshot, make_searchable=True, selection=marked_range)
+    assert incompatible.value.code is OrdinaryPdfExportErrorCode.COMBINATION_UNSUPPORTED
+
+
+def test_range_cannot_bypass_an_unapplied_mark_on_another_active_page() -> None:
+    original = _snapshot(_document(page_count=2))
+    marked = RedactionToolsState.from_snapshot(original, PAGE_IDS[0]).create(
+        id_factory=lambda: UUID("80100000-0000-4000-8000-000000000001")
+    )
+    snapshot = _snapshot(marked.to_candidate(original))
+    selection = PdfExportSelection(snapshot.case_id, snapshot.revision, (PAGE_IDS[1],))
+    with pytest.raises(RedactionError) as raised:
+        select_ordinary_pdf_pipeline(snapshot, make_searchable=False, selection=selection)
+    assert raised.value.code is RedactionErrorCode.PIPELINE_DISABLED
+
+
+@pytest.mark.parametrize("page_ids", ((), (PAGE_IDS[0], PAGE_IDS[0])))
+def test_range_rejects_empty_or_duplicate_selection(page_ids: tuple[UUID, ...]) -> None:
+    snapshot = _snapshot(_document())
+    with pytest.raises(PdfExportError) as raised:
+        PdfExportSelection(snapshot.case_id, snapshot.revision, page_ids)
+    assert raised.value.code is PdfExportErrorCode.RANGE_INVALID
 
 
 def test_explicit_searchable_export_blocks_failed_or_blocked_ocr_before_publication() -> None:

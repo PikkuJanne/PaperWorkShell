@@ -93,6 +93,8 @@ from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
     PdfExportProgress,
     PdfExportProgressPhase,
+    PdfExportSelection,
+    reject_pdf_export,
 )
 from paperworkshell.domain.pdf_thumbnails import (
     PdfThumbnailError,
@@ -866,8 +868,42 @@ class OrganizerBackendWorker(QObject):
 
         self._export_pages_pdf(operation_id, destination, cancellation, make_searchable=True)
 
+    @Slot(int, object, object, object, bool)
+    def export_page_range_pdf(
+        self,
+        operation_id: int,
+        destination: object,
+        cancellation: object,
+        selection: object,
+        make_searchable: bool,
+    ) -> None:
+        """Export the exact saved range reviewed in the desktop dialog."""
+
+        if type(selection) is not PdfExportSelection:
+            self._run_long(
+                operation_id,
+                tr("PDF export"),
+                lambda _backend: reject_pdf_export(
+                    PdfExportErrorCode.RANGE_INVALID, "export.ui_range"
+                ),
+            )
+            return
+        self._export_pages_pdf(
+            operation_id,
+            destination,
+            cancellation,
+            make_searchable=make_searchable,
+            selection=selection,
+        )
+
     def _export_pages_pdf(
-        self, operation_id: int, destination: object, cancellation: object, *, make_searchable: bool
+        self,
+        operation_id: int,
+        destination: object,
+        cancellation: object,
+        *,
+        make_searchable: bool,
+        selection: PdfExportSelection | None = None,
     ) -> None:
 
         def action(backend: OrganizerBackend) -> None:
@@ -877,7 +913,8 @@ class OrganizerBackendWorker(QObject):
                 destination,
                 cancellation=cancellation.cancelled,
                 progress=lambda value: self._pdf_export_progress(operation_id, value),
-                **({"make_searchable": True} if make_searchable else {}),
+                make_searchable=make_searchable,
+                selection=selection,
             )
             evidence = trace_export_evidence(outcome, destination, make_searchable=make_searchable)
             if evidence is not None:
@@ -3190,6 +3227,7 @@ class OrganizerBackendCommands(QObject):
     compression_discard_requested = Signal(int)
     pages_pdf_export_requested = Signal(int, object, object)
     searchable_pdf_export_requested = Signal(int, object, object)
+    page_range_pdf_export_requested = Signal(int, object, object, object, bool)
     removal_export_review_requested = Signal(int)
     removal_pdf_export_requested = Signal(int, object, object, bool, object)
     package_review_cancel_requested = Signal(int)
@@ -3233,6 +3271,7 @@ class OrganizerBackendCommands(QObject):
         self.import_requested.connect(worker.import_source)
         self.pages_pdf_export_requested.connect(worker.export_pages_pdf)
         self.searchable_pdf_export_requested.connect(worker.export_searchable_pdf)
+        self.page_range_pdf_export_requested.connect(worker.export_page_range_pdf)
         self.removal_export_review_requested.connect(worker.begin_removal_export)
         self.removal_pdf_export_requested.connect(worker.export_removal_pdf)
         self.thumbnails_requested.connect(worker.get_thumbnails)

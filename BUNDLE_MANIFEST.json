@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 557917,
-      "sha256": "682c9eedb193c91734420ab74d43877a7eb39575ce3dcbe30849178041065585"
+      "bytes": 558006,
+      "sha256": "a17afe674003c3864a682ba8bbd959a88cfc3eef1f8f39fbb123fd0fcc4cf03a"
     },
     {
       "path": "TASKS.schema.json",
@@ -490,8 +490,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 766,
-      "sha256": "413ac300caccdde9f2737e86deb205cfa8de9299d9fbff9b776c08ec42636b2d"
+      "bytes": 752,
+      "sha256": "ec5563e0e29323f85566cecde35becef9a3a1204affa63559de2093020687c71"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -665,8 +665,8 @@
     },
     {
       "path": "docs/user/USER_GUIDE.md",
-      "bytes": 12754,
-      "sha256": "8b63d350633aa99c8d067bcade66a50caf4554279ef5686285955c848356fd97"
+      "bytes": 13043,
+      "sha256": "0feeecfb63a624618fa55f2efb8b8304da3b917b910eaa299eaa5578f7be8d81"
     },
     {
       "path": "docs/user/CARE_AND_RECOVERY.md",
@@ -712,6 +712,11 @@
       "path": "docs/development/pws0815-trace-page-navigation.md",
       "bytes": 11099,
       "sha256": "2f345c784f0f353d2fced1522c7e4566b09f5e0db811ab711e8c08feb6233ea1"
+    },
+    {
+      "path": "docs/development/pws0816-page-range.md",
+      "bytes": 2104,
+      "sha256": "1c9b665b995c25c4603436bcbc2a9f83456c7e94905e8ea248d9cf2789fe1efe"
     }
   ],
   "validation": {
@@ -721,9 +726,7 @@
     "dependency_edge_count": 262,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "ready_tasks": [
-      "PWS-0816"
-    ]
+    "ready_tasks": []
   },
   "notes": [
     "2026-11-26 unsigned product completion: PWS-D044 allows an exact unsigned Windows 11 x64 candidate to satisfy PWS-0808. TASKS.yaml and the current PWS-0807 continuation record the local R1 observations and remaining qualification. Earlier notes retain their historical scope.",

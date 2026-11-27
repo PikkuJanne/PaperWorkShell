@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -130,6 +131,7 @@ from paperworkshell.domain.page_coordinates import (
     PageCoordinateTransform,
     RenderedImageSize,
 )
+from paperworkshell.domain.pdf_export import PdfExportSelection
 from paperworkshell.domain.pdf_thumbnails import PdfThumbnailResult, PdfThumbnailSnapshot
 from paperworkshell.domain.post_export_deletion import (
     PostExportDeletionError,
@@ -298,6 +300,12 @@ class _LongOperation:
     operation_id: int
     kind: _LongOperationKind
     cancellation: OperationCancellation
+
+
+@dataclass(frozen=True, slots=True)
+class _PdfExportOptions:
+    make_searchable: bool
+    selection: PdfExportSelection | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2207,6 +2215,9 @@ class PaperWorkShellWindow(QMainWindow):
                 for part in (
                     evidence.destination.name,
                     status,
+                    tr("This PDF contains the selected page range.")
+                    if evidence.selected_range
+                    else "",
                     mapping,
                     tr("Use Open PDF to view the exported file."),
                 )
@@ -4792,7 +4803,12 @@ class PaperWorkShellWindow(QMainWindow):
             value3=page.position,
         )
 
-    def _ask_pdf_export_options(self) -> bool | None:
+    def _ask_pdf_export_options(self) -> _PdfExportOptions | None:
+        state = self._state
+        if state is None or state.case_id is None or state.revision is None or not state.pages:
+            return None
+        page_count = len(state.pages)
+        max_digits = len(str(page_count))
         options = QDialog(self)
         options.setObjectName("ordinaryPdfExportOptions")
         options.setWindowTitle(tr("Export PDF"))
@@ -4814,12 +4830,38 @@ class PaperWorkShellWindow(QMainWindow):
         content.addWidget(info)
         sources = QListWidget()
         sources.setObjectName("ordinaryExportPages")
-        sources.setAccessibleName(tr("Pages to export in order"))
-        if self._state is not None:
-            for page in self._state.pages:
-                sources.addItem(self._page_label(page))
+        sources.setAccessibleName(tr("Assembled pages in order"))
+        for page in state.pages:
+            sources.addItem(self._page_label(page, case_order=True))
         sources.setMaximumHeight(sources.fontMetrics().height() * 4 + 24)
         content.addWidget(sources)
+        range_toggle = QCheckBox(tr("Export a page range"))
+        range_toggle.setObjectName("exportPageRange")
+        content.addWidget(range_toggle)
+        range_toggle.setVisible(page_count > 1)
+
+        range_fields = QWidget()
+        range_layout = QVBoxLayout(range_fields)
+        range_layout.setContentsMargins(0, 0, 0, 0)
+        form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        first_page = QLineEdit("1")
+        first_page.setObjectName("exportFirstPage")
+        first_page.setAccessibleName(tr("First page to export"))
+        first_page.setMaxLength(max_digits + 1)
+        last_page = QLineEdit(str(page_count))
+        last_page.setObjectName("exportLastPage")
+        last_page.setAccessibleName(tr("Last page to export"))
+        last_page.setMaxLength(max_digits + 1)
+        form.addRow(tr("&First page"), first_page)
+        form.addRow(tr("&Last page"), last_page)
+        range_layout.addLayout(form)
+        range_status = QLabel()
+        range_status.setObjectName("exportRangeStatus")
+        range_status.setWordWrap(True)
+        range_layout.addWidget(range_status)
+        content.addWidget(range_fields)
+        range_fields.hide()
         language = QLabel(
             tr(
                 "Recognition language: {value1}",
@@ -4851,25 +4893,70 @@ class PaperWorkShellWindow(QMainWindow):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Choose PDF file…"))
+        choose_file = buttons.button(QDialogButtonBox.StandardButton.Save)
+        choose_file.setText(tr("Choose PDF file…"))
         buttons.accepted.connect(options.accept)
         buttons.rejected.connect(options.reject)
         adapt_dialog_button_box(buttons)
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText(tr("Choose PDF file…"))
+        choose_file.setText(tr("Choose PDF file…"))
         outer.addWidget(buttons)
+
+        def page_range() -> tuple[int, int] | None:
+            first_text, last_text = first_page.text(), last_page.text()
+            if not all(
+                len(value) <= max_digits and value.isdecimal() for value in (first_text, last_text)
+            ):
+                return None
+            first, last = int(first_text), int(last_text)
+            return (first, last) if 1 <= first <= last <= page_count else None
+
+        announcer = ScreenReaderAnnouncer(range_status)
+
+        def update_range() -> None:
+            active = range_toggle.isChecked()
+            range_fields.setVisible(active)
+            selected_range = page_range()
+            choose_file.setEnabled(not active or selected_range is not None)
+            if active:
+                message = (
+                    tr("Enter an ordered range from 1 to {value1}.", value1=page_count)
+                    if selected_range is None
+                    else tr(
+                        "Pages {value1}–{value2} will be exported.",
+                        value1=selected_range[0],
+                        value2=selected_range[1],
+                    )
+                )
+                range_status.setText(message)
+                announcer.announce(message)
+
+        range_toggle.toggled.connect(update_range)
+        first_page.textChanged.connect(update_range)
+        last_page.textChanged.connect(update_range)
         screen = options.screen().availableGeometry()
         options.resize(
             min(620, max(1, screen.width() - 48)), min(580, max(1, screen.height() - 48))
         )
         if options.exec() != QDialog.DialogCode.Accepted:
             return None
-        return searchable.isChecked()
+        selection = None
+        if range_toggle.isChecked():
+            selected_range = page_range()
+            if selected_range is None:
+                return None
+            first, last = selected_range
+            selection = PdfExportSelection(
+                state.case_id,
+                state.revision,
+                tuple(page.page_id for page in state.pages[first - 1 : last]),
+            )
+        return _PdfExportOptions(searchable.isChecked(), selection)
 
     def _choose_pages_pdf_export(self) -> None:
         if not self._pages_pdf_export_button.isEnabled() or self._active_operation is not None:
             return
-        make_searchable = self._ask_pdf_export_options()
-        if make_searchable is None:
+        options = self._ask_pdf_export_options()
+        if options is None:
             return
         selected, _filter = QFileDialog.getSaveFileName(
             self,
@@ -4895,9 +4982,18 @@ class PaperWorkShellWindow(QMainWindow):
         self._cancel_button.setFocus(Qt.FocusReason.OtherFocusReason)
         self._ensure_widget_visible(self._cancel_button)
         self._announce(tr("PDF export started. You can cancel this operation."))
+        if options.selection is not None:
+            self._commands.page_range_pdf_export_requested.emit(
+                operation.operation_id,
+                self._pdf_export_destination,
+                operation.cancellation,
+                options.selection,
+                options.make_searchable,
+            )
+            return
         signal = (
             self._commands.searchable_pdf_export_requested
-            if make_searchable
+            if options.make_searchable
             else self._commands.pages_pdf_export_requested
         )
         signal.emit(

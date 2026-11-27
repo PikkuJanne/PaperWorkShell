@@ -7731,7 +7731,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: M
-  status: ready
+  status: in_progress
   critical_path: false
   depends_on:
   - PWS-0110
@@ -7770,4 +7770,5 @@ tasks:
     notes:
     - ROADMAP.md sections 1.4 and M1 call for splitting. PWS-0110 covers pure group
       intent. PWS-0407 and the R3 matrix cover category-based separate PDF export.
-      The ordinary TRACE organizer and PDF export have no assembled range entry point.
+      The PWS-0815 installed dialog observation confirmed whole-packet output only.
+      docs/development/pws0816-page-range.md records the correction and verification.

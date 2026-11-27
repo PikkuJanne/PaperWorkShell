@@ -95,6 +95,7 @@ class PdfExportErrorCode(StrEnum):
     MANIFEST_INVALID = "PDF_EXPORT_MANIFEST_INVALID"
     PLAN_EMPTY = "PDF_EXPORT_PLAN_EMPTY"
     PLAN_STALE = "PDF_EXPORT_PLAN_STALE"
+    RANGE_INVALID = "PDF_EXPORT_RANGE_INVALID"
     SOURCE_UNSUPPORTED = "PDF_EXPORT_SOURCE_UNSUPPORTED"
     SOURCE_ENCRYPTED = "PDF_EXPORT_SOURCE_ENCRYPTED"
     SOURCE_ENCRYPTION_UNKNOWN = "PDF_EXPORT_SOURCE_ENCRYPTION_UNKNOWN"
@@ -134,6 +135,9 @@ _SAFE_ERROR_MESSAGES: Final[dict[PdfExportErrorCode, str]] = {
     PdfExportErrorCode.PLAN_EMPTY: "Select at least one page before exporting a PDF.",
     PdfExportErrorCode.PLAN_STALE: (
         "The case changed before export could be committed. Start the export again."
+    ),
+    PdfExportErrorCode.RANGE_INVALID: (
+        "Choose a continuous range of pages in the assembled order."
     ),
     PdfExportErrorCode.SOURCE_UNSUPPORTED: (
         "The selected pages include a source that is not a supported PDF."
@@ -892,6 +896,50 @@ class _ManifestSource:
     sha256: str
     signature_state: str
     encryption_state: str
+
+
+@dataclass(frozen=True, slots=True)
+class PdfExportSelection:
+    """Bind the range reviewed in the organizer to saved page identities."""
+
+    case_id: UUID
+    revision: int
+    page_ids: tuple[UUID, ...] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_uuid4(self.case_id)
+            or type(self.revision) is not int
+            or not 0 <= self.revision <= MAX_SAFE_MANIFEST_INTEGER
+            or type(self.page_ids) is not tuple
+            or not 1 <= len(self.page_ids) <= MAX_PDF_EXPORT_PAGES
+            or any(not _is_uuid4(page_id) for page_id in self.page_ids)
+            or len(set(self.page_ids)) != len(self.page_ids)
+        ):
+            reject_pdf_export(PdfExportErrorCode.RANGE_INVALID, "export.selection")
+
+
+def require_pdf_export_selection(
+    snapshot: ManifestSnapshot, selection: PdfExportSelection | None
+) -> None:
+    """Check the reviewed slice against the exact saved case and revision."""
+
+    if selection is None:
+        return
+    if type(selection) is not PdfExportSelection:
+        reject_pdf_export(PdfExportErrorCode.RANGE_INVALID, "export.selection")
+    if selection.case_id != snapshot.case_id or selection.revision != snapshot.revision:
+        reject_pdf_export(PdfExportErrorCode.PLAN_STALE, "export.selection_revision")
+    sequence = snapshot.document.get("page_sequence")
+    if type(sequence) is not list:
+        reject_pdf_export(PdfExportErrorCode.MANIFEST_INVALID, "export.selection_sequence")
+    reviewed = [str(page_id) for page_id in selection.page_ids]
+    try:
+        first = sequence.index(reviewed[0])
+    except ValueError:
+        reject_pdf_export(PdfExportErrorCode.RANGE_INVALID, "export.selection_sequence")
+    if sequence[first : first + len(reviewed)] != reviewed:
+        reject_pdf_export(PdfExportErrorCode.RANGE_INVALID, "export.selection_sequence")
 
 
 def build_pdf_export_plan(

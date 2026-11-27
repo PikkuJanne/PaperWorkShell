@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from time import monotonic
-from typing import Final, Protocol, cast
+from typing import Final, Protocol, TypedDict, cast
 from uuid import UUID
 
 from paperworkshell.app.assisted_use import AssistedUseService
@@ -159,7 +159,9 @@ from paperworkshell.domain.page_operations import (
 from paperworkshell.domain.pdf_export import (
     PdfExportErrorCode,
     PdfExportOutcome,
+    PdfExportSelection,
     reject_pdf_export,
+    require_pdf_export_selection,
 )
 from paperworkshell.domain.pdf_export_history import PdfExportHistoryRepository
 from paperworkshell.domain.pdf_rendering import PdfRenderRotation
@@ -270,7 +272,13 @@ class _PagesPdfExportPort(Protocol):
         cancellation: Callable[[], bool],
         progress: PdfExportProgressSink,
         make_searchable: bool = False,
+        selection: PdfExportSelection | None = None,
     ) -> PdfExportOutcome | FlattenedPdfExportOutcome | SearchablePdfExportOutcome: ...
+
+
+class _PagesPdfExportOptions(TypedDict, total=False):
+    make_searchable: bool
+    selection: PdfExportSelection
 
 
 class _RemovalPdfExportPort(Protocol):
@@ -562,6 +570,8 @@ class OrganizerPagesPdfExportOutcome:
     state: OrganizerViewState
     refresh_required: bool
     searchable_report: SearchablePdfVerificationReport | None = None
+    selection: PdfExportSelection | None = None
+    selected_range_plan_fingerprint: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -1200,6 +1210,7 @@ class OrganizerBackend:
         cancellation: Callable[[], bool],
         progress: PdfExportProgressSink,
         make_searchable: bool = False,
+        selection: PdfExportSelection | None = None,
     ) -> OrganizerPagesPdfExportOutcome:
         """Export saved edits with an explicit OCR choice and no checklist dependency."""
 
@@ -1208,6 +1219,18 @@ class OrganizerBackend:
         exporter = self._pages_pdf_export
         if exporter is None:
             reject_pdf_export(PdfExportErrorCode.MODEL_INVALID, "export.organizer_unavailable")
+        options: _PagesPdfExportOptions = {}
+        if make_searchable:
+            options["make_searchable"] = True
+        selection_fingerprint = None
+        if selection is not None:
+            if session.autosave.pending:
+                reject_pdf_export(PdfExportErrorCode.PLAN_STALE, "export.selection_pending")
+            require_pdf_export_selection(session.snapshot, selection)
+            options["selection"] = selection
+            selection_fingerprint = build_trace_plan(
+                session.snapshot.document, session.history.projection
+            ).fingerprint
         self._active_scan_review = None
         self.flush_autosave()
         require_redaction_export_allowed(session.snapshot.document)
@@ -1218,7 +1241,7 @@ class OrganizerBackend:
             deadline=lambda: monotonic() >= expires,
             cancellation=cancellation,
             progress=progress,
-            **({"make_searchable": True} if make_searchable else {}),
+            **options,
         )
         report = result.report if type(result) is SearchablePdfExportOutcome else None
         outcome = result if isinstance(result, PdfExportOutcome) else result.base_outcome
@@ -1235,14 +1258,18 @@ class OrganizerBackend:
             replacement = self._session_from_loaded(loaded)
             state = _view_state(replacement)
         except BaseException:
-            return OrganizerPagesPdfExportOutcome(outcome, _view_state(session), True, report)
+            return OrganizerPagesPdfExportOutcome(
+                outcome, _view_state(session), True, report, selection, selection_fingerprint
+            )
         try:
             session.autosave.close()
         except BaseException:
             pass
         self._session = replacement
         self._export_reopen_required = False
-        return OrganizerPagesPdfExportOutcome(outcome, state, False, report)
+        return OrganizerPagesPdfExportOutcome(
+            outcome, state, False, report, selection, selection_fingerprint
+        )
 
     def rotate_clockwise(self, page_id: UUID) -> OrganizerViewState:
         """Record one additive clockwise quarter turn for an active page."""
