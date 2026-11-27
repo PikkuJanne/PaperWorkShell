@@ -6491,6 +6491,11 @@ tasks:
       out and removed their temporary outputs. An independent exact-runtime control reproduced
       the timeout. The R1 verdict and sample are preserved in docs/development/pws0807-r1-qualification.md.
       A private successor must verify the affected installed operations within the original budget.
+    - R2 from 8769ad85788edca9c8ee3c039b92cdaccd2ed084 corrected the R1 separate-PDF and ZIP
+      failures on the installed four-category checklist. The exact synthetic sample and replacement receipts
+      are frozen. R2 failed keyboard focus on the selected Pages tab at 200 percent with Windows Aquatic.
+      The full-window comparison is indexed in docs/development/pws0807-r2-qualification.md.
+      R3 addresses the visible focus of the two workbench tab bars.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 product-completion gate

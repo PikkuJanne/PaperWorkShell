@@ -1,5 +1,14 @@
 # PWS-0807 unsigned candidate continuation
 
+## Current engineering continuation
+
+R2 corrected R1's four-category split and ZIP timeouts. Its installed
+200% Windows Aquatic check exposed a separate keyboard-focus defect on the
+selected Pages tab. PWS-0807 remains in progress while the successor
+repairs and verifies this state. The [R2 ledger](pws0807-r2-qualification.md)
+records the user's actual focus, the full-window pixel comparison, and
+the workflows that passed on the predecessor. The [R3 ledger](pws0807-r3-qualification.md) records the successor's qualification.
+
 ## 2026-11-26 owner correction
 
 [PWS-D044](../../DECISIONS.md#pws-d044--v10-product-completion-accepts-an-unsigned-candidate)

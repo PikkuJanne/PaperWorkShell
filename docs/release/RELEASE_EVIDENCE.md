@@ -13,11 +13,19 @@
 ## Current PWS-0807 engineering evidence
 
 The [R2 qualification ledger](../development/pws0807-r2-qualification.md)
-and [matrix](../development/pws0807-rc-matrix.md) identify the current
-engineering candidate, Windows environments, measured results and limitations.
+records its installed Windows results, including the 200% Aquatic keyboard-focus failure. The
+[successor ledger](../development/pws0807-r3-qualification.md) and [matrix](../development/pws0807-rc-matrix.md) track the affected check and the exact candidate environments.
 The [R1 ledger](../development/pws0807-r1-qualification.md) preserves the
 failed split and ZIP exports and the comparison leading to the R2 repair. The draft metadata above applies to a future designated
 release. The tested build reports version 0.0.0 on the engineering channel.
+
+| Engineering artifact | Exact identity |
+| --- | --- |
+| Windows 11 x64 installer | 513,023,220 bytes, SHA-256 `a73864739b739ba38a906898da281f41702ae3b160e39f1ad2c7eda9f6b9ba0e`, Authenticode `NotSigned` |
+| Qualified build handoff | `0a0f2536d1516227b0bac6c10e572450890070fb7533f04297ac3fe55620cc0a`, source `8769ad85788edca9c8ee3c039b92cdaccd2ed084` |
+| Frozen synthetic sample | `paperworkshell-pws0807-r2-synthetic-v1`, 30 members and 4,173,176 bytes, SHA-256 `441f9896015c26a2afb93f9930197c7e21222523e79cf2f1b0f312f292278e7d` |
+| Sample manifest and engineering interface | Manifest SHA-256 `d5ee78ef5dcd51226d5070b8c8072aaae7071e49b4dca0840e7490cfa68f31cf`, interface `pws0807-r2-interface-1` |
+| Actual NVDA, guest timing and resource evidence | NVDA `a8e3d1a2e89aba4c77877e5bfc2a5ce95b15b3289962967bc080413e7b662649`, timing `7e88ee6f968c515ace8a65655da421e49eef86c795c27b04061e092ad38565ae`, bounded runtime `44042f621b9c8f1fe6d8065225dad9a5eb7402d1fc91e0305f9de40c8758ca69` |
 
 ## Unsigned product completion
 

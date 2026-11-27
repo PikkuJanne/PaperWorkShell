@@ -143,7 +143,7 @@ Keep every attempt and its observer limitations.
 
 ## Reader compatibility and permanent removal
 
-The exact runtime reproduced all seven accepted M5 PDFs and the ZIP
+The exact runtime reproduced the six accepted M5 PDFs and their ZIP
 byte-for-byte. This binds the earlier named reader observations to the same
 document bytes. Additional host rendering covered Edge 158.0.4370.45,
 Chrome 158.0.8127.38 and Firefox 161.0. The newer Adobe build declined the

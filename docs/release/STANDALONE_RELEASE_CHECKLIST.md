@@ -36,14 +36,16 @@ and [security policy](../../SECURITY.md) describe current behavior. The [evidenc
 links the separate TRACE B8 setup and PWS-0803 offline update rehearsals. Each checklist item
 requires exact-candidate evidence for its own scope.
 
-For engineering R1, use the [candidate qualification ledger](../development/pws0807-r1-qualification.md)
-to distinguish checks on the installed standard-user desktop, isolated
-candidate-runtime checks and byte-identical reader evidence. Final release
-owner sign-off belongs to PWS-0808.
+The checked engineering items below apply to unsigned
+`pws0807-package-runtime-engineering-r2`, version 0.0.0, on the named Windows
+11 x64 configuration. The [R2 ledger](../development/pws0807-r2-qualification.md)
+binds each observation to its inputs and method. The [R1 ledger](../development/pws0807-r1-qualification.md)
+preserves the predecessor's results. PWS-0808 owns product-completion sign-off.
+External publication and release-owner approval have separate checklist entries.
 
 ## 1. Product boundary and independence
 
-- [ ] The primary document-package journey works without ThirdLife, sibling applications, a mandatory account, or a project-controlled server.
+- [x] The primary document-package journey works without ThirdLife, sibling applications, a mandatory account, or a project-controlled server.
 - [ ] PaperWorkShell's owns/does-not-own, primary-data, and standalone statements are consistent with [the alignment contract](../../THIRDLIFE_ALIGNMENT.md).
 - [ ] No feature or release criterion depends on another portfolio product, sibling branch, private cross-repository fixture, or development build.
 - [ ] No shared SDK, user-content database, workspace, runtime schema, universal job engine, plugin framework, or portfolio background service is required.
@@ -56,7 +58,7 @@ owner sign-off belongs to PWS-0808.
 - [ ] Configuration, cases, immutable originals, derivatives, caches, temporary data, optional engines/models, logs, support bundles, migration backups, and exports are documented.
 - [ ] Known-folder notation, permissions, and current-user ownership are verified on the package without publishing private usernames or paths.
 - [ ] Opening/importing states whether the product copies, references, converts, or exports a selected file.
-- [ ] Original inputs remain unchanged and are never overwritten by default.
+- [x] Original inputs remain unchanged and are never overwritten by default.
 - [ ] Case deletion and delete-after-export behavior are explicit and never claim forensic erasure.
 - [ ] PaperWorkShell installs or delegates no ThirdLife-owned authority that can remove PaperWorkShell cases; its case storage and lifecycle remain independently owned.
 - [ ] PaperWorkShell uninstall gives separate explicit choices for application removal and each supported user-data category.
@@ -65,7 +67,7 @@ owner sign-off belongs to PWS-0808.
 ## 3. Install, update, repair, and removal
 
 - [ ] A clean supported Windows 11 x64 environment installs and launches PaperWorkShell without development tools, within the exact edition/build evidence boundary.
-- [ ] Package identity, version, source, size, hash, observed signing state, inventory and privileges are recorded. Size and hash match the retained build reference.
+- [x] Package identity, version, source, size, hash, observed signing state, inventory and privileges are recorded. Size and hash match the retained build reference.
 - [ ] Elevation occurs only for the selected install/update/repair/remove operation.
 - [ ] Silent options are tested and documented or explicitly unsupported.
 - [ ] Local preserve-cases replacement, interruption, failure recovery and offline behavior are tested on the exact candidate.
@@ -75,11 +77,11 @@ owner sign-off belongs to PWS-0808.
 
 ## 4. Public inputs, outputs, and launch behavior
 
-- [ ] Supported ordinary inputs are documented and tested on the package.
+- [x] Supported ordinary inputs are documented and tested on the package.
 - [ ] Supported outputs are documented and tested, including copy/convert/flatten/reconstruct/reference behavior.
-- [ ] Normal interactive launch is documented.
-- [ ] Visible file opening is tested when supported, or explicitly documented as unsupported with the in-app import fallback.
-- [ ] Portable workspace/project opening is tested when independently supported, or explicitly documented as unsupported.
+- [x] Normal interactive launch is documented.
+- [x] Visible file opening is tested when supported, or explicitly documented as unsupported with the in-app import fallback.
+- [x] Portable workspace/project opening is tested when independently supported, or explicitly documented as unsupported.
 - [ ] Optional file associations are previewed, user-controlled, removable, and tested, or explicitly unsupported.
 - [ ] Independently useful CLI options, if any, have local justification, tests, and documentation.
 - [ ] Direct portal submission remains outside the product boundary.
@@ -87,12 +89,12 @@ owner sign-off belongs to PWS-0808.
 ## 5. Core quality and recovery
 
 - [ ] The complete primary workflow passes on a clean install and after a supported upgrade.
-- [ ] Interrupted processing, worker termination, application restart, and case recovery are tested.
+- [x] Interrupted processing, worker termination, application restart, and case recovery are tested.
 - [ ] Partial or corrupt output is never presented as final.
 - [ ] Every exported PDF is reopened, structurally checked, rendered, and checked for expected page count/order and constraints.
 - [ ] Low-space, disk-full, slow-I/O, constrained-resource, CPU-path, large-input, cancellation, and malformed-input behavior are tested.
-- [ ] Resource budgets, workloads, versions, hashes, and limitations are recorded without claiming untested hardware certification.
-- [ ] Core processing works offline.
+- [x] Resource budgets, workloads, versions, hashes, and limitations are recorded without claiming untested hardware certification.
+- [x] Core processing works offline.
 
 ## 6. Accessibility and understandable operation
 
@@ -102,14 +104,14 @@ owner sign-off belongs to PWS-0808.
 - [ ] NVDA testing passes for the required primary workflow; only limitations outside the supported workflow or output scope may remain when explicit and release-approved.
 - [ ] 200-percent scaling/text, high contrast, plain-language errors, and confirmation dialogs pass.
 - [ ] Long operations expose progress, cancellation, and actionable recovery.
-- [ ] Package summaries are accessible to the supported extent and output limitations are honest.
+- [x] Package summaries are accessible to the supported extent and output limitations are honest.
 
 ## 7. Security, privacy, and support
 
 - [ ] Documents, images, templates, project files, and optional engine packages are treated as untrusted where applicable.
 - [ ] Worker isolation, filesystem scoping, network denial, limits, path validation, and shell-free subprocess launch pass on the package.
 - [ ] Routine logs and evidence contain no document/OCR text, values, names, addresses, original or user filenames, full or private local paths, extracted metadata, thumbnails, signatures, credentials, or document bytes; public artifact names, known-folder notation, and repository-relative evidence links remain allowed.
-- [ ] The support bundle is local, opt-in, previewable, allow-listed, and prohibited-token tested.
+- [x] The support bundle is local, opt-in, previewable, allow-listed, and prohibited-token tested.
 - [ ] PaperWorkShell and ThirdLife support artifacts remain separate.
 - [ ] Update and dependency provenance are verified.
 - [ ] Threat model, hostile-input tests, no-telemetry default, and vulnerability-reporting process are current.
@@ -118,7 +120,7 @@ owner sign-off belongs to PWS-0808.
 
 ## 8. Dependencies, licences, and maintainability
 
-- [ ] Dependency lock, exact packaged inventory, source hashes, machine-readable SBOM, and notices match.
+- [x] Dependency lock, exact packaged inventory, source hashes, machine-readable SBOM, and notices match.
 - [ ] Bundled engines, language data, templates, fonts, and assets have reviewed redistribution terms.
 - [ ] Major external engines remain behind product-local adapters with replacement/abandonment strategies.
 - [ ] Release inputs do not silently fetch an unverified “latest” component.
@@ -130,8 +132,8 @@ owner sign-off belongs to PWS-0808.
 - [ ] Stable identity, publisher, licence, Windows 11 x64-only scope, evidenced editions/builds, and release channel are recorded.
 - [ ] Installer, launch, inputs/outputs, data, offline/resource behavior, privilege/security, support, samples, limits, and contacts are complete.
 - [ ] [The evidence index](RELEASE_EVIDENCE.md) points to current packaged results and hashes.
-- [ ] Public synthetic sample inputs, expected outputs, behavior notes, and hashes are frozen.
-- [ ] A workspace/project sample is included only if PaperWorkShell supports a portable project format.
+- [x] Public synthetic sample inputs, expected outputs, behavior notes, and hashes are frozen.
+- [x] A workspace/project sample is included only if PaperWorkShell supports a portable project format.
 - [ ] A sample sanitized support bundle and exclusion proof are published.
 - [ ] Migration, update, rollback/non-rollback, uninstall, and data-preservation results are indexed.
 - [ ] Security, accessibility, offline, and resource acceptance results are indexed.

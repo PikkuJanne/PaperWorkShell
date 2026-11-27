@@ -2,7 +2,7 @@
 
 PWS-0807 qualifies the exact unsigned Windows 11 x64 product candidate and its
 standalone release evidence under PWS-D044. This plan records candidate runs,
-scoped engineering evidence, and prerequisites. The current candidate is unsigned engineering R2, version 0.0.0. [Task graph](../../TASKS.yaml) ·
+scoped engineering evidence, and prerequisites. Unsigned engineering R2, version 0.0.0, failed the selected-tab focus check at 200% in Windows Aquatic. A successor must pass the installed check. [Task graph](../../TASKS.yaml) ·
 [Release evidence](../release/RELEASE_EVIDENCE.md) ·
 [Standalone checklist](../release/STANDALONE_RELEASE_CHECKLIST.md)
 

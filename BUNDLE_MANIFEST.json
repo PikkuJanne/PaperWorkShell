@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 549966,
-      "sha256": "bab73cdd23f5590ba3e3cfbe9c3a6d7fc5fdbaf6a2d84ed70820526dc661d09c"
+      "bytes": 550435,
+      "sha256": "0b0b0e617fc1c88d2b30b819801750ffa8956d6994066a2dcb0c618bd066f61b"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 48881,
-      "sha256": "90a84cb1ce66cccb94843d95c2bac2795ceb9850478d34576a8e666c2a14a5a0"
+      "bytes": 49989,
+      "sha256": "2752c52e42c16efc3e36b2fa33eea08c513e1a39496ba7ec12322e83c67a6b25"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -75,8 +75,8 @@
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 12049,
-      "sha256": "9e17cceb873cfce8c48d7ea8eb49e95eedc97e8b6f258030e9fb06fc8f08def3"
+      "bytes": 12246,
+      "sha256": "85ca65266bcfc297f12f748b722afa1c0c947f858f08bb008e9310f71f3aab10"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -676,22 +676,27 @@
     {
       "path": "docs/development/pws0807-r1-qualification.md",
       "bytes": 13944,
-      "sha256": "dd77be0726f0bcfc9a47eafd5eb7d15c31574dfc93b1f033e045dc571bf95ab8"
+      "sha256": "92a0fb6323570f433c1069b8054a7b8dc72b8e321462a16a6a7199a3fa5973c7"
     },
     {
       "path": "docs/development/pws0807-r2-qualification.md",
-      "bytes": 15127,
-      "sha256": "933ebdb303412a39a0bdc334aeb48b5c968d18fd19995dac22f58cfe2582a170"
+      "bytes": 21782,
+      "sha256": "0b4e6687c460b68f127a867e77b79d25396777afbbc4fa70c5f2978125e370a1"
+    },
+    {
+      "path": "docs/development/pws0807-r3-qualification.md",
+      "bytes": 1461,
+      "sha256": "dc6e78548e21b801324ff410d96ba1dcdbcf519d44c6bf197a810eb5bf567e6c"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 19978,
-      "sha256": "c7966cdb584f643c96b584cc8dad96ec45fe9038736b3c596cb86a26aeee8923"
+      "bytes": 20060,
+      "sha256": "7b82b7c68cfcceeb0fb7145a63391c696ec4876e29014f000a43298420138d7b"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 21753,
-      "sha256": "cbdd6725ae8afa2bad2e6fd76d135862f2b0b95abd681aa88059fc4ed654f768"
+      "bytes": 22284,
+      "sha256": "b4d24b8c13a69e417974ff8da780710a11c863352f5d8251ca53f1d77826d975"
     }
   ],
   "validation": {
