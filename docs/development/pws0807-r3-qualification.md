@@ -24,6 +24,23 @@ replacement branch begins with the preserved R1 installation and synthetic
 cases. Each measurement records which starting state, inputs, executable and
 observers supplied it. PWS-0808 owns the product-completion decision.
 
+## Earlier milestone gates on R3
+
+| Gate | How its evidence applies to the engineering candidate |
+| --- | --- |
+| M0 — foundation | The build receipt binds exact source, runtime inventory, dependency lock, SBOMs and notices. The source checks cover layering, schemas, repository history and synthetic fixtures. |
+| M1 — offline vertical slice | Installed mixed import, case restart and independently reopened export establish the end-to-end path. The native resource report measures the restricted worker, heartbeat, cancellation, retry, process tree and cleanup. |
+| M2 — imaging and OCR | The installed mixed case preserved input bytes, order and edited rotation. The measured 12-page constrained workload produced a verified searchable PDF after cancellation and fresh retry. |
+| M3 — filling and overlays | R3 reproduced the approved five-page PDF covering eight overlay kinds. Byte identity plus independent text and pixel comparison binds earlier human reader observations to this file. |
+| M4 — templates and preflight | An incomplete checklist blocked publication. All four confirmations enabled combined, separate and ZIP export, with each saved summary matching the displayed text. Two archived cases separately exercised edited and multi-source paths. |
+| M5 — compression and compatibility | The six accepted PDFs and archive reproduced. Three Windows viewers displayed the selected page. A four-stage real compression run refused an impossible target at the unchanged quality floor. |
+| M6 — permanent removal | The installed desktop produced the approved one-affected-page derivative. An independent verifier checked the saved file and the ten retained viewer saves and resaves. Fourteen failed or unknown method cases blocked publication. |
+| M7 — accessibility and assisted use | The packaged Qt checks cover input, localization-related controls, privacy, consent and retention. The installed keyboard journey and the three Windows display configurations supply independent evidence of actual navigation and focus. |
+
+The ledger attributes existing human observations to their original reader
+versions, dates and exact files. New desktop interactions and screen
+captures in this run are agent-operated.
+
 ## Exact unsigned artifact
 
 | Field | R3 engineering value |
@@ -350,3 +367,56 @@ products, named services or processes. The R3 inventory had zero named
 ThirdLife components or paths. All installed workflows ran on this
 disconnected standalone configuration. The observation is
 `r3-completion-evidence/standalone-environment.json`.
+
+## Installer disk exhaustion and rollback
+
+After the clean primary workflows, the default Keep removal removed the
+application, shortcuts and registration. All 31 managed files in four
+synthetic cases and all 23 checked external files retained their hashes.
+
+With a 65,536-byte additional NTFS quota, the standard-user process observed
+49,152 bytes available at launch. The native installer displayed Windows
+error 112 while creating a temporary file, exited 1 and left the ordinary
+install target absent. On the 64 MiB allowance, an initial observer stayed
+at the license page with Windows Settings in front. It sent no control input
+and restored the prior quota. That attempt supplied no partial-copy result.
+
+On a fresh run at 64 MiB, the foreground-verified installer copied the
+first inventoried payload and ran out of disk space writing `Qt6Gui.dll`.
+The native log recorded 853 attempted destinations. The observer reached
+its deadline at that error dialog, restored the original quota and recorded
+the incomplete attempt. The same installer still displayed the error. The
+operator verified focus on **Cancel installation** and pressed Enter. Setup
+rolled back and exited naturally. The program directory and registration
+were absent, all 31 managed files and 23 external files retained their
+hashes, and the original user and volume quotas were restored.
+
+The closed 599,917-byte native log has SHA-256
+`370cb58d28ffef9443b2fe45495b0f2314ed0c36a4548a32f0d4162030f507fa`.
+`r3-installed-matrix/quota/r3-low-space-focused/cancellation-sequence.json`
+records the time of the disk-full dialog, quota restoration and cancellation.
+The startup observation is `r3-installed-matrix/quota/r3-low-space/r3-preinstall-result.json`.
+
+## Same-build reuse, repair and reviewed uninstall
+
+The matching setup reused the verified R3 installation and started the
+standard-user desktop without invoking the installer. The preserved first
+PDF case reopened. The Notices shortcut opened the bundled terms. Following
+the real quota rollback, a fresh setup installed and verified all 3,219 files
+and the same case reopened again. A subsequent repair on this installed R3
+restored the missing `notices/Microsoft-runtime-recipient-terms.txt`. The
+independent inventory and the reopened case both verified.
+
+On the originally empty test branch, the standard user reviewed the
+uninstaller's inventory of four synthetic cases, separately confirmed their
+deletion, read the four-deleted result and confirmed application removal.
+There were zero partial deletions, managed case files, program registrations
+or shortcuts afterward. All 23 external files retained their bytes. The
+four Windows shell defaults for PDF, JPEG, JPG and PNG matched across the
+baseline, install, preserve removal, reinstall and confirmed removal.
+The reviewed profile contained only the four test cases. The lifecycle
+receipt is `r3-installed-matrix/clean/lifecycle-result.json`, SHA-256
+`0477ee070f583c1c1ae8628fa6edaccbcc78c0ca6591036f02eef4cfd1ade165`.
+The independent comparison is
+`r3-completion-evidence/clean-lifecycle-independent.json`, SHA-256
+`74508fa7694869ea32a16ebb64b8b0833990720c7c94ba0b25223b904f92695a`.

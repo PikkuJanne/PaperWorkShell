@@ -48,23 +48,23 @@ distribution requires separate authorization.
 ## 2. User data and ownership
 
 - [ ] Configuration, cases, immutable originals, derivatives, caches, temporary data, optional engines/models, logs, support bundles, migration backups, and exports are documented.
-- [ ] Known-folder notation, permissions, and current-user ownership are verified on the package without publishing private usernames or paths.
+- [x] Known-folder notation, permissions, and current-user ownership are verified on the package without publishing private usernames or paths.
 - [x] Opening/importing states whether the product copies, references, converts, or exports a selected file.
 - [x] Original inputs remain unchanged and are never overwritten by default.
-- [ ] Case deletion and delete-after-export behavior are explicit and never claim forensic erasure.
-- [ ] PaperWorkShell installs or delegates no ThirdLife-owned authority that can remove PaperWorkShell cases; its case storage and lifecycle remain independently owned.
-- [ ] PaperWorkShell uninstall gives separate explicit choices for application removal and each supported user-data category.
-- [ ] Reinstall can reopen intentionally preserved supported cases.
+- [x] Case deletion and delete-after-export behavior are explicit and never claim forensic erasure.
+- [x] PaperWorkShell installs or delegates no ThirdLife-owned authority that can remove PaperWorkShell cases; its case storage and lifecycle remain independently owned.
+- [x] PaperWorkShell uninstall gives separate explicit choices for application removal and each supported user-data category.
+- [x] Reinstall can reopen intentionally preserved supported cases.
 
 ## 3. Install, update, repair, and removal
 
 - [x] A clean supported Windows 11 x64 environment installs and launches PaperWorkShell without development tools, within the exact edition/build evidence boundary.
 - [x] Package identity, version, source, size, hash, observed signing state, inventory and privileges are recorded. Size and hash match the retained build reference.
-- [ ] Elevation occurs only for the selected install/update/repair/remove operation.
-- [ ] Silent options are tested and documented or explicitly unsupported.
+- [x] Elevation occurs only for the selected install/update/repair/remove operation.
+- [x] Silent options are tested and documented or explicitly unsupported.
 - [ ] Local preserve-cases replacement, interruption, failure recovery and offline behavior are tested on the exact candidate.
-- [ ] Same-build repair and applicable recovery are tested. The live update channel is disabled, and the isolated authenticated verifier's rejection evidence is recorded.
-- [ ] Uninstall removes application registrations and any supported associations while following the user's data choice.
+- [x] Same-build repair and applicable recovery are tested. The live update channel is disabled, and the isolated authenticated verifier's rejection evidence is recorded.
+- [x] Uninstall removes application registrations and any supported associations while following the user's data choice.
 - [ ] Remaining files/settings are documented by category.
 
 ## 4. Public inputs, outputs, and launch behavior
@@ -74,8 +74,8 @@ distribution requires separate authorization.
 - [x] Normal interactive launch is documented.
 - [x] Visible file opening is tested when supported, or explicitly documented as unsupported with the in-app import fallback.
 - [x] Portable workspace/project opening is tested when independently supported, or explicitly documented as unsupported.
-- [ ] Optional file associations are previewed, user-controlled, removable, and tested, or explicitly unsupported.
-- [ ] Independently useful CLI options, if any, have local justification, tests, and documentation.
+- [x] Optional file associations are previewed, user-controlled, removable, and tested, or explicitly unsupported.
+- [x] Independently useful CLI options, if any, have local justification, tests, and documentation.
 - [x] Direct portal submission remains outside the product boundary.
 
 ## 5. Core quality and recovery
@@ -83,8 +83,8 @@ distribution requires separate authorization.
 - [ ] The complete primary workflow passes on a clean install and after a supported upgrade.
 - [x] Interrupted processing, worker termination, application restart, and case recovery are tested.
 - [ ] Partial or corrupt output is never presented as final.
-- [ ] Every exported PDF is reopened, structurally checked, rendered, and checked for expected page count/order and constraints.
-- [ ] Low-space, disk-full, slow-I/O, constrained-resource, CPU-path, large-input, cancellation, and malformed-input behavior are tested.
+- [x] Every exported PDF is reopened, structurally checked, rendered, and checked for expected page count/order and constraints.
+- [x] Low-space, disk-full, slow-I/O, constrained-resource, CPU-path, large-input, cancellation, and malformed-input behavior are tested.
 - [x] Resource budgets, workloads, versions, hashes, and limitations are recorded without claiming untested hardware certification.
 - [x] Core processing works offline.
 
@@ -100,21 +100,21 @@ distribution requires separate authorization.
 
 ## 7. Security, privacy, and support
 
-- [ ] Documents, images, templates, project files, and optional engine packages are treated as untrusted where applicable.
-- [ ] Worker isolation, filesystem scoping, network denial, limits, path validation, and shell-free subprocess launch pass on the package.
+- [x] Documents, images, templates, project files, and optional engine packages are treated as untrusted where applicable.
+- [x] Worker isolation, filesystem scoping, network denial, limits, path validation, and shell-free subprocess launch pass on the package.
 - [ ] Routine logs and evidence contain no document/OCR text, values, names, addresses, original or user filenames, full or private local paths, extracted metadata, thumbnails, signatures, credentials, or document bytes; public artifact names, known-folder notation, and repository-relative evidence links remain allowed.
 - [x] The support bundle is local, opt-in, previewable, allow-listed, and prohibited-token tested.
 - [x] PaperWorkShell and ThirdLife support artifacts remain separate.
 - [x] Update and dependency provenance are verified.
 - [ ] Threat model, hostile-input tests, no-telemetry default, and vulnerability-reporting process are current.
-- [ ] The PWS-0808/v1.0 candidate includes permanent redaction and passes its independent export-blocking gate against that exact candidate; a preview that omits redaction cannot satisfy PWS-0808.
+- [x] The PWS-0808/v1.0 candidate includes permanent redaction and passes its independent export-blocking gate against that exact candidate; a preview that omits redaction cannot satisfy PWS-0808.
 - [x] Signature-image terminology never implies cryptographic or qualified signing.
 
 ## 8. Dependencies, licences, and maintainability
 
 - [x] Dependency lock, exact packaged inventory, source hashes, machine-readable SBOM, and notices match.
 - [x] Bundled engines, language data, templates, fonts, and assets have reviewed redistribution terms.
-- [ ] Major external engines remain behind product-local adapters with replacement/abandonment strategies.
+- [x] Major external engines remain behind product-local adapters with replacement/abandonment strategies.
 - [x] Release inputs do not silently fetch an unverified “latest” component.
 - [ ] Supported versions, security-update policy, reporting route, and maintenance status are documented.
 
@@ -144,6 +144,6 @@ distribution requires separate authorization.
 
 - [ ] All release-blocking defects are closed or the candidate is rejected.
 - [ ] Known limitations avoid portal-acceptance, legal-advice, OCR-certainty, PDF/UA, forensic-erasure, hardware-certification, and unsupported security claims.
-- [ ] The tested packaged candidate matches the frozen hashes and SBOM.
+- [x] The tested packaged candidate matches the frozen hashes and SBOM.
 - [ ] The PaperWorkShell release owner approves the standalone release.
 - [x] ThirdLife inclusion remains a separate future B4 compatibility decision.

@@ -76,7 +76,7 @@
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
       "bytes": 11670,
-      "sha256": "e1305ace07f0f8fca85f0b638495b1a8a3e52af6889df551a22585c2990835e4"
+      "sha256": "83dee947dd9b356595226927c59c9ef2fd2ba66545dea7b2b46648a441baa81d"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -685,13 +685,13 @@
     },
     {
       "path": "docs/development/pws0807-r3-qualification.md",
-      "bytes": 21105,
-      "sha256": "4f22d879f0fff329a2d1a6873b440bc3128f78734e57ba764f249b3f0a888042"
+      "bytes": 26517,
+      "sha256": "40814573caa78334ad2d718d9e178344cf5b586c7347d11c61fc854198b00fff"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 23919,
-      "sha256": "59cf565a5eb5031e51e653addccaa07d02f400fb5f953fd8681a3d7ecb3c3914"
+      "bytes": 24457,
+      "sha256": "42c499547ec2acacd05ebda000b5898afb65fa279fc990e0a49cc1c8f6abf2bf"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
