@@ -15,6 +15,25 @@ replacement, workflow and resource evidence. The [R1 ledger](pws0807-r1-qualific
 package timeouts that prompted the repair. The tables below retain each
 starting environment and the required outcome for each area.
 
+## Observed R3 scope
+
+The [R3 qualification ledger](pws0807-r3-qualification.md) distinguishes
+the installed standard-user desktop from the packaged runtime on the Windows
+host. The guest was Windows 11 Pro x64 26300.9711, offline, with Smart App
+Control Off. The expected results were frozen before guest testing in
+`paperworkshell-pws0807-r3-synthetic-v1` under interface
+`pws0807-r3-interface-1`. These are the current R3 observations.
+
+| Matrix area | Evidence on this candidate |
+| --- | --- |
+| Provenance and standalone boundary | The build handoff, unsigned installer, 3,219 payload files, two SBOMs and 729 notices matched the independently retained reference. The standalone desktop completed the document workflow with no active network connection and zero named suite products, services or processes. [Artifact](pws0807-r3-qualification.md#exact-unsigned-artifact) · [Installed environment](pws0807-r3-qualification.md#permanent-removal-on-the-clean-installation) |
+| Installation and normal launch | The clean standard-user desktop opened the chooser after exact per-user setup. Four invalid setup inputs left the ordinary target absent. The first one-page PDF reopened. [Setup](pws0807-r3-qualification.md#setup-refusal-and-offline-public-interfaces) · [Clean install](pws0807-r3-qualification.md#clean-installation-and-visible-keyboard-focus) |
+| Sources, edits and primary workflow | Import preserved every external and managed PDF, JPEG and PNG digest. The exported three pages reopened in input order. The saved edit reopened in the order PDF, PNG, rotated JPEG. Three confirmed checklist categories blocked export and four enabled it. The combined, separate and ZIP outputs and three saved summaries matched the prospective sample. [Mixed files](pws0807-r3-qualification.md#clean-mixed-files-and-diagnostics) · [Packages](pws0807-r3-qualification.md#clean-keyboard-only-checklist-and-package-outputs) |
+| Resources, offline behavior and recovery | Normal and constrained workloads measured process-tree memory, Job limits, heartbeat, cancellation, retry, cleanup and worker network denial. The constrained 12-page OCR export passed after an earlier incomplete storage measurement. [Native measurements](pws0807-r3-qualification.md#native-resource-limits-and-offline-worker) · [OCR workload](pws0807-r3-qualification.md#constrained-searchable-export) |
+| Support and privacy | A reviewed, explicitly authorized support ZIP matched its own preview, exact two-member inventory and privacy checks. Malformed input preserved the case. A locally retained description-only report documents its recovery. [Installed support](pws0807-r3-qualification.md#clean-mixed-files-and-diagnostics) · [Packaged privacy](pws0807-r3-qualification.md#packaged-ui-retention-and-privacy-suites) |
+| Accessibility | The four-category combined package was completed by keyboard. Focus stayed visible on both repaired tab bars, including at 200% in Aquatic. [Keyboard](pws0807-r3-qualification.md#clean-keyboard-only-checklist-and-package-outputs) · [Focus](pws0807-r3-qualification.md#clean-installation-and-visible-keyboard-focus) |
+| Reader compatibility, compression and permanent removal | Overlay and compression reference files reproduced. Independent readers checked archived packages, fresh Windows renders and existing viewer resaves. Runtime and independent checks verified the installed one-affected-page derivative, including OCR of the outside control. [Readers](pws0807-r3-qualification.md#reader-files-compression-and-update-trust) · [Archived packages](pws0807-r3-qualification.md#archived-package-shapes-and-target-refusal) · [Removal](pws0807-r3-qualification.md#permanent-removal-on-the-clean-installation) |
+
 ## Candidate and environment inventory
 
 | Environment or artifact | Available evidence | Use for PWS-0807 |
@@ -114,7 +133,7 @@ the actual defect or observation and the evidence for any later retest.
   `PWS0807-before-original-diagnostics-reproduction-20261126`. The exact B8
   marker and all 353 baseline case files matched the pre-test receipt.
 
-## Standalone sample readiness
+## Earlier rehearsal sample
 
 The local engineering rehearsal archive is
 output/pws0807/rc-sample-preparation/paperworkshell-pws0807-rehearsal.zip in the
@@ -146,7 +165,7 @@ expected-output entries through the existing release documents and keep
 engineering sample files identified as engineering evidence. [Release sample
 inventory](../release/RELEASE_EVIDENCE.md#6-synthetic-release-sample-package)
 
-## Completion dependencies
+## Original execution sequence
 
 1. Bind the exact unsigned candidate to its installer, source revision,
    receipt, payload inventory and observed signing state. Carry forward only

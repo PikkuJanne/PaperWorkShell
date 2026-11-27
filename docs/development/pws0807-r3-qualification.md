@@ -188,3 +188,165 @@ The host receipt in `r3-native-display/r3clean1/host.json` has SHA-256
 `1b255d54535f51e4ac858aa58fe7a4320e85f21729ce0b7adb3d43f9caa93574`.
 The visual comparison in `tab-visual-review.json` has SHA-256
 `2e83500e0fbfdc1226c45a8a82f5786fa0603ef9f108ce116ed04e4833e372a2`.
+
+## Archived package shapes and target refusal
+
+The R3 desktop backend reloaded the two earlier synthetic case shapes and
+authenticated the real restricted workers. Main12's mixed, marked four-page
+case completed separate PDFs in 129.92 seconds at the unchanged 300-second
+deadline. Main16's multi-source case completed combined PDF in 6.613 seconds
+and separate PDFs in 19.839 seconds. Independent readers made 12 page
+comparisons across the three operations. The Main16 combined file matched
+the historical output byte-for-byte. The input and manifest comparisons and
+independent reopen are joined in
+`r3-completion-compat/archived-native/independent-reopen.json`, SHA-256
+`d30e48daf550d9cfc031b9c2ed55a8592172872e818a76c32d9b94317261b892`.
+
+On an edited all-PDF case with a visible overlay, a 100,000-byte target
+produced the independently verified 26,223-byte derivative in about nine seconds.
+A one-byte target returned `unsupported_policy` and
+`PACKAGE_WORKFLOW_BLOCKED` in about ten seconds and left the destination empty.
+The earlier successful file and all sources kept their hashes. The
+corresponding receipt in
+`r3-completion-compat/native-fallback-r3-archive/receipt.json` has SHA-256
+`fc02d1f57b2093993265383307f5489cdf6e5858ec4c830c403e8b597e9c36e7`.
+
+In separate fresh Windows sessions, Edge 158.0.4370.45, Chrome 158.0.8127.38
+and Firefox 161.0 each displayed page three of three of the R3 color PDF.
+Document pixels matched the reviewed R2 display. Firefox's ten-pixel
+scrollbar strip was excluded. The fresh viewer receipt is
+`r3-completion-compat/reader-smoke/three-current-windows-viewers.json`,
+SHA-256 `6c86e234221fae3068ca85795348ba4de3b3f46415bee87d193597a109cf5d40`.
+Eight of the nine archived-scenario PDFs also matched their corresponding
+R2 bytes. The Main12 one-page PNG/OCR export differed in size by one byte.
+Rendered pixels and extracted text matched. Normalizing the generated OCR
+form resource identifier and PDF IDs produced identical rewritten PDFs.
+The comparison is recorded in
+`r3-completion-compat/archived-native-and-fallback.json`, SHA-256
+`7072e1f679f3b63fa1aeac1ae79d9f7d8ce12f7a70e38206f613f5358418c2ca`.
+
+On the exact R3 runtime, the three-page eligible raster input exercised the
+four-step compression ladder at a one-byte target. The successive verified
+outputs measured 1,100,841, 767,251, 363,799 and 212,711 bytes. The last
+attempt reached the 200 DPI / quality 80 preservation floor. The application
+reported the target unattainable, kept the occupied destination intact and
+left no staging files. A further 122 component cases passed, including 14
+failed or unknown removal-method decisions that blocked publication. The
+joined receipt is `r3-completion-compat/raster-and-controlled-verification.json`,
+SHA-256 `70664562e6b21441872e4cf684cfbb924461566f4f11eb485dbefcd34116b837`.
+
+## Packaged UI, retention and privacy suites
+
+On the Windows host, staged R3 application modules and the packaged Qt
+Core, Gui and Widgets binaries passed 645 accessibility and input tests
+plus 217 subtests. Matching QtTest, pytest and the offscreen platform
+provided the harness. A further 143 assisted-use, retention, explicit
+removal and review tests passed on disposable cases. The 107 support
+privacy, occupied-destination, signed-source and isolated update checks also
+passed. Each group independently bound its imported product files to the
+R3 inventory. The joined receipt is
+`r3-completion-evidence/packaged-qt-retention-and-privacy.json`, SHA-256
+`67654c8be76d351d1439d252ce5f3fa520293584811c2317b0a25f3f1526eaa9`.
+The installed keyboard, real screen reader and native contrast observations
+use their own methods and receipts.
+
+## Clean keyboard-only checklist and package outputs
+
+From the ordinary case chooser the standard user created a new case,
+imported the four-category PDF, reviewed constraints, restored the generic
+defaults and applied them by keyboard. In the native dialog button group,
+Tab reached Cancel and Left Arrow moved focus to Apply. An initial Tab-only
+traversal and a later observation of a selected category row with focus still
+on the documents list are retained. The operator verified actual list focus
+and continued the same draft, preserving the first confirmed assignment.
+The successful route used physical keyboard commands throughout the combined
+journey. UI Automation read the focused controls and the summary.
+
+With three confirmations, Supporting evidence was missing, one page remained
+unassigned and export was unavailable. After the fourth confirmation,
+combined mode produced a four-page, 2,020-byte PDF and a 6,069-byte saved
+summary. Separate mode produced four single-page PDFs, 947, 950, 948 and
+950 bytes, with an 8,926-byte summary. ZIP mode produced the 4,289-byte
+archive with the same four PDFs and a 9,468-byte summary. The six external
+files and three summaries matched the frozen sample byte-for-byte. All three
+saved summaries matched their displayed text. Independent checks made twelve
+page comparisons across the modes for source order, text and pixels.
+The clean package receipt is `r3-completion-sample/package-bindings-clean.json`,
+SHA-256 `6281ce9da218d6b74ed09551d6d2e9d06f592063e2ce83f28e0887799060efe8`.
+
+## Native resource limits and offline worker
+
+On the Windows host, the exact R3 installed-layout runtime completed the
+normal and constrained mixed workloads. Observed process-tree working sets
+were 196,845,568 bytes under the normal profile and 197,033,984 under the
+constrained profile. Maximum Job commit was 43,216,896 and 43,257,856 bytes
+respectively. Both runs recorded their enforced limits, worker count, CPU,
+temporary storage and output digests. The software-rendered Qt workload
+recorded 2,036 main-thread heartbeat samples, with a maximum interval of
+138.78 ms against 250 ms. The initial test-harness invocation stopped before
+collection because its collector directory was missing. The measured run
+used the same independently rehashed collector and source workload as R2.
+
+A live restricted thumbnail worker acknowledged cancellation in 5 ms against
+2,000 ms and a fresh retry succeeded. Local controls were reachable outside
+the worker. The worker and its descendant could not reach the local listeners.
+Thirty-one storage and fault cases and four delayed-I/O GUI controls passed.
+The final sweep rehashed 3,219 files and all 650,884,602 expanded bytes and
+found zero native recovery-journal files. Results are in
+`r3-native-runtime/runtime-qualification.json`, SHA-256
+`32ac283b2cef41d0e7596d93291cc6d5fe846cbbc172cf70743126245160b5ee`.
+These are software workload and configuration measurements. Physical-device
+observations are optional under PWS-D041.
+
+## Clean mixed files and diagnostics
+
+The standard user imported the PDF, JPEG and PNG through the desktop.
+For each input, the managed copy, external file and manifest digest matched.
+The ordinary 22,408-byte PDF reopened with its three pages in import
+order. The saved edited case reopened at revision 7. Its 22,413-byte export
+contained the PDF, then the PNG, then the JPEG rotated clockwise by 90°.
+A deliberately truncated PDF produced `SOURCE_UNAVAILABLE` and preserved
+the case. The independent checks covered extracted text, source image
+pixels, orientation and retained originals. See
+`r3-completion-sample/checks/clean/originals-managed-and-exports.json`,
+SHA-256 `53cd90776c85965e6e43c72af853ef5799caa0a3ce912a05cbf217a37826b44c`.
+
+With a synthetic case open, the support workflow displayed the two-member
+inventory before explicit consent. The reviewed ZIP saved locally. It
+contained only `summary.txt` (283 bytes) and `allowlist.txt` (1,062 bytes).
+Both member digests and archive CRCs verified, as did the preview's expected
+archive, the allowed vocabulary and absence of prohibited fixture tokens.
+The clean ZIP was 1,567 bytes, SHA-256
+`3f2defae8fd552b75986004b7c097db008b30f5e642743b9ba9e1605bff95b47`.
+Each diagnostic ZIP is checked against its own timestamped preview.
+The seven clean output comparisons are joined in
+`r3-completion-sample/clean-vs-frozen.json`, SHA-256
+`64684c952b2fb096a911bebf2aac9f0b634d2432f88fef6f8ef2af0272079b32`.
+
+
+## Permanent removal on the clean installation
+
+The standard user imported the frozen one-page PDF, marked the synthetic
+target, saved the case and reviewed the separate permanent-removal action.
+The review preceded destination selection. The application reported one
+affected page and six passing checks for objects and revisions, text,
+images, rendering, save/resave and independent OCR. Its final result was
+`REDACTION_EXPORT_COMPLETE`. The external source and managed original still
+matched SHA-256
+`7858323c5907cad84c96d857cc491b4e070f334c3c355d7bfdf7b84b45858168`.
+The case retained its unapplied mark at revision 2.
+
+The 34,084-byte unsigned derivative matched the frozen sample, SHA-256
+`33a6cc1dbfee6fca8d7fe940e5f0ced6e22090e9046fbd9a00481ac0355b8e8c`.
+An independent reader found one image-only page. A separate 200 DPI render
+and English OCR recovered the outside control and found no marked target.
+The raw application report is `r3-installed-matrix/clean/qual-removal-report/report.txt`.
+The independent result is
+`r3-installed-matrix/clean/outputs/permanent-removal/unsigned-derivative-independent-removal.json`,
+SHA-256 `359f801211006ab1387a55761b6113846178cd3420ff781b064141210fdddb71`.
+
+The clean guest had a disconnected virtual network adapter and zero registered ThirdLife
+products, named services or processes. The R3 inventory had zero named
+ThirdLife components or paths. All installed workflows ran on this
+disconnected standalone configuration. The observation is
+`r3-completion-evidence/standalone-environment.json`.
