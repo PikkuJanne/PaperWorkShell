@@ -4,7 +4,7 @@
 |---|---|
 | Document status | **DRAFT TEMPLATE — not a release guarantee and not an application API** |
 | Interface revision | `0-draft` |
-| Engineering sheet revision | `pws0807-r1-interface-1`, for the identified unsigned internal candidate |
+| Engineering sheet revision | `pws0807-r3-interface-1`, for the identified unsigned internal candidate |
 | Product | PaperWorkShell |
 | Portfolio role | ThirdLife Team A / A1 standalone product |
 | Intended completion | Packaged M8 preview and stable candidates |
@@ -22,7 +22,7 @@ supported” with a reason when an interface does not exist. Do not add a file-o
 workspace transfer, association, CLI, URI, or RPC only to fill this sheet. See the
 [portfolio boundary](../../THIRDLIFE_ALIGNMENT.md) and [evidence index](RELEASE_EVIDENCE.md).
 
-This sheet describes `pws0807-diagnostics-engineering-r1`. Its installed marker reports version `0.0.0` and channel `engineering`. The offline Windows 11 Pro x64 guest on build 26300.9711 supplied standard-user desktop evidence. Component and reader observations on Pro x64 26300.9974 have their own stated scope. The owner decides public designation and distribution separately. [R1 qualification](../development/pws0807-r1-qualification.md) · [Candidate matrix](../development/pws0807-rc-matrix.md)
+This sheet describes `pws0807-tab-focus-engineering-r3`. The installed marker reports version `0.0.0` and channel `engineering`. The standard-user clean installation and the R1-to-R3 case-preserving replacement ran on disconnected Windows 11 Pro x64 build 26300.9711. Host component checks ran on build 26300.9974. The payload comparison with R2 found two changed application files, both in the desktop tab presentation and its use by the main window. All 175 third-party acquisition records matched. Public designation and distribution require an owner decision. [R3 qualification](../development/pws0807-r3-qualification.md) · [Candidate matrix](../development/pws0807-rc-matrix.md)
 
 For the current workflow and its limits, see the [user guide](../user/USER_GUIDE.md),
 [care and recovery guide](../user/CARE_AND_RECOVERY.md), and [security policy](../../SECURITY.md).
@@ -33,11 +33,11 @@ For the current workflow and its limits, see the [user guide](../user/USER_GUIDE
 |---|---|
 | Product name | PaperWorkShell |
 | Reverse-domain application ID | `io.github.pikkujanne.paperworkshell`; selected in ADR 0018 |
-| Product version | `0.0.0` in the installed R1 marker. |
+| Product version | `0.0.0` in the R3 runtime marker. |
 | Release channel | Internal `engineering`. |
 | Publisher | Janne Vuorela |
 | Product licence | MIT for [authorized project-owned material](../../LICENSING.md); third-party terms preserved; official distribution free including commercial use |
-| Supported operating systems | Windows 11. Diagnostics R1 installer observations cover Pro x64 build 26300.9711, offline, with Smart App Control Off. [Windows support matrix](WINDOWS11_X64_SUPPORT.md) |
+| Supported operating systems | The standard user installed the candidate offline on Windows 11 Pro x64 26300.9711 with Smart App Control Off. [Windows support matrix](WINDOWS11_X64_SUPPORT.md) |
 | Supported architectures | x86-64 (x64) only under PWS-D043; ARM64 native and emulated application routes are outside project scope |
 | Portfolio dependency | None; PaperWorkShell must run without ThirdLife or sibling applications |
 
@@ -52,47 +52,44 @@ the settled target from still-unproved edition/build and scenario coverage.
 
 | Item | Release value |
 |---|---|
-| Installer/package filename | `PaperWorkShell-pws0807-diagnostics-engineering-r1-win-x64-UNSIGNED.exe` |
+| Installer/package filename | `PaperWorkShell-pws0807-tab-focus-engineering-r3-win-x64-UNSIGNED.exe` |
 | Package format | Native x64 Inno Setup executable, per-user installation |
-| Package size | 513,022,419 bytes |
-| SHA-256 | `a0d809322ea2c29066d26134c649f9ee1a883f4268403ea9c4e2d9e92bf8aaf8` |
-| Observed PaperWorkShell publisher signing state | Authenticode reported `NotSigned` on the build host and in the clean guest. |
-| Artifact verification method | Match the retained installer receipt and resolved inventory, then verify all 3,219 payload files against that inventory. [R1 artifact evidence](RELEASE_EVIDENCE.md#diagnostics-r1-installer) |
-| Source revision | `e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec` |
-| Dependency lock/SBOM reference | Source revision's `uv.lock`, resolved package inventory, and accompanying CycloneDX and SPDX SBOMs. [R1 artifact evidence](RELEASE_EVIDENCE.md#diagnostics-r1-installer) |
+| Package size | 513,023,918 bytes |
+| SHA-256 | `7791cef6be0062319a9c9f39a4bf130ded8f3914485eb50ab4e07d182c992889` |
+| Observed PaperWorkShell publisher signing state | Windows Authenticode reported `NotSigned` for the exact R3 installer. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Artifact verification method | Match the installer receipt and resolved inventory, then verify every installed payload file against that inventory. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Source revision | `54e0b916ac069ce00a0ce200c43e07f3a76d1784` |
+| Dependency lock/SBOM reference | The committed `uv.lock`, resolved inventory, CycloneDX and SPDX SBOMs, and component notices accompany this build. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Download source | No public download authorized. If publication is approved, record the actual delivery source. |
 | Offline-media source | Use the verified internal prepared bundle supplied by the maintainer. A public media source requires a separate distribution decision. |
-| Required external runtime | The standalone app and OCR runtimes ship with R1. The clean offline guest installed and launched R1 without a development environment. |
+| Required external runtime | The prepared bundle includes the application, PDF and OCR runtimes and the reviewed Microsoft runtime terms. Standard-user setup succeeded offline. |
 
-The resolved inventory has SHA-256 `8a9e3202d479c11e4e678adb0c25e31eab1cd1718f036187e500a7dc44566420`,
-the installer receipt `875894759adf79cd580c69a81018ca06c8a734e52f0fbd1754d2ec51bbd3220f`,
-and the installed runtime marker `c01268636ea37745e065516c82f892fc40fae418fdafaeae22cf814599bf6736`.
-R1 includes an app-local Microsoft runtime and its reviewed recipient terms.
-The installer audit reproduced both SBOMs and component notices. Earlier R6/R7/R9 results remain
-with their original builds and environments. [Installer lineage](RELEASE_EVIDENCE.md#diagnostics-r1-installer)
+The resolved inventory has SHA-256 `a436ca25db576c7cc60936428381ee4e747030b869a77d6c5342c7b15df202a4`, the installer receipt `057407a387e55bacff420deec7e1cc0689c3dffa09317b280f2b5f8f391b9b74` and the runtime marker `5e564b0fef1b5e0ebe30ab19bdfe1d8c65872420889ac35c82d7237c73ab5f1e`. The build audit matched all 345 installed application files to their Git objects, revalidated 3,219 staged files, and reproduced both SBOMs and the notices. [R3 qualification](../development/pws0807-r3-qualification.md)
 
 ## 3. Install, update, repair, and remove
 
 | Item | Release value |
 |---|---|
-| Normal installation path or UI | Run `Setup-PaperWorkShell.exe` with the prepared R1 bundle and the receipt digest from the trusted build reference. [Per-user setup](../../packaging/README.md#automated-per-user-setup) |
-| Privilege/elevation requirement | Clean install and launch ran in the signed-in standard user's desktop session. |
+| Normal installation path or UI | Run `Setup-PaperWorkShell.exe` from the prepared R3 bundle with the receipt digest from the trusted build reference. [Per-user setup](../../packaging/README.md#automated-per-user-setup) |
+| Privilege/elevation requirement | The signed-in standard user installed R3, launched the desktop and exported the sample files on both configurations. |
 | Supported silent installation options | After reviewing the bundled Microsoft terms, the prepared launcher accepts `--accept-microsoft-terms <terms-sha256>` for unattended installation. [Setup options](../../packaging/README.md#automated-per-user-setup) |
 | Default install location | `%LOCALAPPDATA%\Programs\PaperWorkShell`. The installer registers removal for the current user. |
-| Restart requirement | The observed R1 install, repair and removal operations requested no restart. |
-| Update mechanism | For local replacement, choose **Keep cases** during removal and install the prepared successor. B8-to-R1 replacement preserved all 353 baseline case files. R1 uses the local installer with the live update channel disabled. |
-| Repair behavior | Close the app and run the matching prepared bundle with `--repair`. On R1 this restored a missing bundled recipient-terms file, verified all 3,219 files and reopened the app. [Repair evidence](RELEASE_EVIDENCE.md#3-install-launch-update-repair-and-uninstall-evidence) |
-| Rollback behavior and limits | Same-build repair restored a missing payload file. During installer-target disk exhaustion the user canceled the partial installation, the installer rolled back, and the retained case and external files matched. Local replacement uses **Keep cases**. Previous-runtime restoration has separate isolated update-rehearsal evidence. [R1 installer recovery](../development/pws0807-unsigned-completion.md#pws-0802-installer-target-disk-exhaustion) |
+| Restart requirement | Neither observed R3 setup required a Windows restart. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Update mechanism | For this engineering channel use the prepared local installer. Choose **Keep cases** during removal for a replacement. The R1-to-R3 replacement retained and opened the earlier case. Live update trust is unprovisioned. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Repair behavior | R3 same-build repair restored a deliberately missing Microsoft runtime recipient-terms file on the clean configuration. The installer returned exit 0, verified all 3,219 payload files and launched the desktop. The quota run separately observed installation stop with a full disk and roll back its partial target. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Rollback behavior and limits | With a real per-user disk quota, R3 stopped during file copy. The user selected **Cancel installation** in the native installer. Its rollback removed the partial target, and the preserved case files and external exports kept their digests. Previous-runtime restoration has separate isolated update rehearsal evidence. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Normal uninstall path or UI | Open **Settings → Apps → Installed apps**, select PaperWorkShell and choose **Uninstall**. |
 | User choice about cases during uninstall | Keeping cases is the default. To delete managed cases, choose review, inspect the inventory, give separate confirmation and acknowledge the reported result before continuing application removal. |
-| Data remaining after uninstall | Preserve removal retained the case and its cached thumbnails, journal and immutable original. The zero-byte per-user lifecycle lock remained. The app root, per-user registration and three shortcuts were removed. |
-| Machine-wide services or scheduled tasks | The desktop runs in the signed-in user session. R1 per-user installation requires no machine service or scheduled task for the documented workflows. |
+| Data remaining after uninstall | On the clean R3 configuration, **Keep cases** retained four synthetic cases and all 31 managed files. After reinstall the standard user reopened a retained case. Confirmed removal of the four reviewed cases left no cases, and all 23 external inputs and outputs retained their digests. The checked PDF/JPEG/PNG shell defaults were preserved. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Machine-wide services or scheduled tasks | The installed desktop and native document worker run in the signed-in user session. The documented local workflows require no machine service or scheduled task. |
 
 The exact TRACE B8 engineering package supplies standard-user same-build repair and reuse
 evidence. PWS-0803 tested offline activation, an ordinary PDF export, previous-runtime restoration
 and replay refusal using an unsigned engineering bootstrap and an isolated test-signed successor.
 See the separate [TRACE B8 setup record](../development/pws0814-automated-setup.md) and
 [offline update record](../development/pws0803-authenticated-updates.md).
+
+The unprovisioned R3 update controller refused the archived signed offer. Using the original isolated public test root in memory, the R3 verifier authenticated the historic 515,298,153-byte ZIP and refused a replay, expiry, a wrong channel and a changed signature. The installed activation and previous-runtime restoration took place on the earlier PWS-0803 test runtimes. [R3 qualification](../development/pws0807-r3-qualification.md)
 
 The update-capable installer and runtime share a per-user lifecycle lock. Close PaperWorkShell
 before opening Updates. Local update packages must use the installed case schema and Microsoft
@@ -111,7 +108,7 @@ installer, updater, migration, or uninstall logic.
 |---|---|
 | Executable or normal launch path | `%LOCALAPPDATA%\Programs\PaperWorkShell\runtime\PaperWorkShell.exe` |
 | Start-menu/application-menu identity | **PaperWorkShell** in the current user's Start menu |
-| Normal interactive launch | The installed shortcut opened a fresh responsive R1 desktop under the standard-user token. [Clean install and launch](../development/pws0807-unsigned-completion.md#pws-0802-clean-per-user-installation-and-launch) |
+| Normal interactive launch | The offline standard user opened the R3 desktop after clean setup and after a case-preserving replacement. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Supported file associations | **Not currently supported; any future policy requires independent product value, user control, and uninstall tests** |
 | Open user-selected PDF through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
 | Open user-selected JPEG/PNG through OS launch | **Not currently supported; import through the visible PaperWorkShell UI is the present path** |
@@ -120,9 +117,9 @@ installer, updater, migration, or uninstall logic.
 | Local PowerShell recipe | In **Recipe**, choose **Export PowerShell script** for ordinary PDF selection, ordering and rotation. The script uses the installed offline runtime and requires a fresh output path. [User guide](../user/USER_GUIDE.md) |
 | ThirdLife-specific CLI/URI/RPC | **Not supported** |
 
-Passing PDF, JPEG, PNG or a workspace path to the exact native launcher displayed `LAUNCHER_ARGUMENT_INVALID` and directed the operator to the visible import controls. The four selected Windows file defaults survived removal. [R1 qualification](../development/pws0807-r1-qualification.md) · [TRACE recipe evidence](../development/pws0813-trace.md)
+The R3 staged launcher displayed LAUNCHER_ARGUMENT_INVALID for PDF, JPEG, PNG and workspace arguments and directed the operator to the visible in-app import. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
 
-On the host, a script generated by the staged R1 runtime replayed the three synthetic PDF, JPEG and PNG inputs with the saved order and rotation. The resulting 22,413 bytes matched the three-page installed desktop export. Repeating the script with the same destination returned `PDF_EXPORT_DESTINATION_EXISTS` and preserved the first export. [R1 qualification](../development/pws0807-r1-qualification.md)
+On the host, a script generated by R3 replayed the mixed PDF, JPEG and PNG case after its saved page reorder and rotation. Its 22,413-byte result matched the independent reference. Reusing the occupied output name returned an error and preserved the first file. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
 
 ## 5. Data locations and retention
 
@@ -134,7 +131,7 @@ Cases hold immutable imported copies, a versioned manifest and journal, and rebu
 | Managed case and backups | Under `%LOCALAPPDATA%\PaperWorkShell\Cases`, each case holds `originals`, `manifest.json` and its `journal`. Migration source backups in the journal stay with the case. |
 | Cached pages and temporary work | Case preview and thumbnail caches are rebuildable. The worker uses bounded temporary storage. The measured mixed workflow finished with zero case temporary bytes. |
 | Engines, preferences and diagnostics | Bundled PDF/OCR engines and English OCR data live under the installed runtime. Case settings remain in managed case state. The support summary uses bounded in-session records until the user chooses a local save. |
-| Local update state | Installed activation state and runtime slots belong under the product installation. The per-user lifecycle lock can remain after uninstall. R1 has no configured production trust anchor. |
+| Local update state | Installed activation state and runtime slots belong under the product installation. The per-user lifecycle lock can remain after uninstall. R3 contains no configured production trust anchor. |
 
 On diagnostics R1, preserve removal kept the product-created synthetic case
 under `%LOCALAPPDATA%\PaperWorkShell\Cases` and the zero-byte
@@ -155,7 +152,7 @@ private case content.
 ## 6. Inputs
 
 The product boundary currently admits PDF, JPEG, and PNG by content rather than filename extension.
-**Add file** on the offline R1 standard-user desktop imported the three documented synthetic formats.
+**Add file** on both offline R3 configurations imported the sample PDF, JPEG and PNG. [R3 qualification](../development/pws0807-r3-qualification.md)
 
 | Input | Product boundary | Exact release status |
 |---|---|---|
@@ -173,18 +170,24 @@ computes SHA-256, and records non-destructive intent against that copy.
 
 | Output | Product boundary | Exact release status |
 |---|---|---|
-| One combined PDF | Assembles PDF pages, converts raster inputs, applies supported saved page operations and writes a new PDF | R1 exported the three-page mixed PDF and a separately reordered, rotated derivative after reopening the case. Independent inspection confirmed page order and content. |
-| Several named PDFs | One verified derivative for each planned group | The installed four-file checklist export timed out and its destination was empty after cleanup. The staged R1 components separately produced three single-page reference PDFs. |
-| ZIP package | Packages ordered PDF derivatives in a new archive | The installed four-member checklist ZIP attempt timed out and its destination was empty after cleanup. For the separate three-page component fixture, every ZIP member matched the corresponding standalone PDF. |
-| Human-readable package summary | Shows the planned and verified counts, user reviews and findings. The user may save a text copy | The installed four-category combined export produced a 2,020-byte PDF. The 6,069-byte saved summary matched its displayed text. The sample contains both files. |
+| One combined PDF | Assembles PDF pages, converts raster inputs, applies supported saved page operations and writes a new PDF | On each R3 installation the ordinary export reopened in PDF, JPEG and PNG insertion order. Reopening the saved case and exporting again produced PDF, PNG and the clockwise-rotated JPEG. The checklist Combined PDF contained four category pages. |
+| Several named PDFs | One verified derivative for each planned group | Each R3 installation produced four named, one-page PDFs. Independent text extraction and rendered pixels matched the expected category on every page. |
+| ZIP package | Packages ordered PDF derivatives in a new archive | Each installed R3 ZIP contained four category PDFs under the reviewed names in the reviewed order. Independent checks matched each member to its source. |
+| Human-readable package summary | Shows the planned and verified counts, user reviews and findings. The user may save a text copy | For each mode on both installations, the saved text matched the summary displayed by the app and the frozen reference text. |
 | Separate printable checklist artifact | Checklist review uses the case and its exported summary | Unsupported. Review the checklist in the app and use the package summary. |
-| Optional technical manifest | User-facing exports are PDF, ZIP and text | Unsupported in R1. The synthetic sample inventory describes only its own example files. |
+| Optional technical manifest | User-facing exports are PDF, ZIP and text | Unsupported in R3. The synthetic sample manifest describes the example archive. |
 | Portable project/migration export | No independently frozen format | **Not currently supported** |
 | Direct portal submission | Outside product boundary | **Not supported** |
 
-Ordinary overlay export flattens supported visible marks. The qualified removal route reconstructs one affected active PDF page as a fresh image-only unsigned derivative and requires six runtime checks, including independent English OCR. On R1, export cancellation produced no file, the original and its managed copy were preserved and a retry to an occupied path kept the verified derivative. Reader and compression evidence has separate exact-file scope. [R1 qualification](../development/pws0807-r1-qualification.md)
+Ordinary visible marks are flattened overlays. For supported permanent removal, R3 rebuilt the sole active page of the unencrypted synthetic PDF as an image-only unsigned derivative. The clean installed desktop reported all six required checks passed, including independent OCR, and saved and reopened the output. An independent parser, rendered-pixel comparison and OCR matched the 34,084-byte frozen derivative. The retained marker stayed visible and the marked target was absent. The staged verifier separately checked ten actual saved or resaved files from the named-reader matrix. [R3 qualification](../development/pws0807-r3-qualification.md)
 
-A checklist **Combined PDF** that includes an active image source and a saved visual overlay can fail before creating a file. The staged R1 producer refused the four-page mixed composition. A revised case kept the overlay, rotation and originals, replaced the active PNG reference with a reviewed PDF page and used four active PDF pages. The staged export matched the earlier successful desktop result in extracted text and rendered pixels on every page. [Historical workflow](../development/pws0701-result.md) · [R1 qualification](../development/pws0807-r1-qualification.md)
+The R3 staged exporter regenerated the five-page M3 reference with all eight overlay kinds and its synthetic signature image. The PDF bytes and every page’s extracted text and rendered pixels matched. A concurrent host run timed out before writing a file. The same test completed in about 65 seconds on a quiet host at the original 120-second limit. The four accepted Windows reader observations apply to this file. [Overlay reader matrix](../compatibility/pws-0307-overlay-reader-matrix.md) · [R3 qualification](../development/pws0807-r3-qualification.md)
+
+A mixed checklist **Combined PDF** with an active image and visual overlay can be refused before creating a file. R2 demonstrated this limit in the unchanged planner and producer. For the archived mixed four-page case, **Separate PDFs** retained the overlay and original PNG and completed on R3 in 129.920 seconds. For the revised all-PDF case, R3 produced the historic 26,223-byte combined file in 6.610 seconds and the four separate files in 19.840 seconds. All 12 page comparisons matched the reference text and pixels. The OCR PDF for the archived mixed case had a different generated resource name and PDF identifiers on R3. Normalizing those fields on disposable copies yielded identical PDFs. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
+
+The R3 packaged adapters reproduced the six compression PDFs and one ZIP byte for byte. These are the files covered by the accepted Windows and Android reader observations. In fresh R3 checks, Firefox 161.0, Edge 158.0.4370.45 and Chrome 158.0.8127.38 displayed the third page of the color-preserving PDF. The document pixels matched the retained R2 views. The R3 one-byte scan search measured all four stages and stopped at the 200-dpi and JPEG-quality-80 floor. The smallest verified candidate was 212,711 bytes. The app preserved the previous output and published no over-budget file. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
+
+The R3 target-size test exercised the ordinary restricted-worker fallback on a four-page PDF package with a visible overlay. A 100,000-byte limit produced the 26,223-byte historic output. A one-byte limit returned an unsupported compression policy for this composition. The blocked commit left its destination empty and preserved the first output and every original. [R3 qualification](../development/pws0807-r3-qualification.md)
 
 ## 8. Offline and network behavior
 
@@ -193,10 +196,10 @@ A checklist **Combined PDF** that includes an active image source and a saved vi
 | Core case creation, import, organize, check, and export | The disconnected standard user created a case, imported PDF/JPEG/PNG, saved a reordered and rotated plan, restarted the app and exported a verified derivative. |
 | Mandatory account | None |
 | Project-controlled server required for core workflow | None |
-| Worker network access during document processing | The R1 staged launcher denied a zero-capability worker and its descendant access to local IPv4/IPv6 TCP and UDP listeners. Permitted control connections reached the same listeners. |
+| Worker network access during document processing | On the exact R3 host runtime, the restricted worker and its child could not reach the tested IPv4 and IPv6 TCP and UDP loopback listeners. Control processes reached those listeners. The installed document workflows ran on a disconnected guest. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Optional downloads | The app discovers local OCR language packs. The offline updater reads a local folder and has no automatic check. The owner has authorized no public acquisition route. |
 | Data transmitted by optional features | The disabled live update channel has no production anchor. The installed diagnostics save used only the user-selected local destination. |
-| Offline installation path | Prepared per-user setup on the disconnected clean guest verified all 3,219 R1 payload files and launched the desktop under the standard user. |
+| Offline installation path | Prepared setup verified the complete R3 payload and launched the desktop on the disconnected clean and case-preserving replacement configurations. |
 | Interrupted download behavior | In-app download is unsupported because the OCR pack and update routes use local files. A future public delivery route requires owner approval. |
 
 ## 9. Resource behavior
@@ -204,12 +207,16 @@ A checklist **Combined PDF** that includes an active image source and a saved vi
 | Item | Release value |
 |---|---|
 | GPU requirement | The supported processing path uses CPU document engines. No discrete GPU minimum is specified. |
-| Minimum practical CPU/RAM/storage claim | No physical hardware configuration is certified for R1. |
-| Low-resource/constrained profile | Version 1. The exact packaged runtime and Windows jobs processed three previews and one combined PDF under both normal and constrained profiles on the x64 host. |
-| Expected temporary space | The constrained three-input workload sampled 35,109 bytes of case temporary files at peak and zero at completion. Input, profile and operation determine actual space needs. |
+| Minimum practical CPU/RAM/storage claim | The engineering qualification covers the recorded configurations. The project has issued no physical hardware certification. |
+| Low-resource/constrained profile | Version 1. The R3 installed-layout runtime processed three previews and one ordinary mixed PDF in each of the normal and constrained resource profiles. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Expected temporary space | The R3 three-input constrained run sampled 31,457 bytes of temporary case files at peak and zero at completion. Inputs and operations determine actual space needs. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Large-input warnings | Budget limits apply to bytes, pages, raster dimensions and working space. Follow the reported refusal or reduce the workload. |
-| Concurrency behavior | The v1 policy bounds heavy operations and worker resources. The constrained workload recorded a peak worker-job commit of 42,938,368 bytes. The qualification record distinguishes Windows job measurements from sampled process-tree usage. |
-| Benchmark evidence | [R1 workload and responsiveness evidence](../development/pws0807-r1-qualification.md) · [Candidate matrix](../development/pws0807-rc-matrix.md). The running matrix retains any unqualified timing or accessibility findings. |
+| Concurrency behavior | Resource policy bounds heavy operations and worker processes. The R3 constrained mixed workload recorded a 43,257,856-byte peak Windows worker Job commit and a 197,033,984-byte process-tree working set. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Benchmark evidence | [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md) · [R1 qualification](../development/pws0807-r1-qualification.md). The qualification records identify the environment and scope for each measurement. |
+
+On the offline R3 replacement desktop, PNG import showed action-specific feedback within 167.57 ms cold and 168.15, 172.30 and 157.72 ms warm, within the 250-ms budget. The original upright preview landmark appeared within 1,407.66 ms cold and 1,458.67, 1,463.93 and 1,526.81 ms warm, within the respective 5,000-ms and 2,000-ms budgets. These figures are capture-return upper bounds for four observations on the identified configuration. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
+
+The staged R3 constrained searchable-PDF workload produced a verified 128,180-byte, 12-page PDF. The complete measured run took 81.031 seconds with a peak process-tree working set of 341,299,200 bytes against the 1,342,177,280-byte limit. The private temporary-file peak was 740,444 bytes. The first run produced the derivative but its private temporary measurement was incomplete. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
 
 Constrained-profile evidence proves bounded software behavior for the named revision and workload.
 It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, HDD, or VM.
@@ -218,16 +225,16 @@ It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, 
 
 | Item | Release value |
 |---|---|
-| Normal application privilege | R1 ran under the genuine standard user on the offline Pro x64 guest. |
+| Normal application privilege | The standard user installed and launched R3 in the offline Pro x64 desktop session. |
 | Operations requiring elevation | The documented per-user setup, launch, repair, preserve removal and confirmed user-case removal were exercised in the standard account. |
 | Untrusted inputs | PDF, JPEG, PNG, templates, and any future project/engine package as applicable |
-| Document processing isolation | Document parsing and export use restricted Windows workers. The R1 workload recorded native job limits and resource measurements. The qualification record gives the exact installed or staged scope. |
+| Document processing isolation | The R3 desktop paths used restricted Windows workers for permanent removal, ordinary export and the target-size fallback. The measured workloads record worker and child process limits, cancellation and recovery. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Network during processing | No worker traffic reached the four tested loopback listener types. The standard-user document workflow also ran with the guest adapter disconnected. |
 | Update provenance | Check the local installer against the trusted build reference before replacement. The disabled live channel has no production trust root. The separately exercised verifier enforces cryptographic channel authority, freshness and exact package identity. |
 | Secrets handling | No secrets or sensitive document content in arguments, routine logs, crash reports, or support bundles |
 | Telemetry | Off by default |
-| Original preservation | The three external mixed inputs and their managed copies matched SHA-256 before and after export. Keep-cases removal preserved managed data and separate external originals and outputs. |
-| Known security limitations | One affected active page from a supported unencrypted PDF is qualified for permanent removal. Ordinary visual marks remain overlays. Recheck reader-specific and scenario-specific limits before relying on an exported file. [Known limitations](../../KNOWN_LIMITATIONS.md) |
+| Original preservation | The PDF, JPEG and PNG originals, managed copies and stored manifest hashes matched on both R3 configurations. Reopened ordinary and edited exports preserved the expected page order and pixels. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Known security limitations | Permanent removal requires exactly one active page, and that page must be the affected supported PDF page. Ordinary visual marks remain overlays. Recheck reader-specific and scenario-specific limits before relying on an exported file. [Known limitations](../../KNOWN_LIMITATIONS.md) |
 | Security reporting route | For this internal build use the private maintainer channel that supplied it. A public reporting address remains an owner decision. [Security reporting](../../SECURITY.md) |
 
 ## 11. Support bundle
@@ -239,27 +246,27 @@ R1 also passed local preview, consent, save, refusal and exact-member verificati
 
 | Item | Release value |
 |---|---|
-| Creation path | TRACE offers **Create support bundle…** in **Settings** and **Help**. Exact unsigned diagnostics R1 passed filename selection, archive verification, privacy and overwrite refusal. Completion-candidate verification remains scoped to applicable evidence. |
+| Creation path | Open **Create support bundle…** in **Settings** or **Help**. Review the two-member inventory, consent, then choose a local filename. Both R3 installations exercised this workflow. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | User preview before creation | Required |
 | Default destination | Explicit user-selected local file; no automatic submission |
 | Included categories | Exact preview of `summary.txt` and `allowlist.txt`; numeric versions by default, other closed typed diagnostic fields only when actually recorded; no file collector |
 | Excluded | Document bytes/text, OCR text, form values, names, addresses, filenames, full paths, metadata values, thumbnails, signatures, and credentials; any future content-sample workflow requires a separate decision and approval |
-| Cancellation/failure behavior | Installed R1 native Cancel, picker permission denial and application destination refusal left no new archive. The same preview saved to a fresh supported name. An occupied destination retained its previous bytes. |
-| Sample sanitized bundle | Exact installed R1 two-member ZIP with SHA-256 `f8599db42729a3541464f41496960c2b4af95fc96007f0f3d7f47fe07fa63e8e`. [Diagnostics verification](../development/pws0807-unsigned-completion.md#observed-diagnostics-outcome) |
+| Cancellation/failure behavior | Cancel left the local destination empty. On the R3 replacement, an occupied filename and a Windows-valid over-limit name were refused. Choosing a fresh name saved a byte-identical copy of the same reviewed preview. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Sample sanitized bundle | The sample contains the independently observed R2 reference ZIP. The clean and replacement R3 bundles each matched their own reviewed preview, including member hashes, CRCs and the closed allowlist. Their timestamps can differ. [R3 qualification](../development/pws0807-r3-qualification.md) |
 
 PaperWorkShell and ThirdLife support artifacts remain separate.
 
 ## 12. Sample artifacts
 
-The internal R1 handover includes `PaperWorkShell-R1-synthetic-sample.zip`, 4,141,874 bytes with 23 members. The SHA-256 is `995d3d852d1cf68e2911d685d542eb80a4b1afafd6a83a9fe4fd890aa6776416`. A fresh process reopened the archive, checked every member's size and digest, and opened its PDF and ZIP references. [R1 qualification](../development/pws0807-r1-qualification.md)
+The internal R3 handover includes `PaperWorkShell-R3-synthetic-sample.zip`, 4,173,788 bytes with 30 members, SHA-256 `027410d15b8a62874d535fca5fdc625e46e272667a07b3c8096920f217b4f468`. Its expected outputs were captured on R2 and frozen before the R3 black-box runs. A fresh process verified every member and independently reopened the valid PDFs and nested ZIPs. The two R3 configurations were compared with the same archive. [R3 qualification](../development/pws0807-r3-qualification.md)
 
 | Item | Release value |
 |---|---|
 | Synthetic sample input set | The archive contains a born-digital PDF, an EXIF-oriented JPEG, a scan PNG, a four-category PDF, an intentionally truncated refusal example, a three-page compression reference and a one-page permanent-removal exercise. |
 | Sample portable workspace/project | **Not currently supported** |
-| Expected PDF/ZIP/summary outputs | Installed mixed and reordered PDFs, four-category combined PDF and saved summary, two-member diagnostics ZIP, color/grayscale and three-part PDF/ZIP component references, and the verified one-page removal derivative. |
-| Expected behavior notes | Read `READ-ME.md` inside the archive for the local steps, visible results and the two observed four-part package timeouts. |
-| SHA-256 manifest | `manifest.json`, SHA-256 `95b06fffe394ca1f48840493b5e5017514e1bc351c9fd6447b5b00c8d7b0f676`, identifies the exact engineering build, scope, files, lengths, hashes and expected behavior. |
+| Expected PDF/ZIP/summary outputs | Two ordinary mixed PDFs, the four-category combined PDF, four named PDFs, their ZIP and all three saved summaries, the two-member diagnostics ZIP, color/grayscale references, three single-page references and their ZIP, and the one-page removal derivative. |
+| Expected behavior notes | Open `READ-ME.md` inside the archive for the documented local actions, expected page order, reviewed package names and refusal examples. |
+| SHA-256 manifest | `manifest.json` has SHA-256 `a51a4ccf34b47793e4495b00e9300479264ad0f2f33780caf4722aea887eee90`. It names the R3 target and documents the R2 reference material, original artifact provenance, member sizes and digests. |
 | Licence/provenance of samples | The manifest records each generated fixture's origin. The archive includes the project MIT licence and the SIL Open Font License notice for embedded Noto Sans subsets. |
 
 No sample may contain real applicant, identity, financial, medical, employment, signature, or
@@ -278,15 +285,17 @@ Product-level limitations already fixed by local authority include:
   never represented as permanent removal.
 - The initial input boundary excludes HEIC, TIFF, DOCX, ODT, email import, and scanner protocols.
 
-Check the R1 matrix for migration, rollback, accessibility, resource and timing results together with their exact configurations. Unobserved configurations carry no support claim. [R1 qualification](../development/pws0807-r1-qualification.md) · [Current known limitations](../../KNOWN_LIMITATIONS.md)
+Check the candidate matrix for migration, rollback, accessibility, resource and timing results with their tested configurations. [R3 qualification](../development/pws0807-r3-qualification.md) · [Current known limitations](../../KNOWN_LIMITATIONS.md)
+
+At 200% display scaling with the Windows Aquatic high-contrast theme, R3 drew a visible keyboard-focus outline around the selected Pages, Sources, Recipe and Checks tabs on the clean installed desktop. Forward and reverse navigation also passed at normal 100% and 200% settings. The earlier R2 build failed the Aquatic Pages-tab transition. On the replacement configuration, NVDA 2026.1.1.55980 announced the ten tested phase groups, including error focus, cancellation, consent, review and all three saved package summaries. [R3 qualification](../development/pws0807-r3-qualification.md) · [R2 qualification](../development/pws0807-r2-qualification.md)
 
 ## 14. Release contact and maintenance
 
 | Item | Release value |
 |---|---|
-| Issue/reporting route | Report to the maintainer through the existing private R1 handover channel. Include the candidate identity, observed behavior and sanitized error code. |
+| Issue/reporting route | Report to the maintainer through the existing private engineering handover channel. Include the candidate identity, observed behavior and sanitized error code. |
 | Security reporting route | For this internal build use the private maintainer channel that supplied it. A public reporting address remains an owner decision. [Security reporting](../../SECURITY.md) |
-| Maintained release versions | The internal engineering handover covers only the identified R1 artifact and documented scenarios. Public supported versions require owner designation. |
+| Maintained release versions | The engineering handover covers the identified R3 artifact and recorded scenarios. Public supported versions require owner designation. |
 | Maintenance status | Internal engineering qualification. Public preview and stable designation require separate owner decisions. |
 | End-of-support policy | No public support period has been announced for this engineering build. |
 | Mandatory user account for support | None implied or required by this sheet |
@@ -315,4 +324,4 @@ index documents, control hidden processing, change originals, or perform PaperWo
 - [x] The engineering security scope, support bundle, tested limitations, synthetic sample and internal reporting route are documented.
 - [x] [Release evidence](RELEASE_EVIDENCE.md) identifies the exact packaged candidate.
 - [x] The engineering sheet uses known-folder notation, synthetic examples and repository-relative references.
-- [ ] The completed sheet is frozen with the release artifacts.
+- [x] This engineering sheet is frozen with the matching sample and installer references.

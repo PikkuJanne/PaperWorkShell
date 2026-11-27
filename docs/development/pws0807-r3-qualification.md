@@ -420,3 +420,127 @@ receipt is `r3-installed-matrix/clean/lifecycle-result.json`, SHA-256
 The independent comparison is
 `r3-completion-evidence/clean-lifecycle-independent.json`, SHA-256
 `74508fa7694869ea32a16ebb64b8b0833990720c7c94ba0b25223b904f92695a`.
+
+## R1 replacement and case migration
+
+A separate standard-user guest branch began at the preserved R1 mixed-input
+checkpoint. Its 367 case files, three external originals and prior combined
+PDF matched. The operator staged seven frozen sample inputs. The default
+Keep uninstall removed the R1 program and registration. All 367 case files,
+11 external files and four Windows file defaults matched before removal,
+after removal and after the R3 install. The new program directory matched
+all 3,219 R3 inventory entries and 650,884,602 bytes. The prior R1 three-page
+case opened through the installed R3 chooser.
+
+The replacement desktop produced the ordinary 22,408-byte PDF and then
+the edited 22,413-byte PDF after restart. The mixed-file receipt in
+`r3-completion-sample/checks/replace/originals-managed-and-exports.json`
+has SHA-256 `c2668136fd33f52afb504268bf837d92098237c1d635c21fd6176034287d60ce`.
+With NVDA running, the combined, separate and ZIP packages completed in
+11.44, 26.25 and 31.67 seconds respectively, measured from
+destination approval to observed completion. The six output files, four ZIP
+members and three saved summaries all matched the frozen sample. The package
+comparison in `r3-completion-sample/package-bindings-replace.json` has
+SHA-256 `23488b366f6ca99d15d67488d615d28a003391b182d005037d045a9914f1c4a0`.
+
+Through the ordinary chooser the standard user opened three synthetic cases
+from schema versions 1, 2 and 3. Each became schema 4 at exactly one higher
+revision. Each had precisely one backup matching its entire prior manifest.
+Managed and external original digests matched. The PNG-first page order,
+PDF quarter-turn and both active pages were preserved. The migration receipt
+is `r3-installed-matrix/replace/migration-verify-0.json`, SHA-256
+`79a19421769307a500e78c0e298c13e8f84be3a6a77d8dbaeb175e34b42bac3f`.
+
+The support picker allowed cancellation. A subsequent consented save produced
+a 1,567-byte archive matching its own preview, inventory, CRCs and privacy
+checks. An occupied-name attempt preserved the existing file. A separate
+over-limit destination triggered the safe-save refusal and produced no ZIP.
+The same review then saved identical bytes at a new name. The archive digest
+is `9b8597cbac384e08eb3ff8b02847054dae19c9b67850d5ee7079d72e490df7db`, and the independently reopened receipt is
+`r3-installed-matrix/replace/support-reopened.json`, SHA-256 `573789b6c227f130eba75bb1b8880a3785b90cca0ba06456d7c6e596d49c2a00`.
+
+## Installed NVDA and first preview
+
+NVDA 2026.1.1.55980 ran in the actual standard user's interactive
+session. An observer read its Speech Viewer while the installed R3 desktop
+held foreground focus. UI Automation separately recorded the displayed
+controls and focus. After the app restarted, the observer reacquired the
+new desktop process and continued recording. The ten reviewed groups
+contained 477 phase-correlated speech entries.
+They covered case and page navigation, scan adjustment and local OCR
+language, text and checkmarks, saved unapplied removal marks, malformed
+input, assisted consent and retention, cancellation, quality findings,
+checklist readiness, and package export and summaries.
+
+The reader announced that information was still present after saving a
+removal mark. After a malformed import, focus returned to **Add file**.
+The operator cancelled a quality check, ran it again to completion, and
+followed a finding to the corresponding page. The reader announced the
+cancellation request, completion and needs-review state. Both NVDA and the
+observer exited normally. These are agent-operated observations of actual
+speech and native focus. The speech receipt is
+`r3-completion-accessibility/speech-qualified.json`, SHA-256
+`2ec7fc9e630f7dbad8f6cce000bb1e488994eb08622764a098723d951d91444d`. A separate check matched action-specific
+speech in each group in `r3-completion-accessibility/speech-content-review.json`,
+SHA-256 `2bbeb389e0fff2c3941679935b1b03c46ca2603bbd1858976e750fff192b93f7`.
+
+A fresh process supplied the cold import, followed by three new empty cases
+in the same process. The genuine standard-user desktop ran at 1,024 × 768,
+96 DPI, with the original contrast setting. NVDA and its watcher had exited,
+and the host source-test queue was paused. The observer submitted Enter in
+the real file picker once per case. Guest QPC deltas end when the
+corresponding screenshot returned. Every captured file was rehashed,
+bound to its process, case and page, and checked for foreground ownership.
+The operator reviewed the before/after pages and action-specific status
+images. The independent preview check compared the upright source against
+rotations and reflections. The larger preview landmark used the pre-existing
+geometric and pixel test.
+
+| Import | Acknowledgement upper bound (ms) | First upright source pixels (ms) | Larger preview landmark (ms) | Preview target (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Cold | 167.57 | 1407.66 | 1407.66 | 5,000 |
+| Warm1 | 168.15 | 1410.75 | 1458.67 | 2,000 |
+| Warm2 | 172.30 | 1463.93 | 1463.93 | 2,000 |
+| Warm3 | 157.72 | 1464.25 | 1526.81 | 2,000 |
+
+The acknowledgement target was 250 ms per import. The range starts at
+submission of Enter. A frame arriving after a target cannot by itself
+establish when the underlying content first appeared. The source and
+landmark bounds above have separate observations. The four guest
+captures, all eight review bounds and the independent source comparison
+are joined in `r3-completion-timing/response-times.json`, SHA-256
+`7c46d1648e16cb14b666b4a1e26a2201925eb53abafd5111dbd9b9937ce50a42`.
+
+## Engineering disposition and restored R1
+
+All four R3 acknowledgement and preview comparisons passed. R1's split-PDF
+and ZIP timeouts and R2's Aquatic selected-tab failure remain attributed to
+the builds that exhibited them. The candidate is unsigned engineering
+version 0.0.0. Direct external opening and portable cases are unsupported.
+The installed Windows observations cover Pro x64 26300.9711 with Smart App
+Control Off. Reader versions, the single-affected-page permanent-removal
+profile, edited package combinations, target-size refusals and optional
+hardware observations retain their documented limits. The [engineering
+interface](../release/RELEASE_INTERFACE.md) and [release evidence](../release/RELEASE_EVIDENCE.md)
+describe the user-visible scope. PWS-0808 owns final product-completion
+sign-off and the maintainer owns publication.
+
+After evidence transfer, the R3 replacement checkpoint was retained as
+`6236255b-e603-4989-8f5e-98ca0ec6ef4e`. All 367 pre-existing case files still matched. Reopening the
+old mixed case added one 77,226-byte thumbnail transform cache. The final
+R3 replacement state had 442 case files and 27 external files. No owned
+runtime, reader or scenario task remained. The R3 checkpoint receipt is
+`r3-installed-matrix/replace/checkpoints/verified-final.json`, SHA-256
+`c8099cbdcba7fc919a0d82f59b9f69e27f5696562cb77f86fdf8722f2051ba94`.
+
+The active guest was restored to its original offline R1 checkpoint
+`999a5747-66e2-4565-baee-5e619dce8656`. The first post-restore inventory reader wrapped a
+PowerShell JSON array as a single entry and stopped before verifying the
+payload. A corrected read-only check required 3,219 individual rows and
+verified every installed R1 payload file, totaling 650,881,153 bytes.
+It also rechecked the original R1 installer, receipt and inventory hashes,
+and matched the original 358 managed case files by relative path, length
+and SHA-256. All 23 checkpoints were retained. The standard-user guest
+remained offline, with zero owned processes, scenario tasks or R2/R3
+scratch locations. The final receipt is
+`r3-completion-evidence/final-active-r1.json`, SHA-256 `2c322594c5f9138d9bd495e9a945198e94f89a621312fd886b86a8a51182cfef`.

@@ -65,13 +65,13 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 51060,
-      "sha256": "fd56f635a2441db41c77bf886cc890944709191d3471f93fc43422570c26f6c8"
+      "bytes": 51116,
+      "sha256": "6e40a15234e3eb2b356952ce1c764d6c236d30d8b3b40e4445f5088d621ddc9a"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 30763,
-      "sha256": "48095295060703bb8da6af675bf1e9a71b1648d5a953d1e6a58e6fbeae239d99"
+      "bytes": 36332,
+      "sha256": "db9ad671e63c93bd51daa3324f7b302ca3a80da51a761e5861a897e82dc8a6e8"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
@@ -685,13 +685,13 @@
     },
     {
       "path": "docs/development/pws0807-r3-qualification.md",
-      "bytes": 26517,
-      "sha256": "40814573caa78334ad2d718d9e178344cf5b586c7347d11c61fc854198b00fff"
+      "bytes": 34311,
+      "sha256": "462ed9c474012d700b4a6707b281486889349a0f51f747a28b2287afdd0bcafd"
     },
     {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 24457,
-      "sha256": "42c499547ec2acacd05ebda000b5898afb65fa279fc990e0a49cc1c8f6abf2bf"
+      "bytes": 25272,
+      "sha256": "b856821ef24f7889cc6085ac2020aae2db7e732913b85ed6969d9d32a14c8f87"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
