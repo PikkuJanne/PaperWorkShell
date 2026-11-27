@@ -520,9 +520,12 @@ class _LazyPackageFlattenedBroker:
         self,
         resources: DesktopApplicationResourceContext,
         stack: ExitStack,
+        *,
+        runtime_access: RuntimeAccessAuthority | None = None,
     ) -> None:
         self._resources = resources
         self._stack = stack
+        self._runtime_access = runtime_access
         self._composition: FlattenedPdfExportWorkerComposition | None = None
 
     @property
@@ -548,7 +551,9 @@ class _LazyPackageFlattenedBroker:
     ) -> VerifiedFlattenedPdfCandidate:
         _require_package_runtime_active(deadline, cancellation)
         if self._composition is None:
-            composition = build_windows_flattened_pdf_export_worker_composition(self._resources)
+            composition = build_windows_flattened_pdf_export_worker_composition(
+                self._resources, **_runtime_access_options(self._runtime_access)
+            )
             self._stack.callback(composition.close)
             if (
                 composition.closed
@@ -635,6 +640,8 @@ def _package_pdf_producer_context(
     sources: PackagePdfSourceStore,
     rasterizer: FlattenedPdfRasterizer,
     resources: DesktopApplicationResourceContext,
+    *,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> Iterator[PackagePdfCandidateProducer]:
     """Retain at most one composition per pipeline for one package attempt."""
 
@@ -643,7 +650,7 @@ def _package_pdf_producer_context(
         yield PackagePdfCandidateProducer(
             sources,
             rasterizer,
-            _LazyPackageFlattenedBroker(selected_resources, stack),
+            _LazyPackageFlattenedBroker(selected_resources, stack, runtime_access=runtime_access),
             _LazyPackageSearchableBroker(selected_resources, stack),
             selected_resources.resource_policy,
             ocr_languages=selected_resources.ocr_languages,
@@ -710,12 +717,18 @@ def _target_size_pdf_producer_context(
     sources: WindowsSourceIngestStore,
     rasterizer: FlattenedPdfRasterizer,
     resources: DesktopApplicationResourceContext,
+    *,
+    runtime_access: RuntimeAccessAuthority | None = None,
 ) -> Iterator[TargetSizePdfCandidateProducer]:
     """Close every selected pipeline before leaving private package preparation."""
 
     selected = _require_application_resource_context(resources, required=True)
     with ExitStack() as stack:
-        fallback = stack.enter_context(_package_pdf_producer_context(sources, rasterizer, selected))
+        fallback = stack.enter_context(
+            _package_pdf_producer_context(
+                sources, rasterizer, selected, runtime_access=runtime_access
+            )
+        )
         yield TargetSizePdfCandidateProducer(
             sources,
             _LazyPackageImageStageProcessor(selected, stack),
@@ -730,6 +743,7 @@ def build_windows_compression_review_service(
     *,
     resources: DesktopApplicationResourceContext,
     preview_config: DesktopWorkerCompositionConfig,
+    runtime_access: RuntimeAccessAuthority | None = None,
     verified_export_observer: Callable[[ManifestSnapshot, PackageExportOutcome, Path], None]
     | None = None,
 ) -> WindowsCompressionReviewService:
@@ -743,7 +757,9 @@ def build_windows_compression_review_service(
         heavy_operations=selected.heavy_operations,
     )
     return WindowsCompressionReviewService(
-        lambda: _target_size_pdf_producer_context(sources, rasterizer, selected),
+        lambda: _target_size_pdf_producer_context(
+            sources, rasterizer, selected, runtime_access=runtime_access
+        ),
         WindowsExportDestination(
             minimum_free_space_reserve_bytes=selected.resource_policy.minimum_export_free_space_reserve_bytes
         ),
@@ -783,6 +799,7 @@ def build_windows_package_export_service(
     rasterizer: FlattenedPdfRasterizer,
     *,
     resources: DesktopApplicationResourceContext,
+    runtime_access: RuntimeAccessAuthority | None = None,
     text_extractor: TextCompanionExtractor | None = None,
     forbidden_export_root: Path | None = None,
     verified_export_observer: Callable[
@@ -801,7 +818,9 @@ def build_windows_package_export_service(
             PackagePdfCandidateErrorCode.MODEL_INVALID, "package.runtime_service"
         )
     return WindowsPackageExportService(
-        lambda: _package_pdf_producer_context(sources, rasterizer, selected_resources),
+        lambda: _package_pdf_producer_context(
+            sources, rasterizer, selected_resources, runtime_access=runtime_access
+        ),
         WindowsExportDestination(
             minimum_free_space_reserve_bytes=(
                 selected_resources.resource_policy.minimum_export_free_space_reserve_bytes
@@ -1367,6 +1386,7 @@ def _build_backend(
             source_store,
             composition.signature_image_rasterizer,
             resources=selected_resources,
+            runtime_access=composition.runtime_access_authority,
             text_extractor=composition.text_companion_extractor(selected_policy),
             forbidden_export_root=manager.cases_root,
             verified_export_observer=remember_export,
@@ -1427,6 +1447,7 @@ def _build_backend(
                     composition.signature_image_rasterizer,
                     resources=selected_resources,
                     preview_config=desktop_config,
+                    runtime_access=composition.runtime_access_authority,
                     verified_export_observer=package_exporter.remember_verified_export,
                 ),
             ),

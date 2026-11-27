@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -35,6 +36,8 @@ from paperworkshell.export.package_service import WindowsPackageExportService
 from paperworkshell.export.package_summary import build_package_summary
 from paperworkshell.preflight.portal_constraints import PortalOutputMode
 from paperworkshell.storage.export_destination import WindowsExportDestination
+from paperworkshell.storage.workspace import CaseWorkspaceManager
+from paperworkshell.worker.desktop_composition import DesktopWorkerComposition
 from tests.unit.test_package_summary import SummaryInputs, summary_inputs, summary_outcome
 
 
@@ -131,6 +134,42 @@ def test_producer_context_is_lazy_and_preserves_app_policy(
         assert cast(Any, producer)._searchable_broker.maximum_output_bytes == (
             desktop.build_windows_searchable_pdf_export_limits(policy).output_bytes
         )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows desktop composition")
+@pytest.mark.parametrize("target_size", [False, True])
+def test_desktop_package_flattened_export_shares_the_ordinary_case_authority(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target_size: bool
+) -> None:
+    resources = _resources()
+    authority = object()
+    monkeypatch.setattr(
+        DesktopWorkerComposition, "runtime_access_authority", property(lambda _: authority)
+    )
+    manager = CaseWorkspaceManager(
+        profile_root=tmp_path, quota=desktop._workspace_quota(resources.resource_policy)
+    )
+    backend = desktop._build_backend(manager, resources=resources)
+    admitted: list[object] = []
+    composition = _Composition(resources)
+
+    def create(selected: desktop.DesktopApplicationResourceContext, **options: object) -> object:
+        assert selected is resources
+        admitted.append(options.get("runtime_access"))
+        return composition
+
+    monkeypatch.setattr(desktop, "build_windows_flattened_pdf_export_worker_composition", create)
+    try:
+        workflow = cast(Any, backend)._package_workflow
+        service = workflow._compression if target_size else workflow._exporter
+        with service._producer_factory() as producer:
+            broker = (producer._fallback if target_size else producer)._flattened_broker
+            assert _invoke(broker, searchable=False) is composition.exporter
+            assert _invoke(broker, searchable=False) is composition.exporter
+            assert admitted == [authority]
+        assert composition.close_calls == 1
+    finally:
+        backend.shutdown()
 
 
 @pytest.mark.parametrize("searchable", [False, True])
