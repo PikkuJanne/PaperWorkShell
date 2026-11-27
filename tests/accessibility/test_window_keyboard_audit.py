@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QMessageLogContext, Qt, QtMsgType, qInstallMessageHandler
-from PySide6.QtGui import QAction, QShortcut
+from PySide6.QtGui import QAction, QColor, QPalette, QShortcut
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
+from paperworkshell.ui import trace_presentation
 from paperworkshell.ui.checklist import ChecklistEditorDialog
 from paperworkshell.ui.constraints import ConstraintEditorDialog
 from paperworkshell.ui.keyboard_help import KEYBOARD_REFERENCE, KeyboardHelpDialog
@@ -25,6 +26,63 @@ from tests.accessibility.test_constraint_editor_accessibility import _state as _
 
 def _settle() -> None:
     _application().processEvents()
+
+
+@pytest.mark.parametrize("inspector", (False, True))
+def test_workbench_selected_tab_has_a_palette_focus_outline(
+    inspector: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(trace_presentation, "_windows_contrast_theme", lambda: True)
+    with _window() as (window, _commands, worker):
+        worker.initialized.emit()
+        worker.state_changed.emit(_state())
+        window.resize(1600, 1100)
+        window.activateWindow()
+        controller = _application().findChild(trace_presentation._TracePresentation)
+        assert controller is not None
+        controller.refresh()
+        _settle()
+        tabs = window._trace_inspector_tabs if inspector else window._trace_left_tabs
+        bar = tabs.tabBar()
+        palette = bar.palette()
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#8ee3f0"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#263b50"))
+        bar.setPalette(palette)
+        _settle()
+        assert bar.isVisible() and not bar.rect().isEmpty()
+        for index in range(tabs.count()):
+            tabs.setCurrentIndex(index)
+            window._close_case_button.setFocus()
+            _settle()
+            unfocused = bar.grab().toImage().scaled(bar.size())
+            bar.setFocus(Qt.FocusReason.TabFocusReason)
+            _settle()
+            assert bar.hasFocus() and bar.currentIndex() == index
+            focused = bar.grab().toImage().scaled(bar.size())
+            current = bar.tabRect(index)
+            inactive = bar.tabRect(1 - index)
+            assert bar.rect().contains(current) and bar.rect().contains(inactive)
+            # An outline must appear on the selected tab even if the native style
+            # paints its selected and keyboard-focused labels identically.
+            assert any(
+                sum(
+                    focused.pixel(x, y) != unfocused.pixel(x, y)
+                    for x in range(current.left() + 5, current.right() - 4)
+                )
+                >= current.width() // 3
+                for y in range(current.top() + 1, current.top() + 6)
+            )
+            edge_colors = {
+                focused.pixel(x, y)
+                for x in range(current.left() + 5, current.right() - 4)
+                for y in range(current.top() + 1, current.top() + 6)
+            }
+            assert {palette.highlight().color().rgb(), palette.highlightedText().color().rgb()} <= (
+                edge_colors
+            )
+            assert focused.copy(inactive.adjusted(2, 2, -2, -2)) == unfocused.copy(
+                inactive.adjusted(2, 2, -2, -2)
+            )
 
 
 def test_programmatic_dialog_status_focus_is_revealed_inside_its_scroll_area() -> None:

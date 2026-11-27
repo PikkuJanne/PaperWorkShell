@@ -194,6 +194,7 @@ from paperworkshell.ui.page_delegate import OrganizerPageDelegate
 from paperworkshell.ui.post_export import PostExportDeletionDialog
 from paperworkshell.ui.presentation import (
     ElidingTextLabel,
+    FocusVisibleTabBar,
     WrappingActionLayout,
     adapt_dialog_button_box,
     install_presentation_policy,
@@ -1454,6 +1455,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_source_tree.itemActivated.connect(self._select_source_tree_page)
         self._trace_sources_identity: object = None
         self._trace_left_tabs = QTabWidget()
+        FocusVisibleTabBar.install_on(self._trace_left_tabs)
         self._trace_left_tabs.setAccessibleName(tr("Pages and source documents"))
         self._trace_left_tabs.setUsesScrollButtons(False)
         self._trace_left_tabs.setElideMode(Qt.TextElideMode.ElideRight)
@@ -1679,6 +1681,7 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_lens = "planned"
         center = self._build_trace_document()
         self._trace_inspector_tabs = QTabWidget()
+        FocusVisibleTabBar.install_on(self._trace_inspector_tabs)
         self._trace_inspector_tabs.setAccessibleName(tr("Recipe and inspection"))
         self._trace_inspector_tabs.setUsesScrollButtons(False)
         self._trace_inspector_tabs.setElideMode(Qt.TextElideMode.ElideRight)
