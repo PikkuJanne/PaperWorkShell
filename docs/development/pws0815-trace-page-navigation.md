@@ -169,6 +169,8 @@ all four managed originals matched. See
 `output/pws0815/successor-final-navigation-native/receipt.json` and the matching
 captures. The installed comparison used Windows UI Automation and keyboard
 input. The earlier NVDA evidence remains scoped to its recorded candidate.
+The two compact windows show the top of the canvas on open. Full-sheet
+review uses the existing scrollable document view or a larger window.
 
 ## Next development step
 
