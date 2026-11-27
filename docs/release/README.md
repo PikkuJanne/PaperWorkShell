@@ -12,8 +12,10 @@ ThirdLife B4 black-box compatibility cut using frozen public artifacts.
   launch, data, input/output, security, and support behavior for one packaged release.
 - [Release evidence index](RELEASE_EVIDENCE.md) — hashes and links to evidence for that exact
   packaged release and environment.
+- [R3 release notes](RELEASE_NOTES.md) — verified changes, scope, maintenance, and limitations.
 - [Standalone release checklist](STANDALONE_RELEASE_CHECKLIST.md) — M8 candidate acceptance
   checklist; a checked item requires current evidence.
+- [M8 gate report](../gates/m8-product-completion-gate.md) — formal review of the exact R3 candidate.
 - [Windows 11 x64 support boundary](WINDOWS11_X64_SUPPORT.md) — selected application
   architecture and the exact edition/build evidence boundary under PWS-D043.
 - [PWS-0802 x64 continuation](../development/pws0802-x64-continuation-20261104.md)
@@ -36,16 +38,17 @@ ThirdLife B4 black-box compatibility cut using frozen public artifacts.
   remaining actual low-disk and exact-candidate qualification. The
   [earlier preflight](../development/pws0802-result.md) remains historical.
 
-Both the interface and evidence files are draft templates. Their release-specific `TBD` fields
-must remain unresolved until a real packaged candidate supplies the value. Product-contract and
-development-stage facts may be linked as context, but they do not turn a source-tree test or policy
-baseline into packaged-release evidence.
+The interface and evidence index identify the exact unsigned R3 engineering package,
+its verified installer and sample, and the Windows configuration used for installed testing.
+The candidate retains its embedded `0.0.0` version and `engineering` channel. The
+[M8 gate report](../gates/m8-product-completion-gate.md) records the acceptance outcome.
+Public distribution requires separate authorization.
 
 The application target is settled: **Windows 11 x64 only**, under
 [PWS-D043 / ADR 0019](../adr/0019-windows-11-x64-only-scope.md). Native ARM64 and
 x64 emulation on ARM64 are outside project scope, with no release/update prerequisite
-or mandatory future task. Supported editions/builds and packaged scenarios still need
-their exact evidence; this scope choice grants no test or public-release pass.
+or mandatory future task. The Windows support matrix records the exact edition, build,
+and conditions of the installed and component runs.
 
 Current repository facts that are safe to use as development context include:
 
@@ -55,8 +58,8 @@ Current repository facts that are safe to use as development context include:
 - Implemented content-sniffed PDF/JPEG/PNG import, immutable case copies, SHA-256 source records,
   local restricted-worker processing, and single-PDF verified export.
 - The implemented case convention
-  `<current-user-profile>\AppData\Local\PaperWorkShell\Cases\<case-uuid>\`; exact packaged-release
-  location and uninstall behavior still require M8 verification.
+  `%LOCALAPPDATA%\PaperWorkShell\Cases\<case-uuid>\`. R3 preserve removal, reinstall,
+  and explicit case removal have separate receipts in the evidence index.
 - Resource policy version 1 / `constrained-v1`, which is bounded software evidence rather than
   physical-hardware certification.
 - A public synthetic fixture corpus and passed M0/M1 gates. These are candidate release-evidence
@@ -64,10 +67,9 @@ Current repository facts that are safe to use as development context include:
 - A previewable opt-in local support bundle and
   [cleared synthetic sample](../../tests/fixtures/diagnostics/v1/README.md), owned by PWS-0805.
 
-An unsigned engineering installer now exists, with publisher Janne Vuorela, scoped project-owned
-MIT/free distribution and stable application/upgrade identity. Current engineering artifacts
-are unsigned and internal. The Windows 11 x64 matrix and M8 evidence package remain incomplete.
-Project transfer remains unsupported.
+The R3 engineering installer is unsigned and internal. Its publisher is Janne Vuorela.
+Project-owned material follows the scoped MIT/free distribution terms. Portable project
+transfer is unsupported.
 
 The retained R7 installer is 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`,

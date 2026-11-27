@@ -105,19 +105,16 @@ This describes the current development checkout, not a packaged release.
 
 ## Release and acceptance status
 
-PaperWorkShell targets Windows 11 x64. Available engineering installers and prepared setup
-bundles carry their own build-specific evidence. TRACE B8 has standard-user same-build repair,
-reuse, and offline ordinary PDF observations. A separate engineering bootstrap and runtime ZIP
-exercise authenticated offline update, recovery, and replay refusal using isolated test signing.
-Current builds are unsigned and have no publicly trusted publisher signature. Use the identified
-local installer for repair or preserve-cases replacement. The live update channel is disabled.
-Supported Windows editions/builds and remaining packaged matrix results still require
-exact-candidate evidence. An unsigned candidate is eligible for product completion. [Setup evidence](docs/development/pws0814-automated-setup.md),
-[update evidence](docs/development/pws0803-authenticated-updates.md), and [release interface](docs/release/RELEASE_INTERFACE.md).
+PaperWorkShell targets Windows 11 x64. Exact unsigned R3 installed qualification covers the
+disconnected Windows 11 Pro x64 build 26300.9711 standard-user environment with Smart App
+Control Off. Use the verified local installer for repair or preserve-cases replacement. The
+live update channel is disabled. Isolated authentication and previous-runtime restoration
+retain their separate test scope. [R3 release notes](docs/release/RELEASE_NOTES.md) ·
+[Update evidence](docs/development/pws0803-authenticated-updates.md).
 
-PaperWorkShell is in engineering development. Public supported versions, a maintenance
-commitment, and a private vulnerability-reporting route are pending. Internal recipients can ask
-the maintainer who supplied their build through their existing private channel. [Security and reporting](SECURITY.md).
+Internal recipients can report issues through their existing private channel with the maintainer
+who supplied their build. Public distribution needs separate support and reporting arrangements.
+[Security and reporting](SECURITY.md).
 
 On the standard-user TRACE B8 engineering build, the support preview opened and required consent.
 Two saves failed in the walkthrough. The investigation reproduced the native picker retaining its

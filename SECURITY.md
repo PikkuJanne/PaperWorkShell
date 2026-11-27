@@ -1,14 +1,15 @@
 # PaperWorkShell security and vulnerability reporting
 
-PaperWorkShell is in engineering development. No public release is currently designated for
-support. Each internal build has the support scope in its handover. [Release status and known limits](KNOWN_LIMITATIONS.md#release-and-acceptance-status).
+The exact unsigned R3 engineering build has the support scope in its handover. Public release
+support requires a separate designation. [R3 release notes](docs/release/RELEASE_NOTES.md) ·
+[Release status and known limits](KNOWN_LIMITATIONS.md#release-and-acceptance-status).
 
 ## Report privately
 
 If you received an internal build, contact the maintainer who supplied it through the private
 channel you already use for that build. Keep suspected vulnerabilities out of public issues,
-discussions and shared folders while the maintainer investigates. The private route for public
-releases is **TBD**. [Recovery and ordinary support](docs/user/CARE_AND_RECOVERY.md).
+discussions and shared folders while the maintainer investigates. A public distribution route
+needs its own private reporting contact. [Recovery and ordinary support](docs/user/CARE_AND_RECOVERY.md).
 
 Start with a short description of what went wrong and why it matters. Include the build or
 version from your handover or installer filename, the Windows 11 edition and build if known, which
@@ -33,7 +34,7 @@ through the private route if you choose. Creating it sends nothing. [Support bun
 
 Dependency incidents also follow the [emergency security update procedure](docs/development/emergency-security-updates.md).
 The [release interface](docs/release/RELEASE_INTERFACE.md) and [evidence index](docs/release/RELEASE_EVIDENCE.md)
-will carry the support and update details for the exact qualified release.
+record the support and update details for exact R3.
 
 ## Local protection and updates
 

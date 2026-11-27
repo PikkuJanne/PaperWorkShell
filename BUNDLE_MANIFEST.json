@@ -1,6 +1,6 @@
 {
   "bundle_name": "PaperWorkShell roadmap bundle",
-  "bundle_version": "0.2.75",
+  "bundle_version": "0.2.76",
   "product": "PaperWorkShell",
   "created_at": "2026-08-01",
   "source_inputs": [
@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 552584,
-      "sha256": "86da91855064528fd9a20423fe49ee96518fc6c29b03c8b94dc43b5a680cb15c"
+      "bytes": 553609,
+      "sha256": "4e7f4d6fab32c1bf86b246c53f7f136867437b7f1c41a540b0914cccce5b96e7"
     },
     {
       "path": "TASKS.schema.json",
@@ -60,23 +60,28 @@
     },
     {
       "path": "docs/release/README.md",
-      "bytes": 5823,
-      "sha256": "bfac6c5c7e41b97f8930ca55f6c4b1e718898ea05f185f429d1b6bb9af1883c3"
+      "bytes": 5941,
+      "sha256": "1a37009d9f796ff314a7dce80d5dbea7a61536b3e481ee6cce73dd1a0503bd64"
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 53018,
-      "sha256": "35b480f38595b10742c4da82ecd76fe57107a70bc0c6569be3dc1e38ed3a5e5e"
+      "bytes": 54877,
+      "sha256": "6086ead22a8797b96b1be83dded684b550fe217a4d889d97f202a611f936d75d"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 36332,
-      "sha256": "db9ad671e63c93bd51daa3324f7b302ca3a80da51a761e5861a897e82dc8a6e8"
+      "bytes": 36903,
+      "sha256": "37e1ff17fe7d4bf9bae1e1c06095e78f5138318ccc21cc2842b58e2c6c01d69b"
+    },
+    {
+      "path": "docs/release/RELEASE_NOTES.md",
+      "bytes": 4550,
+      "sha256": "cbc9851dd10761b528c7f419d47d7588d6cae67f43a6f1ddd6835a0e3fe1d7e9"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 12000,
-      "sha256": "dfa312c9c4cd9092cc669a4bca510fa7ab75721c44f6e2eb79704fee2e0389e0"
+      "bytes": 12359,
+      "sha256": "4412ad8bf6550b005cfdc6949ba5207aeaefe313939820283ba0e52ceded7645"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -90,8 +95,8 @@
     },
     {
       "path": "KNOWN_LIMITATIONS.md",
-      "bytes": 10148,
-      "sha256": "da865a86022d2732dd43b84574f96e27b9987d13d5a5ee085dfac5c6f4602dbe"
+      "bytes": 9666,
+      "sha256": "af4b814709636eeab417dfce7e7dce7a90bb5e741efb7efab8b77e3c579e01c1"
     },
     {
       "path": "LOW_SPEC.md",
@@ -400,8 +405,8 @@
     },
     {
       "path": "docs/gates/README.md",
-      "bytes": 1490,
-      "sha256": "99ecc3d7fa9ad440352f0f95e14a0ac8993bd9dc4dd1d0b57d17a903a84405c2"
+      "bytes": 1471,
+      "sha256": "0721ac2c4b2b628f84d2475478551411f27eabc8d566b46374256d5b701283f6"
     },
     {
       "path": "docs/gates/m7-accessibility-assisted-gate.md",
@@ -410,8 +415,8 @@
     },
     {
       "path": "docs/gates/m8-product-completion-gate.md",
-      "bytes": 8324,
-      "sha256": "d3927d7ec2eea1f20d411b2af415ffdc616ba2caea3f39aa5533065bd1d4ab6b"
+      "bytes": 25638,
+      "sha256": "d7f13e0a53dde7924f2e6c5381ddf41c97d67dd698e7e858986c19acb79356ac"
     },
     {
       "path": "docs/development/pws0801-result.md",
@@ -595,8 +600,8 @@
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 10894,
-      "sha256": "f0afcef0b6c1022586a9ae7d25e9f0ebafef0a54e5c32128c9c000e7697155bf"
+      "bytes": 11038,
+      "sha256": "8a47ecbb7893ceffc52769bc4c6da95445fd1ebade6e189e5bfde9b912035a3d"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
@@ -655,8 +660,8 @@
     },
     {
       "path": "SECURITY.md",
-      "bytes": 3501,
-      "sha256": "f492a977f913e5865128277c19dff0fbf8571c0e8563efe70e91e7a0c1dff6f3"
+      "bytes": 3525,
+      "sha256": "1010dfd7b49a1155a8c45bcfb982abd1ad82a7468f834fdf706b0ac02d5ae520"
     },
     {
       "path": "docs/user/USER_GUIDE.md",
@@ -665,8 +670,8 @@
     },
     {
       "path": "docs/user/CARE_AND_RECOVERY.md",
-      "bytes": 17213,
-      "sha256": "ae3d5447de39966bf7dcba06e544b157efa678bae58623bc474421b7e46de88a"
+      "bytes": 17198,
+      "sha256": "e76c5d665e99a0a4f90388eae4929d6c1a858aab5ee286ebdd86993121375d09"
     },
     {
       "path": "docs/development/pws0806-documentation.md",

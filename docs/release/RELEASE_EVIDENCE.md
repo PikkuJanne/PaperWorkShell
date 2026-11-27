@@ -2,48 +2,223 @@
 
 | Field | Value |
 |---|---|
-| Document status | **DRAFT TEMPLATE — complete only for an exact packaged M8 candidate** |
+| Document status | **FROZEN — exact packaged M8 candidate** |
 | Product | PaperWorkShell |
-| Release version | **TBD** |
-| Release channel | **TBD** |
-| Evidence revision | `0-draft` |
-| Source revision/tag | **TBD** |
-| Release interface revision | **TBD** |
+| Release version | `0.0.0` in the embedded marker |
+| Release channel | `engineering` |
+| Evidence revision | `pws0808-r3-evidence-1` |
+| Source revision/tag | `54e0b916ac069ce00a0ce200c43e07f3a76d1784` |
+| Release interface revision | `pws0808-r3-interface-1` |
 
-## Current PWS-0807 engineering candidate
+The current tables bind `pws0807-tab-focus-engineering-r3` to its exact package, evidence and
+standalone envelope. The M8 gate report records product-completion disposition, including the
+system-volume exhaustion check. External publication needs separate authorization. Conclusions
+apply to their recorded artifact and environment. [M8 gate report](../gates/m8-product-completion-gate.md)
 
-| Engineering artifact | R3 value |
-| --- | --- |
-| Windows 11 x64 installer | `pws0807-tab-focus-engineering-r3` 0.0.0, 513,023,918 bytes, Authenticode `NotSigned`, SHA-256 `7791cef6be0062319a9c9f39a4bf130ded8f3914485eb50ab4e07d182c992889` |
-| Source and build handoff | Commit `54e0b916ac069ce00a0ce200c43e07f3a76d1784`, handoff SHA-256 `71819c9b00b33be65ecdde772020850cde32517a6fb08084c244feab82640755` |
-| Installer receipt and installed marker | Receipt `057407a387e55bacff420deec7e1cc0689c3dffa09317b280f2b5f8f391b9b74`, marker `5e564b0fef1b5e0ebe30ab19bdfe1d8c65872420889ac35c82d7237c73ab5f1e` |
-| Synthetic sample and manifest | 4,173,788-byte ZIP, SHA-256 `027410d15b8a62874d535fca5fdc625e46e272667a07b3c8096920f217b4f468`, manifest `a51a4ccf34b47793e4495b00e9300479264ad0f2f33780caf4722aea887eee90` |
+Installed scenarios ran on disconnected Windows 11 Pro x64 build 26300.9711 under a genuine
+standard user, with Smart App Control Off. Staged component and resource checks used the exact
+Windows host runtime on Pro x64 build 26300.9974. The Windows matrix preserves earlier candidate
+and host observations. [Windows scope](WINDOWS11_X64_SUPPORT.md) · [R3 matrix](../development/pws0807-rc-matrix.md)
 
-The [R3 qualification ledger](../development/pws0807-r3-qualification.md)
-records the actual starting environments, measurement methods and candidate
-limitations. The template metadata above applies to a future designated release.
+## 1. Frozen artifact inventory
 
-The engineering interface revision is `pws0807-r3-interface-1` and
-the sample ID is `paperworkshell-pws0807-r3-synthetic-v1`. The exact
-qualification revision and file manifest are recorded in the local
-`output/pws0807/r3-completion-evidence/qualification-index.json`.
+| Artifact | Bytes | SHA-256 or verified result |
+|---|---:|---|
+| `PaperWorkShell-pws0807-tab-focus-engineering-r3-win-x64-UNSIGNED.exe` | 513,023,918 | `7791cef6be0062319a9c9f39a4bf130ded8f3914485eb50ab4e07d182c992889` |
+| Windows Authenticode | — | `NotSigned`, no signer or timestamper certificate. The x64 PE certificate table is empty. |
+| Qualified build handoff | 2,904 | `71819c9b00b33be65ecdde772020850cde32517a6fb08084c244feab82640755` |
+| Installer receipt | 1,679 | `057407a387e55bacff420deec7e1cc0689c3dffa09317b280f2b5f8f391b9b74` |
+| Resolved payload inventory | 9,638,270 | `a436ca25db576c7cc60936428381ee4e747030b869a77d6c5342c7b15df202a4` |
+| Installed runtime marker | — | `5e564b0fef1b5e0ebe30ab19bdfe1d8c65872420889ac35c82d7237c73ab5f1e` |
+| CycloneDX 1.6 SBOM | 12,704,822 | `5f925fd49afc7c1e5cbc5b95868c6b8f24503d150f1d916af4420e1435371a42` |
+| SPDX 2.3 SBOM | 5,366,726 | `f73be051f5ffb59bfdaa0445c0b7cc8f3f736b0276c8bb8736bad8f21f506379` |
+| Dependency lock `uv.lock` at exact source | 171,088 | `6b378cfc5ecf4d71d0191fc8e23d3ce01652ad5c06195d23bc86a196aafa7a3a` |
+| External component notices, `THIRD_PARTY_NOTICES.txt` | — | `b09a78d7889d96bb12aaa977cee5ce004360c1e39a765e5539c4d816fc31c566` |
+| Installed `notices/COMPONENTS.txt` | — | `51a5727a149a3f990519b8b41e80e0610d54967c75f24c496e078b8265f334d1` |
+| Qualification index at `20c62ed104e8a230b56854e9a0d5238bce1fde10` | 49,527 | `4cfe72f050a2abd654a2b35efa843e0125c29c8b314c3713cee89d0e8a3794bc` |
+| Original engineering interface `pws0807-r3-interface-1` | 36,332 | `db9ad671e63c93bd51daa3324f7b302ca3a80da51a761e5861a897e82dc8a6e8` |
+| [Candidate release interface](RELEASE_INTERFACE.md) | 36,903 | `37e1ff17fe7d4bf9bae1e1c06095e78f5138318ccc21cc2842b58e2c6c01d69b` |
+| [Candidate release notes and limitations](RELEASE_NOTES.md) | 4,550 | `cbc9851dd10761b528c7f419d47d7588d6cae67f43a6f1ddd6835a0e3fe1d7e9` |
 
-| R3 observation | Retained SHA-256 |
-| --- | --- |
-| Clean installation, same-build repair, actual disk exhaustion, preserve/reinstall and four-case reviewed removal | `0477ee070f583c1c1ae8628fa6edaccbcc78c0ca6591036f02eef4cfd1ade165` |
-| R1 replacement, installed exports and support workflow | `ec1419bef9ef2ba46480333443a727bde55b9fdcd0d81f7ae2c6d00195834b64` |
-| Supported case migration and exact backups | `79a19421769307a500e78c0e298c13e8f84be3a6a77d8dbaeb175e34b42bac3f` |
-| Frozen clean and replacement package comparisons | `64684c952b2fb096a911bebf2aac9f0b634d2432f88fef6f8ef2af0272079b32` · `f7c69c376c7d14a43bbc539793db31461197a47ada26dba21a5c1d43f4470722` |
-| Actual NVDA speech and phase-to-content review | `2ec7fc9e630f7dbad8f6cce000bb1e488994eb08622764a098723d951d91444d` · `2bbeb389e0fff2c3941679935b1b03c46ca2603bbd1858976e750fff192b93f7` |
-| Guest acknowledgement and first-preview measurements | `7c46d1648e16cb14b666b4a1e26a2201925eb53abafd5111dbd9b9937ce50a42` |
-| Normal and constrained resource qualification | `32ac283b2cef41d0e7596d93291cc6d5fe846cbbc172cf70743126245160b5ee` |
-| Independent permanent-removal check of installed output | `359f801211006ab1387a55761b6113846178cd3420ff781b064141210fdddb71` |
-| Final restored R1 guest and full payload check | `2c322594c5f9138d9bd495e9a945198e94f89a621312fd886b86a8a51182cfef` |
+The receipt distinguishes build-time qualification status from later installed observations.
+M8 admission matched all 3,219 staged payload files, totaling 650,884,602 bytes, and all 345
+application files to the exact Git source and build artifacts. The stage audit reproduced both
+SBOMs and notices. The two SBOMs describe 957 components and all 3,219 staged files. The
+M8 gate report records exact input, inventory and notice details. The verified prepared setup bundle
+supports offline installation. A portable application package is unsupported. [Artifact admission](../gates/m8-product-completion-gate.md#artifact-admission)
 
-The [R3 ledger](../development/pws0807-r3-qualification.md) records the
-actual methods, measurement bounds and disposition. The installed evidence
-covers Windows 11 Pro x64 26300.9711 with Smart App Control Off.
-The formal product-completion decision belongs to PWS-0808.
+## 2. Application identity and versioning evidence
+
+The application ID is `io.github.pikkujanne.paperworkshell` and the installer upgrade identity
+is `{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`. Publisher Janne Vuorela, project-owned MIT material
+and retained third-party terms are recorded with the package. PaperWorkShell versions independently.
+R3 retains its embedded engineering identity. [Installer identity](../adr/0018-windows-installer-and-release-identity.md) · [Licensing](../../LICENSING.md)
+
+## 3. Install, launch, update, repair, and uninstall evidence
+
+| Observed scenario | R3 result | Retained receipt SHA-256 |
+|---|---|---|
+| Clean installation and launch | Prepared setup verified all 3,219 payload files and launched the standard-user desktop offline. | `a65c6d6c9aef37aa14b347e7e2f80c0bcd5b90e2340b9d7997f50c45073a511b` |
+| Same-build repair | Restored a missing Microsoft recipient-terms file, verified the payload and reopened the preserved case. | `84933e63026890f88aa85e71b019d76900a847a1c1baf91b87968504fd027144` |
+| R1-to-R3 replacement | **Keep cases** preserved 367 existing case files. R3 verified the payload and reopened the earlier case. | `ec1419bef9ef2ba46480333443a727bde55b9fdcd0d81f7ae2c6d00195834b64` |
+| User quota failure and recovery | Real NTFS per-user exhaustion caused pre-copy refusal and mid-copy error in separate runs. Cancellation rolled back the partial installation and the retained data matched. | `be9a01df4ab08bd471dec7ccbe011f8e067c6d640c90ae84fe806182c3d7c88a` |
+| Preserve, reinstall, reopen and reviewed removal | Four synthetic cases and 31 managed files survived preserve removal. Reinstall reopened a preserved case. Explicit reviewed removal left no cases and kept 23 external files and all four checked shell defaults. | `74508fa7694869ea32a16ebb64b8b0833990720c7c94ba0b25223b904f92695a` |
+| Offline updater | Unprovisioned R3 refused the archived offer. An isolated test anchor supported the archived authentic offer and refused replay, expiry, wrong channel and a changed signature. | `dc22003bfb02850a6822400ecf93e858d39f6d320e4be55476cfb952bc0166a1` |
+
+The installer evidence above records per-user NTFS quota behavior. See the gate report for the
+separate whole system-volume exhaustion result. Per-user install, repair and removal require the
+standard account. Direct operating-system file opening, associations and portable workspaces are
+unsupported. The staged launcher rejected file and workspace arguments with visible guidance to use
+in-app import. Automatic rollback across local installer builds is unsupported. The earlier isolated
+updater rehearsal exercised previous-runtime restoration on its recorded builds. [R3 lifecycle and setup](../development/pws0807-r3-qualification.md) · [Isolated update verification](../development/pws0803-authenticated-updates.md) · [M8 gate report](../gates/m8-product-completion-gate.md)
+
+## 4. Data-location and preservation evidence
+
+The installed program lives under `%LOCALAPPDATA%\Programs\PaperWorkShell`. Cases live under
+`%LOCALAPPDATA%\PaperWorkShell\Cases` in the current user's profile. The case holds its originals,
+manifest, journal, migration backups and rebuildable caches. User-selected export and support files
+stay at their external destinations. Update slots and bundled engines live with the installation.
+The recovery guide records retention, permissions, cache and temporary behavior by category.
+The R3 observed preserve, migration and deletion results are in the lifecycle receipts above.
+[Data locations and retention](../user/CARE_AND_RECOVERY.md#where-data-stays) · [R3 replacement and migration](../development/pws0807-r3-qualification.md#r1-replacement-and-case-migration)
+
+## 5. Public input/output and black-box workflow evidence
+
+On both R3 configurations, PDF, JPEG and PNG originals and managed copies matched the recorded
+digests. Ordinary and edited three-page exports matched expected ordering, rotation and pixels.
+The four-category checklist blocked export when incomplete and enabled all three output modes
+after confirmation. Each run produced matching combined, separate and ZIP exports and saved
+summaries. The clean and replacement comparison receipts are identified by
+`64684c952b2fb096a911bebf2aac9f0b634d2432f88fef6f8ef2af0272079b32` and
+`f7c69c376c7d14a43bbc539793db31461197a47ada26dba21a5c1d43f4470722`.
+A truncated synthetic PDF was refused and preserved the case. [R3 workflows](../development/pws0807-r3-qualification.md)
+
+## 6. Synthetic release sample package
+
+| Evidence | Verified identity |
+|---|---|
+| `PaperWorkShell-R3-synthetic-sample.zip` | 4,173,788 bytes, 30 members, SHA-256 `027410d15b8a62874d535fca5fdc625e46e272667a07b3c8096920f217b4f468` |
+| Embedded and standalone manifest | 13,446 bytes, SHA-256 `a51a4ccf34b47793e4495b00e9300479264ad0f2f33780caf4722aea887eee90` |
+| Fresh reopen receipt | `b7bab31c50693a6e287029148faceac27cedc2ab7ba2a19a85c1e1e562dba637` |
+| Engineering interface and sample proof | `37570a29527423cfb4e1db49bcf04f36801120cd3c5ee030405d1ebedefbf940` |
+
+The manifest records inputs, expected PDF/ZIP outputs and summaries, diagnostics, behavior notes,
+licence notices, and their digests. Portable workspace examples are inapplicable because the product
+has no portable case format. The immutable sample names `pws0807-r3-interface-1` as its producing
+interface reference and retains R2 output provenance. M8 admission checked all member hashes,
+reopened 24 valid PDFs and three nested ZIPs, and refused the truncated PDF and ZIP controls. Eleven
+retained workflow outputs per installed run matched the frozen reference bytes. Each R3 diagnostics
+ZIP matched its own preview and the frozen allowlist. [Companion compression note](RELEASE_NOTES.md#synthetic-sample) · [Sample admission](../gates/m8-product-completion-gate.md#engineering-interface-and-synthetic-sample)
+
+## 7. Support-bundle privacy evidence
+
+On both installed R3 configurations, the user previewed `summary.txt` and `allowlist.txt` and
+consented before saving locally. The reopened archives matched each preview and the closed allowlist.
+On replacement, cancel, occupied destination and over-limit leaf refusal preserved data. A fresh
+destination succeeded with the same reviewed bytes. The clean and replacement archive SHA-256 values
+are `3f2defae8fd552b75986004b7c097db008b30f5e642743b9ba9e1605bff95b47` and
+`9b8597cbac384e08eb3ff8b02847054dae19c9b67850d5ee7079d72e490df7db`.
+Packaged privacy checks exercised prohibited synthetic tokens and the documented failure contract.
+The two-member synthetic example and exclusion proof are retained locally. ThirdLife support
+artifacts remain separate. [Support implementation and allowlist](../architecture/support-bundle.md) · [R3 diagnostics](../development/pws0807-r3-qualification.md#clean-mixed-files-and-diagnostics)
+
+## 8. Offline and network evidence
+
+Offline setup, launch, case work and exports passed on the disconnected R3 guest. The exact staged
+Windows worker and its descendant were denied access to tested IPv4 and IPv6 TCP and UDP loopback
+listeners, which were reachable to controls. The clean guest had zero named ThirdLife products,
+services or processes. There is no product account or mandatory server. The live update channel is
+disabled and no in-app acquisition is offered for local OCR language packs. [R3 worker](../development/pws0807-r3-qualification.md#native-resource-limits-and-offline-worker) · [Standalone observation](../development/pws0807-r3-qualification.md#permanent-removal-on-the-clean-installation)
+
+## 9. Low-resource evidence
+
+The exact R3 installed-layout runtime exercised ResourcePolicy version 1 in normal and constrained
+profiles. Peak process-tree working sets were 196,845,568 and 197,033,984 bytes. Maximum worker Job
+commit was 43,216,896 and 43,257,856 bytes. The runtime receipt records capacity, CPU, cache,
+temporary storage and output digests. Thirty-one storage and fault cases, four delayed-I/O
+GUI controls, cancellation and fresh retry passed. Under the constrained profile, the 12-page
+searchable retry produced 128,180 bytes with a 341,299,200-byte peak working set against the
+1,342,177,280-byte limit. An earlier incomplete storage sample retains that result. There is no
+physical-device certification. [Native resource evidence](../development/pws0807-r3-qualification.md#native-resource-limits-and-offline-worker) · [Constrained searchable export](../development/pws0807-r3-qualification.md#constrained-searchable-export)
+
+## 10. Accessibility and compatibility evidence
+
+Installed keyboard traversal produced the four-category combined package, including actionable
+findings and summary. Normal 96 and 192 DPI and Aquatic 192 DPI showed selected-tab focus.
+NVDA 2026.1.1.55980 generated 477 action-correlated utterance entries across ten workflow groups
+in an agent-operated speech and native focus review. Packaged Qt checks covered the separate input,
+assisted-use, consent, retention and privacy cases. [Keyboard and focus](../development/pws0807-r3-qualification.md#clean-keyboard-only-checklist-and-package-outputs) · [NVDA and timing](../development/pws0807-r3-qualification.md#installed-nvda-and-first-preview)
+
+R3 reproduced the accepted overlay PDF, six M5 PDFs and their ZIP. Reader observations for Adobe
+and the earlier named viewers retain their original file, version and observation dates. Fresh
+headless checks displayed page 3 of the R3 color-compressed file in Edge 158.0.4370.45, Chrome
+158.0.8127.38 and Firefox 161.0. R3 also reverified ten earlier actual permanent-removal saves and
+resaves and checked the failure controls. These checks support the documented artifacts and scenarios.
+[Reader compatibility](../development/pws0807-r3-qualification.md#reader-files-compression-and-update-trust) · [Original overlay observations](../compatibility/pws-0307-overlay-reader-matrix.md)
+
+## 11. Security and privacy evidence
+
+The source threat model at R3 has SHA-256
+`03b6f7b121ad66560bc3568b48715d6983b467915f298c36a1b7efb56540fc98`. Exact source and
+packaged-runtime receipts identify their security, schema, privacy, path and input refusal checks,
+as well as separately scoped skips. The clean setup refused changed installer bytes, mismatched
+inventory and an alternate-stream path before creating the installation target. Installed
+diagnostics remained local and network was disconnected. Telemetry is off by default.
+[Threat model](../security/threat-model.md) · [R3 security and component qualification](../development/pws0807-r3-qualification.md#source-checks-and-candidate-coverage)
+
+The independent M6 gate approved the single-active-affected-page PDF profile. Exact R3 produced
+the approved 34,084-byte unsigned derivative without changing the original. Independent reopening,
+rendering and OCR verified the visible outside control and absence of the removed target.
+Fourteen failed or unknown method cases blocked export. The retained independent R3 result has
+SHA-256 `359f801211006ab1387a55761b6113846178cd3420ff781b064141210fdddb71`.
+[M6 gate](../gates/m6-permanent-redaction-gate.md) · [Installed permanent removal](../development/pws0807-r3-qualification.md#permanent-removal-on-the-clean-installation)
+
+## 12. Migration and recovery evidence
+
+R3 opened disposable v1, v2 and v3 cases through the chooser and migrated each to v4 at exactly
+one higher revision. Each prior manifest matched its backup. Original digests, order and rotation
+were preserved. Source migration and storage failure cases retain their separate scope. A native
+R3 worker termination during thumbnail generation returned a stable failure. Retry reopened the
+same case, preserved digests and left no temporary files. The portable workspace format is
+unsupported. [R3 migration](../development/pws0807-r3-qualification.md#r1-replacement-and-case-migration) · [Native worker interruption](../development/pws0807-r3-qualification.md#active-worker-interruption) · [Case migration contract](../architecture/case-migration.md)
+
+## 13. Licence, provenance, and maintenance evidence
+
+The resolved inventory, SBOMs and notices cover the verified staged bytes. R3 uses documented
+build inputs and a candidate-bound receipt. The independently reproduced inventory-derived metadata
+does not establish byte-for-byte repeatability of the outer installer. Keep the Microsoft recipient
+terms and applicable third-party notices with the package. Use the private supplying-maintainer
+channel for vulnerability reports and the documented emergency process for dependency incidents.
+The exact local engineering handover and supported repair and replacement paths establish current
+maintenance scope. There is no designated public support period or public channel.
+[Licensing](../../LICENSING.md) · [Dependency policy](../development/dependency-policy.md) · [Security reporting](../../SECURITY.md) · [Emergency process](../development/emergency-security-updates.md)
+
+## 14. Known limitations
+
+The candidate notes and interface describe unsupported formats, forms and file opening,
+permanent removal limits, case transfer, unsigned publisher status, rollback and accessibility
+scope. Earlier outcomes, untested environments and incomplete observations keep their original
+attribution. [Candidate release notes](RELEASE_NOTES.md#known-limitations) · [Release interface](RELEASE_INTERFACE.md)
+
+## 15. Portfolio handoff status
+
+The [standalone checklist](STANDALONE_RELEASE_CHECKLIST.md) reconciles the interface, observed
+standalone journeys, data ownership and candidate artifacts. Future B4 compatibility review may
+use only an exact frozen artifact through its documented public behavior after any necessary
+authorization. No compatibility finding is recorded here. [Portfolio boundary](../../THIRDLIFE_ALIGNMENT.md)
+
+## 16. Approval
+
+| Review | Record |
+|---|---|
+| Artifact admission | Verified exact R3 identity and Authenticode `NotSigned`. |
+| Installed workflow, security, accessibility and compatibility | Scoped R3 observations and independent reconciliations as indexed above. |
+| PWS-0808 product-completion disposition | [M8 gate report](../gates/m8-product-completion-gate.md) |
+| External publication and signed variants | Separate owner decisions. No public delivery authorized. |
+
+## Historical engineering records
+
+The records below retain their original artifact and evidence scope.
 
 ## Earlier R2 engineering evidence
 
@@ -51,8 +226,7 @@ The [R2 qualification ledger](../development/pws0807-r2-qualification.md)
 records its installed Windows results, including the 200% Aquatic keyboard-focus failure. The
 [successor ledger](../development/pws0807-r3-qualification.md) and [matrix](../development/pws0807-rc-matrix.md) track the affected check and the exact candidate environments.
 The [R1 ledger](../development/pws0807-r1-qualification.md) preserves the
-failed split and ZIP exports and the comparison leading to the R2 repair. The draft metadata above applies to a future designated
-release. The tested build reports version 0.0.0 on the engineering channel.
+failed split and ZIP exports and the comparison leading to the R2 repair. The tested R2 build reports version 0.0.0 on the engineering channel.
 
 | Engineering artifact | Exact identity |
 | --- | --- |
@@ -250,7 +424,7 @@ and transport `bed1c2864950c58f1f74d86bbd286b70995ea7c291a463eb4a3969d189dea8b6`
 pass: product, registration, both shortcuts and selected class keys absent;
 four selected extension defaults and all six external files unchanged since
 installed; both fixed service/task namespaces queried and absent; no observed
-pending rename or global reboot indicator. No actual reboot or universal residue
+rename queue or global reboot indicator. No actual reboot or universal residue
 claim is made. Managed cases/cache/records remain, case temp and worker recovery
 are empty. No separate global settings/log/language/support-store claim is made.
 The first PS5 helper failure remains preserved: its reader rejected the legal
@@ -274,8 +448,7 @@ exact, so no backup rerun is inferred or required solely for the reader retry.
 Actual packaged low-disk is
 **UNRUN**; the Sandbox quota/partition capabilities were unavailable. Trusted
 signing remains absent. The Foundation inquiry was submitted once; no provider
-acceptance, enrollment or signed artifact is inferred. The public release fields
-and final-byte evidence template below remain **TBD**.
+acceptance, enrollment or signed artifact is inferred. This R9-era observation applies to its archived package and environment.
 
 The [PWS-0804 migration contract](../architecture/case-migration.md) and
 [PWS-0805 diagnostic sample](../../tests/fixtures/diagnostics/v1/README.md) are
@@ -361,9 +534,10 @@ The [PWS-0807 matrix](../development/pws0807-rc-matrix.md) records the environme
 existing engineering results, synthetic rehearsal sample, and remaining exact-candidate
 checks for unsigned product completion.
 
-## Current development evidence available for later reconciliation
+## Historical development evidence before packaged qualification
 
-The following evidence is real but is not a completed M8 release package:
+The table records the development evidence and open work at the earlier planning checkpoint.
+The exact R3 results are indexed above.
 
 | Area | Current development evidence | Release interpretation |
 |---|---|---|
@@ -379,7 +553,7 @@ The following evidence is real but is not a completed M8 release package:
 
 At adoption, the repository is a pre-alpha source tree with project metadata `0.0.0`; no installer,
 signed package, stable application ID, frozen release sample package, or M8 release candidate
-existed. The internal PWS-0801 dependency stage is recorded separately below; public-release artifact and gate rows remain pending.
+existed. The internal PWS-0801 dependency stage is recorded separately below.
 
 ### PWS-0801 development-input provenance (not a candidate freeze)
 
@@ -398,7 +572,7 @@ source snapshot. No lock upgrade or native artifact replacement occurred in this
 The [historical audit](../development/pws0801-audit-20261102.md) records verified archive/member/license
 identities, alternatives, and required review. The
 [emergency dependency policy](../development/emergency-security-updates.md) is a process document,
-not evidence of an implemented updater. The final artifact inventory below remains pending.
+not evidence of an implemented updater. The R3 artifact inventory above records the separately qualified exact candidate.
 
 ### PWS-0801 resolved internal dependency candidate
 
@@ -450,41 +624,7 @@ scope. PWS-0802 owns identity, product terms, installer and clean-machine prereq
 installation. Subsequent packages require their own exact-candidate evidence. The
 staged dependency files confer no installation or ThirdLife compatibility claim.
 
-## 1. Frozen artifact inventory
-
-| Evidence | Location/reference | SHA-256 or verification | Status |
-|---|---|---|---|
-| Installer/package and payload inventory | **TBD** | **TBD** | Pending |
-| Observed publisher signing state | Unsigned candidate policy, PWS-D044 | Exact candidate observation **TBD** | Current engineering builds unsigned |
-| Portable/offline package, if supported | **TBD** | **TBD** | Pending/not supported |
-| Release notes | **TBD** | **TBD** | Pending |
-| Known limitations | **TBD** | **TBD** | Pending |
-| `RELEASE_INTERFACE.md` | [Draft template](RELEASE_INTERFACE.md) | **TBD for frozen revision** | Pending |
-| Source revision/tag | **TBD** | Exact commit or source archive hash **TBD** | Pending |
-| Dependency lock | **TBD** | **TBD** | Pending |
-| SBOM | **TBD** | **TBD** | Pending |
-| Licence/notice bundle | **TBD** | **TBD** | Pending |
-
-## 2. Application identity and versioning evidence
-
-- Reverse-domain application ID: `io.github.pikkujanne.paperworkshell`, selected in ADR 0018
-- Product version/channel: **TBD**
-- Publisher and product licence: Janne Vuorela; scoped project-owned MIT, third-party terms preserved
-- Application target: Windows 11 x64 only; supported release editions/builds follow the [support boundary](WINDOWS11_X64_SUPPORT.md)
-- Installer identity and upgrade/package code: `{DAC95C77-B1E7-501E-825D-4FAA0E3BCCCE}`, selected in ADR 0018
-- Evidence that PaperWorkShell versions independently from ThirdLife: **TBD for exact release**
-- Future B4 evidence that a newer unverified version is not automatically compatible: **TBD in
-  ThirdLife, not a PaperWorkShell gate**
-
-Diagnostics R1 has the engineering identity recorded above. PWS-0808 owns final
-product acceptance and the release evidence freeze.
-The following signing inquiry is historical under PWS-D044. The
-[authorized eligibility inquiry](../development/pws0802-foundation-inquiry-20261104.md)
-was submitted once through the official General message contact form; its
-submission acknowledgement was observed. No provider enrollment, agreement,
-Foundation acceptance or production signing has occurred in this continuation.
-
-## 3. Install, launch, update, repair, and uninstall evidence
+### Diagnostics R1 lifecycle evidence
 
 | Scenario | Exact environment | Public command/UI path | Result | Evidence reference |
 |---|---|---|---|---|
@@ -492,20 +632,11 @@ Foundation acceptance or production signing has occurred in this continuation.
 | Standard-user launch | Same R1 clean installation | Prepared setup launcher and installed Start menu shortcut | Each opened a responsive desktop with the actual standard-user token and exited normally. | [R1 launch evidence](#diagnostics-r1-installer) |
 | Component information | Diagnostics R1 on the offline Pro guest | Installed **PaperWorkShell notices** shortcut | Opened the local viewer showing the product version, candidate, component and licence selector, and read-only notice control. | `r1-installer-completion/notices-content.txt` |
 | Visible import of supported synthetic files | Diagnostics R1 on offline Windows 11 Pro x64 26300.9711 | Standard user, **New case**, then **Add file** for PDF, JPEG and PNG | Each selection added one saved page. The three external and three managed files matched their manifest digests after export. | [R1 mixed-input workflow](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export) |
-| OS-level open of supported sample, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
-| Open portable workspace/project, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
 | Same-build repair | Diagnostics R1, Pro x64 26300.9711, a bundled recipient-terms file missing | Matching prepared bundle with `--repair` | Restored the missing file, exited 0, verified all 3,219 payload files and opened the installed desktop. | `r1-installer-completion/Repair.json`, SHA-256 `a7fa782531a30a46a6a8ed19ecedd8f7b2ec72c3929afccafd68284217d8c97c` |
 | Local preserve-cases replacement | TRACE B8 to diagnostics R1, Pro x64 26300.9711 | Per-user removal with **Keep cases**, then prepared R1 installer | Verified 353 preserved case files after removal and installed R1. | [PWS-0807 R1](../development/pws0807-unsigned-completion.md#prepared-r1-replacement) |
-| Interrupted/failed replacement recovery | **TBD** | **TBD** | Pending | **TBD** |
-| Live network update channel | Unsigned product scope | Disabled, no production trust | Confirm on exact candidate | Isolated [verifier rehearsal](../development/pws0803-authenticated-updates.md) |
-| Rollback, if supported | **TBD** | **TBD** | Pending/not supported | **TBD** |
 | Uninstall while preserving cases | Diagnostics R1 on Pro x64 26300.9711, with a case created by the installed app | Per-user uninstaller, preserve cases | Installation root, registration and all three shortcuts removed. Five synthetic case files and three external files matched their original hashes. | `r1-installer-completion/state-native-removed.json` |
 | Explicit app-data removal | Diagnostics R1, Pro x64 26300.9711, one available synthetic case | Inspect cases, separately confirm deletion, acknowledge the result, then confirm native removal | One case fully deleted, zero remaining, zero failed or partial. Native removal exited 0. No case files, app root, registration or shortcuts remained. All three external file hashes and four file defaults matched. | `r1-installer-completion/deletion-text.txt` and `state-after-explicit-removal.json` |
 | Reinstall and reopen preserved case | Same guest and product-created case | Prepared setup, then **Open case** | Restored registration and shortcuts. The installed desktop reopened the saved one-page case. All five managed files and the external source, export and support ZIP matched. | `r1-installer-completion/state-native-reopened.json` |
-| Remove optional associations, if supported | **TBD** | Currently unsupported | Pending/not supported | **TBD** |
-
-Record prompts, privileges, restarts, and residue by category. Public evidence must use known-folder
-notation rather than real usernames or private absolute paths.
 
 A separate run preserved the bytes of a manually copied case. Its reopen
 reported `RECOVERY_SCAN_FAILED`. The successful reopen above used a case
@@ -545,193 +676,3 @@ offline active R1 checkpoint, where all 358 case files matched the original inve
 | Retained native log identity, `retained-native-log-identity.json` | `ea3e94da8934714c9032b3041ba09911c3387b50642ed9381fe787f6f6d13972` |
 | Restored installation, `recovery.json` | `d7358c0df1e7f8c0aa0f3196dbe811e79fccf7c0283eeab9cb83629d2de2b96d` |
 | Data after recovery, `preservation-after-recovery.json` | `88afb6f58221c0245c54cde77132233aac169adfbb4c0bf641f7c1930af81a4d` |
-
-## 4. Data-location and preservation evidence
-
-The [care and recovery guide](../user/CARE_AND_RECOVERY.md) is the source reference for locations,
-retention, deletion and uninstall behavior. Record the packaged result and receipt for each
-category on the exact completion candidate.
-
-- Configuration location and permissions: **TBD**
-- R1 stored the synthetic case under `%LOCALAPPDATA%\PaperWorkShell\Cases`.
-  The sampled access controls on the program, runtime, app-data and Cases
-  directories showed zero broad-group write grants.
-- On diagnostics R1, the three files in the new case's `originals` directory
-  matched the separately hashed external PDF, JPEG and PNG and the manifest
-  bindings before and after ordinary PDF export. [R1 mixed-input workflow](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export)
-- Cache/temp/log/support-bundle locations: case cache/temp known; remaining locations **TBD**
-- Retention and cleanup policy: **TBD**
-- Migration/rollback backup location and cleanup: **TBD**
-- Atomic save and crash-recovery result: **TBD for candidate**
-- R1 preserve removal retained the case manifest, journal, original and cached
-  thumbnails. Confirmed deletion removed all five managed files. The zero-byte
-  per-user lifecycle lock remained after both removal routes.
-- Evidence that ThirdLife is absent and neither owns nor migrates PaperWorkShell data: **TBD for
-  packaged black-box matrix**
-
-## 5. Public input/output and black-box workflow evidence
-
-| Workload | Input hashes | Expected output | Output hashes | Verification | Evidence |
-|---|---|---|---|---|---|
-| Canonical document-package workflow | **TBD** | PDF/ZIP/summary **TBD** | **TBD** | Pending | **TBD** |
-| Mixed PDF/JPEG/PNG on diagnostics R1 | [Three source digests](../development/pws0807-unsigned-completion.md#installed-mixed-input-pdf-export) | One ordinary PDF in import order | `3d61f6c0de2ac9dfae907b6688adbf03fd4fac5cd5b5357f7d1f91a2fcbed493` | Strict PDF reopen and Poppler both counted three pages. Independent rendering matched PDF, upright JPEG and PNG in sequence. | `r1-primary-workflow/verifier/actual/reopen.json`, SHA-256 `14117595c11c4c7ade81c61985064d4ef10183cb5dec4c8aa02a08adbb9a1132` |
-| Interruption and recovery | **TBD** | Recovered case and verified export | **TBD** | Pending | **TBD** |
-| Malformed/hostile input | **TBD** | Safe failure; no corrupt case | N/A | Pending | **TBD** |
-| Low-space/slow-I/O workflow | **TBD** | Safe failure or verified completion | **TBD** | Pending | **TBD** |
-
-Verification must include expected page count/order, parse/reopen, structural checks, rendering,
-constraints, and unchanged source hashes.
-
-## 6. Synthetic release sample package
-
-| Artifact | Purpose | SHA-256 | Provenance | Status |
-|---|---|---|---|---|
-| Sample PDF input | Basic born-digital/scanned input | **TBD** | Synthetic/cleared **TBD** | Pending |
-| Sample JPEG/PNG input | Image intake | **TBD** | Synthetic/cleared **TBD** | Pending |
-| Sample portable workspace/project | Transfer fixture, only if product supports it | N/A | N/A | Not currently supported |
-| Expected combined PDF | Output verification | **TBD** | Generated | Pending |
-| Expected multi-file/ZIP output | Packaging verification | **TBD** | Generated | Pending |
-| Expected package summary | Human-readable output | **TBD** | Generated | Pending |
-| Sample sanitized support bundle | Support-boundary verification | **TBD** | Generated | Pending |
-| Hash/expected-behavior manifest | Black-box fixture index | **TBD** | Project documentation | Pending |
-
-No release sample may contain real identity, financial, medical, employment, signature,
-beneficiary, or applicant data.
-
-## 7. Support-bundle privacy evidence
-
-- Support-bundle creation path: **TBD**
-- User preview screenshot or accessible transcript: **TBD**
-- Exact approved allow-list: **TBD**
-- Prohibited-token test corpus: **TBD**
-- Automated absence of document/OCR text, values, names, addresses, filenames, paths, metadata,
-  thumbnails, signatures, credentials, and document bytes: **TBD**
-- Cancellation/permission/disk-full behavior: **TBD**
-- Sample sanitized bundle hash: **TBD**
-- Evidence that PaperWorkShell and ThirdLife bundles remain separate: **TBD**
-
-## 8. Offline and network evidence
-
-- Core workflow with network unavailable: **TBD for candidate**
-- Worker egress-denial result: **TBD for candidate**
-- Optional update/language-pack disclosure: **TBD**
-- Interrupted optional-download recovery: **TBD**
-- Offline installation or verified media/cache procedure: **TBD**
-- Packet-capture/privacy review: **TBD**
-- No mandatory ThirdLife process, sibling product, account, or project server: **TBD for black-box
-  candidate**
-
-## 9. Low-resource evidence
-
-- Resource policy/profile version: **TBD for candidate**
-- Workload IDs and input hashes: **TBD**
-- Enforced concurrency/cache/temp limits: **TBD**
-- Peak complete process-tree memory and worker Job facts: **TBD**
-- CPU and elapsed time: **TBD**
-- Peak cache and temporary storage: **TBD**
-- Output size: **TBD**
-- Slow-I/O and low-space/disk-full behavior: **TBD**
-- Cancellation acknowledgement and cleanup: **TBD**
-- No-discrete-GPU/CPU-path evidence: **TBD**
-- Hardware wording and limitations: **TBD**
-
-No named physical configuration may be described as verified unless it was actually tested.
-
-## 10. Accessibility evidence
-
-- Keyboard-only primary packaged workflow: **TBD**
-- No drag-only operation: **TBD**
-- Focus order and visible focus: **TBD**
-- Names, roles, states, relationships, and progress announcements: **TBD**
-- NVDA environment and result: **TBD**
-- 200-percent scaling/text and clipping result: **TBD**
-- Contrast/high-contrast/reduced-motion result: **TBD**
-- Plain-language error review: **TBD**
-- Accessible package-summary result: **TBD**
-- Known output-accessibility limitations: **TBD**
-
-Earlier task-level accessibility records are linked above and must not be relabeled as the final
-packaged matrix.
-
-## 11. Security and privacy evidence
-
-- Threat-model revision: **TBD for release freeze**
-- Packaged worker isolation and network denial: **TBD**
-- Path traversal, command injection, and unsafe-overwrite tests: **TBD**
-- Hostile PDF/image/template tests: **TBD**
-- Timeout, memory, page, pixel, and temporary-storage limits: **TBD**
-- Original preservation and signed-source handling: **TBD**
-- Logging/support prohibited-content audit: **TBD**
-- Local installer identity and tamper refusal: **TBD for exact candidate**
-- Authenticated updater rejection and recovery: [isolated PWS-0803 evidence](../development/pws0803-authenticated-updates.md). Live production channel disabled.
-- Independent M6 permanent-redaction gate and exact-candidate result: **TBD; required for PWS-0808/v1.0. A preview that omits redaction cannot satisfy that gate**
-- No-telemetry default: **TBD for candidate**
-- Security reporting process: **TBD**
-
-## 12. Migration and recovery evidence
-
-- Supported prior case versions: **TBD**
-- Forward migration and idempotent reopen: **TBD**
-- Interrupted/disk-full migration: **TBD**
-- Future-version rejection: **TBD**
-- Worker crash/restart recovery: **TBD for candidate**
-- Local replacement interruption and applicable repair/recovery: **TBD for exact candidate**
-- Migration-backup cleanup: **TBD**
-- Recovery documentation walkthrough: **TBD**
-- Confirmation that only PaperWorkShell performs case migrations: **TBD**
-
-Portable workspace/project import/export remains unsupported unless later independently approved;
-case-schema migration does not imply a portable handoff format.
-
-## 13. Licence, provenance, and maintenance evidence
-
-See the [security policy](../../SECURITY.md) for development-stage reporting guidance.
-
-- Final packaged dependency inventory and SBOM: **TBD**
-- Bundled engine/model/template/font licences and notices: **TBD**
-- Release input hashes and provenance: **TBD**
-- Reproducible or documented-build status: **TBD**
-- Vulnerability reporting route: **TBD**
-- Supported versions and security-update policy: **TBD**
-- Upstream abandonment/replacement strategy: **TBD**
-- Maintenance status and capacity limits: **TBD**
-
-## 14. Known limitations
-
-Exact release limitations document: **TBD**.
-
-The [user guide](../user/USER_GUIDE.md) and [known limitations](../../KNOWN_LIMITATIONS.md)
-describe the current workflow and its limits.
-
-At minimum, record unsupported formats, forms/signatures, redaction status, OS/file opening and
-project-transfer status, rollback constraints, accessibility and resource limitations, and every
-untested environment.
-
-## 15. Portfolio handoff status
-
-| Requirement | Status | Evidence |
-|---|---|---|
-| Frozen installer/package and hashes | Pending | **TBD** |
-| Complete release interface | Pending | **TBD** |
-| Non-sensitive samples and hashes | Pending | **TBD** |
-| Sanitized support-bundle sample | Pending | **TBD** |
-| Low-resource candidate profile | Pending | **TBD** |
-| Migration/update/uninstall results | Pending | **TBD** |
-| Security/privacy acceptance | Pending | **TBD** |
-| Accessibility acceptance | Pending | **TBD** |
-| Offline acceptance | Pending | **TBD** |
-| Standalone integrity without ThirdLife | Pending | **TBD** |
-| Ready for future B4 review | **No — draft template** | Complete only after the standalone release gate |
-
-## 16. Approval
-
-| Role | Name/identifier | Date | Result |
-|---|---|---|---|
-| PaperWorkShell release owner | **TBD** | **TBD** | Pending |
-| Security review | **TBD** | **TBD** | Pending |
-| Accessibility review | **TBD** | **TBD** | Pending |
-| Product-completion gate PWS-0808 | **TBD** | **TBD** | Pending |
-| External publication | Separate authorization | **TBD** | No public delivery authorized |
-
-A future ThirdLife B4 review is separate. Completing this index does not approve PaperWorkShell's
-inclusion in any ThirdLife release.

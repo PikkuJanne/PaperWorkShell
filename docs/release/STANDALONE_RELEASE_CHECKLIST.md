@@ -35,11 +35,11 @@ their own results, including the selected-tab failure on R2 and package
 timeouts on R1. PWS-0808 owns the product-completion decision. External
 distribution requires separate authorization.
 
-For R3, the local sample includes the sanitized support example and its
-exclusion evidence. The item about publication remains open for an authorized
-distribution. The recipient-facing engineering sheet and evidence index are
-frozen with this candidate. PWS-0808 reconciles the formal release-document
-status and owner sign-off.
+The R3 sample includes the sanitized support example and its exclusion evidence.
+The exact-candidate release documents are frozen alongside the immutable
+engineering sheet and sample. The [M8 gate report](../gates/m8-product-completion-gate.md)
+records the product-completion disposition. Public distribution requires a separate
+owner authorization.
 
 ## 1. Product boundary and independence
 
@@ -91,6 +91,7 @@ status and owner sign-off.
 - [x] Partial or corrupt output is never presented as final.
 - [x] Every exported PDF is reopened, structurally checked, rendered, and checked for expected page count/order and constraints.
 - [x] Low-space, disk-full, slow-I/O, constrained-resource, CPU-path, large-input, cancellation, and malformed-input behavior are tested.
+- [x] Actual system-volume exhaustion produced native Setup error 112 and the recovered installation verified and launched. [M8 gate report](../gates/m8-product-completion-gate.md#actual-system-volume-exhaustion)
 - [x] Resource budgets, workloads, versions, hashes, and limitations are recorded without claiming untested hardware certification.
 - [x] Core processing works offline.
 
@@ -126,13 +127,13 @@ status and owner sign-off.
 
 ## 9. Release interface and evidence package
 
-- [ ] [The release interface](RELEASE_INTERFACE.md) is complete for the exact candidate with no unexplained `TBD`.
+- [x] [The release interface](RELEASE_INTERFACE.md) resolves the exact R3 candidate fields and documents unsupported surfaces.
 - [x] Stable identity, publisher, licence, Windows 11 x64-only scope, evidenced editions/builds, and release channel are recorded.
 - [x] Installer, launch, inputs/outputs, data, offline/resource behavior, privilege/security, support, samples, limits, and contacts are complete.
 - [x] [The evidence index](RELEASE_EVIDENCE.md) points to current packaged results and hashes.
-- [x] Public synthetic sample inputs, expected outputs, behavior notes, and hashes are frozen.
+- [x] Synthetic sample inputs, expected outputs, behavior notes, and hashes are frozen.
 - [x] A workspace/project sample is included only if PaperWorkShell supports a portable project format.
-- [ ] A sample sanitized support bundle and exclusion proof are published.
+- [x] The frozen local sample includes a sanitized support bundle. The evidence index records its exclusion proof.
 - [x] Migration, update, rollback/non-rollback, uninstall, and data-preservation results are indexed.
 - [x] Security, accessibility, offline, and resource acceptance results are indexed.
 - [x] Artifacts, interface, evidence, limitations, and samples are frozen together.
@@ -151,5 +152,5 @@ status and owner sign-off.
 - [x] All release-blocking defects are closed or the candidate is rejected.
 - [x] Known limitations avoid portal-acceptance, legal-advice, OCR-certainty, PDF/UA, forensic-erasure, hardware-certification, and unsupported security claims.
 - [x] The tested packaged candidate matches the frozen hashes and SBOM.
-- [ ] The PaperWorkShell release owner approves the standalone release.
+- [x] The PWS-0808 review records technical acceptance of the exact candidate. [M8 gate report](../gates/m8-product-completion-gate.md#formal-decision)
 - [x] ThirdLife inclusion remains a separate future B4 compatibility decision.

@@ -554,7 +554,7 @@ dependencies = ["safe@../suite-runtime"]
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative_path, target)
 
-            self.assertEqual([], _document_issues(root))
+            self.assertEqual([], _document_issues(root, _load_tasks()))
             traceability = root / "docs/portfolio/SOURCE_TRACEABILITY.md"
             traceability.write_text(
                 traceability.read_text(encoding="utf-8").replace(
@@ -576,11 +576,36 @@ dependencies = ["safe@../suite-runtime"]
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / relative_path, target)
 
+            interface = root / "docs/release/RELEASE_INTERFACE.md"
+            interface.write_text(
+                "| Field | Value |\n"
+                "| --- | --- |\n"
+                "| Document status | DRAFT TEMPLATE — not a release guarantee "
+                "and not an application API |\n"
+                "| Interface revision | `0-draft` |\n"
+                "| Intended completion | Packaged M8 preview and stable candidates |\n"
+                "| Install receipt | TBD |\n",
+                encoding="utf-8",
+            )
+            evidence = root / "docs/release/RELEASE_EVIDENCE.md"
+            evidence.write_text(
+                "| Field | Value |\n"
+                "| --- | --- |\n"
+                "| Document status | DRAFT TEMPLATE for an exact packaged M8 candidate |\n"
+                "| Release version | **TBD** |\n"
+                "| Release channel | **TBD** |\n"
+                "| Evidence revision | `0-draft` |\n"
+                "| Source revision/tag | **TBD** |\n"
+                "| Release interface revision | **TBD** |\n",
+                encoding="utf-8",
+            )
+            checklist = root / "docs/release/STANDALONE_RELEASE_CHECKLIST.md"
+            with checklist.open("a", encoding="utf-8") as contents:
+                contents.write("\n- [ ] Verified synthetic release envelope.\n")
             self.assertIn(
                 "PORTFOLIO_DOCUMENT_STAGE_INVALID",
                 _issue_codes(_document_issues(root, data)),
             )
-            interface = root / "docs/release/RELEASE_INTERFACE.md"
             interface.write_text(
                 interface.read_text(encoding="utf-8")
                 .replace(
@@ -590,7 +615,6 @@ dependencies = ["safe@../suite-runtime"]
                 .replace("`0-draft`", "`1`", 1),
                 encoding="utf-8",
             )
-            evidence = root / "docs/release/RELEASE_EVIDENCE.md"
             final_evidence_status, status_rows = re.subn(
                 r"(?m)^\|\s*Document status\s*\|[^\r\n]*$",
                 "| Document status | **FINAL — complete for an exact packaged M8 candidate** |",
@@ -624,7 +648,6 @@ dependencies = ["safe@../suite-runtime"]
                     finalized_text,
                     encoding="utf-8",
                 )
-            checklist = root / "docs/release/STANDALONE_RELEASE_CHECKLIST.md"
             checklist.write_text(
                 checklist.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
                 encoding="utf-8",

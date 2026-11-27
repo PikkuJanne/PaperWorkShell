@@ -6520,7 +6520,7 @@ tasks:
   kind: gate
   priority: P0
   effort: XL
-  status: in_progress
+  status: done
   critical_path: true
   depends_on:
   - PWS-0409
@@ -6585,9 +6585,20 @@ tasks:
   - release
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-11-27'
+    revision: candidate:pws0807-tab-focus-engineering-r3
+    commands:
+    - >-
+      Recomputed qualification-index references, installer SHA-256 and observed Authenticode,
+      verified the 3,219-file stage and both SBOM schemas, and reopened the frozen sample.
+    - >-
+      The exact-package matrix passed within its recorded Windows, reader, security, accessibility
+      and resource scopes. In a separate disposable offline clone, actual system-volume exhaustion
+      produced native Setup error 112. After restoring space, all installed files matched and
+      the desktop launched with all checked synthetic data preserved.
+    - >-
+      tools/dev.py format-check, lint, typecheck, validate-schemas, validate-release-inventory,
+      validate-docs, validate-task-graph, validate-portfolio-boundary, and focused release validator tests.
     notes:
     - PWS-D043 fixes the required Windows 11 x64 scope. PWS-D044 supersedes the former
       trusted-signature requirement and preserves all applicable quality and x64 evidence.
@@ -6597,7 +6608,9 @@ tasks:
       54e0b916ac069ce00a0ce200c43e07f3a76d1784. See
       docs/gates/m8-product-completion-gate.md for the independent installer, receipt,
       inventory, SBOM, interface and synthetic sample checks, and the sample manifest's
-      missing detail about grayscale compression. Formal M8 sign-off remains pending.
+      companion clarification for grayscale compression. Formal M8 review accepted exact unsigned R3
+      for product completion on the documented Windows 11 Pro x64 configuration. R3 retains version
+      0.0.0 and channel engineering. Public distribution requires separate owner authorization.
 - id: PWS-0809
   milestone: M8
   title: Integrate ThirdLife late-binding governance and release-envelope ownership

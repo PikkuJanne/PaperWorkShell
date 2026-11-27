@@ -2,13 +2,13 @@
 
 | Field | Current value |
 |---|---|
-| Document status | **DRAFT TEMPLATE — not a release guarantee and not an application API** |
-| Interface revision | `0-draft` |
-| Engineering sheet revision | `pws0807-r3-interface-1`, for the identified unsigned internal candidate |
+| Document status | **FROZEN — exact packaged M8 candidate. This sheet is not an application API.** |
+| Interface revision | `pws0808-r3-interface-1` |
+| Source engineering sheet | `pws0807-r3-interface-1`, SHA-256 `db9ad671e63c93bd51daa3324f7b302ca3a80da51a761e5861a897e82dc8a6e8` |
 | Product | PaperWorkShell |
 | Portfolio role | ThirdLife Team A / A1 standalone product |
-| Intended completion | Packaged M8 preview and stable candidates |
-| Version relationship | A completed sheet is tied to exactly one PaperWorkShell candidate or release |
+| Intended completion | Packaged M8 preview and stable candidate documentation under PWS-D044 |
+| Version relationship | This sheet identifies the exact R3 artifact. Product-completion disposition is recorded in the M8 gate report. |
 
 ## How to use this sheet
 
@@ -17,10 +17,9 @@ possible future ThirdLife Deployment and Suite Assembly compatibility cut. It do
 standalone desktop product exposes. It is not a shared runtime schema, a custom adapter contract,
 or permission to inspect PaperWorkShell private data.
 
-Every release-specific `TBD` must be completed from the exact packaged candidate. Use “not
-supported” with a reason when an interface does not exist. Do not add a file-opening command,
-workspace transfer, association, CLI, URI, or RPC only to fill this sheet. See the
-[portfolio boundary](../../THIRDLIFE_ALIGNMENT.md) and [evidence index](RELEASE_EVIDENCE.md).
+Use this sheet with the matching evidence index and release notes. The scope is the exact packaged
+candidate and the configurations described in each observation. Publication requires separate
+authorization. [Portfolio boundary](../../THIRDLIFE_ALIGNMENT.md) · [Evidence index](RELEASE_EVIDENCE.md) · [Release notes](RELEASE_NOTES.md) · [M8 gate report](../gates/m8-product-completion-gate.md)
 
 This sheet describes `pws0807-tab-focus-engineering-r3`. The installed marker reports version `0.0.0` and channel `engineering`. The standard-user clean installation and the R1-to-R3 case-preserving replacement ran on disconnected Windows 11 Pro x64 build 26300.9711. Host component checks ran on build 26300.9974. The payload comparison with R2 found two changed application files, both in the desktop tab presentation and its use by the main window. All 175 third-party acquisition records matched. Public designation and distribution require an owner decision. [R3 qualification](../development/pws0807-r3-qualification.md) · [Candidate matrix](../development/pws0807-rc-matrix.md)
 
@@ -70,14 +69,14 @@ The resolved inventory has SHA-256 `a436ca25db576c7cc60936428381ee4e747030b869a7
 
 | Item | Release value |
 |---|---|
-| Normal installation path or UI | Run `Setup-PaperWorkShell.exe` from the prepared R3 bundle with the receipt digest from the trusted build reference. [Per-user setup](../../packaging/README.md#automated-per-user-setup) |
+| Normal installation path or UI | Run `Setup-PaperWorkShell.exe` from the prepared R3 bundle with `--installer`, `--receipt` and `--receipt-sha256` from the trusted build reference. [Per-user setup](../../packaging/README.md#automated-per-user-setup) |
 | Privilege/elevation requirement | The signed-in standard user installed R3, launched the desktop and exported the sample files on both configurations. |
 | Supported silent installation options | After reviewing the bundled Microsoft terms, the prepared launcher accepts `--accept-microsoft-terms <terms-sha256>` for unattended installation. [Setup options](../../packaging/README.md#automated-per-user-setup) |
 | Default install location | `%LOCALAPPDATA%\Programs\PaperWorkShell`. The installer registers removal for the current user. |
 | Restart requirement | Neither observed R3 setup required a Windows restart. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Update mechanism | For this engineering channel use the prepared local installer. Choose **Keep cases** during removal for a replacement. The R1-to-R3 replacement retained and opened the earlier case. Live update trust is unprovisioned. [R3 qualification](../development/pws0807-r3-qualification.md) |
-| Repair behavior | R3 same-build repair restored a deliberately missing Microsoft runtime recipient-terms file on the clean configuration. The installer returned exit 0, verified all 3,219 payload files and launched the desktop. The quota run separately observed installation stop with a full disk and roll back its partial target. [R3 qualification](../development/pws0807-r3-qualification.md) |
-| Rollback behavior and limits | With a real per-user disk quota, R3 stopped during file copy. The user selected **Cancel installation** in the native installer. Its rollback removed the partial target, and the preserved case files and external exports kept their digests. Previous-runtime restoration has separate isolated update rehearsal evidence. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Repair behavior | R3 same-build repair with `--repair` restored a deliberately missing Microsoft runtime recipient-terms file on the clean configuration. The installer returned exit 0, verified all 3,219 payload files and launched the desktop. [R3 qualification](../development/pws0807-r3-qualification.md) |
+| Rollback behavior and limits | When an enforced per-user NTFS quota exhausted the standard user's writable space during file copy, **Cancel installation** removed the partial target and preserved the managed cases and external files. Automatic cross-build rollback is unsupported. Previous-runtime restoration belongs to the separate isolated update rehearsal. The M8 gate report records the separate system-volume check. [R3 qualification](../development/pws0807-r3-qualification.md) · [M8 gate report](../gates/m8-product-completion-gate.md) |
 | Normal uninstall path or UI | Open **Settings → Apps → Installed apps**, select PaperWorkShell and choose **Uninstall**. |
 | User choice about cases during uninstall | Keeping cases is the default. To delete managed cases, choose review, inspect the inventory, give separate confirmation and acknowledge the reported result before continuing application removal. |
 | Data remaining after uninstall | On the clean R3 configuration, **Keep cases** retained four synthetic cases and all 31 managed files. After reinstall the standard user reopened a retained case. Confirmed removal of the four reviewed cases left no cases, and all 23 external inputs and outputs retained their digests. The checked PDF/JPEG/PNG shell defaults were preserved. [R3 qualification](../development/pws0807-r3-qualification.md) |
@@ -133,13 +132,11 @@ Cases hold immutable imported copies, a versioned manifest and journal, and rebu
 | Engines, preferences and diagnostics | Bundled PDF/OCR engines and English OCR data live under the installed runtime. Case settings remain in managed case state. The support summary uses bounded in-session records until the user chooses a local save. |
 | Local update state | Installed activation state and runtime slots belong under the product installation. The per-user lifecycle lock can remain after uninstall. R3 contains no configured production trust anchor. |
 
-On diagnostics R1, preserve removal kept the product-created synthetic case
-under `%LOCALAPPDATA%\PaperWorkShell\Cases` and the zero-byte
-`%LOCALAPPDATA%\PaperWorkShell.lifecycle-v1.lock`. The three external source,
-export, and support-bundle files kept their hashes. The four checked PDF and
-image extension defaults also matched before and after removal. In the explicit
-deletion run the user confirmed one reviewed case. All its files were removed,
-and the three external files kept their hashes.
+R3 preserve removal kept four synthetic cases and 31 managed files. Reinstall reopened a retained
+case. Reviewed deletion removed those four cases, kept all 23 checked external files and preserved
+the four PDF and image shell defaults. Removal eliminated the application root, registration and
+shortcuts. The per-user `%LOCALAPPDATA%\PaperWorkShell.lifecycle-v1.lock` may remain, as observed
+on diagnostics R1. User-selected external exports and diagnostic archives stay at their destinations.
 [Care and recovery guide](../user/CARE_AND_RECOVERY.md) ·
 [Installer lifecycle evidence](RELEASE_EVIDENCE.md#3-install-launch-update-repair-and-uninstall-evidence).
 
@@ -226,7 +223,7 @@ It does not certify a named physical computer, CPU count, RAM amount, GPU, SSD, 
 | Item | Release value |
 |---|---|
 | Normal application privilege | The standard user installed and launched R3 in the offline Pro x64 desktop session. |
-| Operations requiring elevation | The documented per-user setup, launch, repair, preserve removal and confirmed user-case removal were exercised in the standard account. |
+| Operations requiring elevation | None for the tested per-user setup, launch, repair, preserve removal and confirmed user-case removal. The installer rejects elevated execution of this route. |
 | Untrusted inputs | PDF, JPEG, PNG, templates, and any future project/engine package as applicable |
 | Document processing isolation | The R3 desktop paths used restricted Windows workers for permanent removal, ordinary export and the target-size fallback. The measured workloads record worker and child process limits, cancellation and recovery. [R3 qualification](../development/pws0807-r3-qualification.md) |
 | Network during processing | No worker traffic reached the four tested loopback listener types. The standard-user document workflow also ran with the guest adapter disconnected. |
@@ -265,7 +262,7 @@ The internal R3 handover includes `PaperWorkShell-R3-synthetic-sample.zip`, 4,17
 | Synthetic sample input set | The archive contains a born-digital PDF, an EXIF-oriented JPEG, a scan PNG, a four-category PDF, an intentionally truncated refusal example, a three-page compression reference and a one-page permanent-removal exercise. |
 | Sample portable workspace/project | **Not currently supported** |
 | Expected PDF/ZIP/summary outputs | Two ordinary mixed PDFs, the four-category combined PDF, four named PDFs, their ZIP and all three saved summaries, the two-member diagnostics ZIP, color/grayscale references, three single-page references and their ZIP, and the one-page removal derivative. |
-| Expected behavior notes | Open `READ-ME.md` inside the archive for the documented local actions, expected page order, reviewed package names and refusal examples. |
+| Expected behavior notes | Open `READ-ME.md` inside the archive for the documented local actions, expected page order, reviewed package names and refusal examples. The companion release notes clarify the three-page compression references. [Release notes](RELEASE_NOTES.md#synthetic-sample) |
 | SHA-256 manifest | `manifest.json` has SHA-256 `a51a4ccf34b47793e4495b00e9300479264ad0f2f33780caf4722aea887eee90`. It names the R3 target and documents the R2 reference material, original artifact provenance, member sizes and digests. |
 | Licence/provenance of samples | The manifest records each generated fixture's origin. The archive includes the project MIT licence and the SIL Open Font License notice for embedded Noto Sans subsets. |
 
@@ -295,9 +292,9 @@ At 200% display scaling with the Windows Aquatic high-contrast theme, R3 drew a 
 |---|---|
 | Issue/reporting route | Report to the maintainer through the existing private engineering handover channel. Include the candidate identity, observed behavior and sanitized error code. |
 | Security reporting route | For this internal build use the private maintainer channel that supplied it. A public reporting address remains an owner decision. [Security reporting](../../SECURITY.md) |
-| Maintained release versions | The engineering handover covers the identified R3 artifact and recorded scenarios. Public supported versions require owner designation. |
-| Maintenance status | Internal engineering qualification. Public preview and stable designation require separate owner decisions. |
-| End-of-support policy | No public support period has been announced for this engineering build. |
+| Maintained release versions | The internal handover covers the exact R3 artifact and documented scenarios. Public supported versions have no designation. |
+| Maintenance status | Verified local repair and case-preserving replacement cover this build. The live channel is disabled. Vulnerability reports use the existing private route and the maintainer's emergency dependency procedure. [Security policy](../../SECURITY.md) · [Emergency dependency updates](../development/emergency-security-updates.md) |
+| End-of-support policy | No announced public support period or response-time commitment. |
 | Mandatory user account for support | None implied or required by this sheet |
 
 The [security policy](../../SECURITY.md) describes how to prepare a report that protects case
@@ -313,7 +310,7 @@ index documents, control hidden processing, change originals, or perform PaperWo
 
 ## 16. Completion checklist
 
-- [x] Exact product version, source revision, channel, and engineering sheet revision are recorded.
+- [x] Exact product version, source revision, channel, and matching interface and evidence revisions are recorded.
 - [x] The engineering values, unsupported interfaces and public decisions reserved for the release owner are identified.
 - [x] Package identity, size, hash, observed signing state, SBOM, notices, and source revision are recorded.
 - [x] Install/update/repair/removal, privilege, restart, rollback, and residual-data behavior are documented.
@@ -324,4 +321,4 @@ index documents, control hidden processing, change originals, or perform PaperWo
 - [x] The engineering security scope, support bundle, tested limitations, synthetic sample and internal reporting route are documented.
 - [x] [Release evidence](RELEASE_EVIDENCE.md) identifies the exact packaged candidate.
 - [x] The engineering sheet uses known-folder notation, synthetic examples and repository-relative references.
-- [x] This engineering sheet is frozen with the matching sample and installer references.
+- [x] This candidate sheet is frozen with the matching sample and installer references.
