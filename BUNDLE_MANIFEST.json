@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 556954,
-      "sha256": "5f16bcde6a5a5f29a93e5c00498552ae078b5b1b124dd148f729c8530f3ad685"
+      "bytes": 557917,
+      "sha256": "682c9eedb193c91734420ab74d43877a7eb39575ce3dcbe30849178041065585"
     },
     {
       "path": "TASKS.schema.json",
@@ -710,8 +710,8 @@
     },
     {
       "path": "docs/development/pws0815-trace-page-navigation.md",
-      "bytes": 9435,
-      "sha256": "4d52abeacd0eb7e85d554cb6ec88b1a28be53a223280a1f0fb15aed80ca5faa6"
+      "bytes": 10958,
+      "sha256": "96c5e88cf534a348b53b77ffeb78ac9caf4e1699bfd1f91277e269669f14d873"
     }
   ],
   "validation": {

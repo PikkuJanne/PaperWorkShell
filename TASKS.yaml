@@ -7674,7 +7674,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: S
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0813
@@ -7702,12 +7702,28 @@ tasks:
   - first-use
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-11-27'
+    revision: candidate:pws0815-trace-page-navigation-engineering-r3
+    commands:
+    - >-
+      Native R1 baseline exposed the clipped controls. The first successor moved
+      the buttons and exposed a zero-width label on reopening. The expanded
+      regression caught the label and compact focus-scroll findings and passed
+      on the final source.
+    - >-
+      Registered accessibility passed 370 cases and the affected workflow suite
+      passed 63. Format, lint, strict typing, localization, documentation, task
+      graph, schema, release inventory, import and portfolio checks passed.
+    - >-
+      Prepared Setup verified all 3,219 installed files and preserved 359 case
+      files and 143 other synthetic files. Native compact navigation, focus,
+      Source selection, saved Exported controls and case integrity passed.
     notes:
-    - docs/development/pws0815-trace-page-navigation.md records the second-PC feedback,
-      TRACE scope, comparison plan, and exact candidate results.
+    - >-
+      Exact source 17688e3467fac2edf3f97ad070b8ad4589a629dd and unsigned installer
+      SHA-256 bceed6f3e02f6a827a93fd0b9f4405f5c2e44d4507f6cb237d6f346d07d7e872.
+      docs/development/pws0815-trace-page-navigation.md records source, installed
+      native results, and accepted PWS-0808 R3 evidence.
 
 - id: PWS-0816
   milestone: M8

@@ -44,8 +44,8 @@ from `e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec`. A standard-user Start launch
 reopened the retained two-page synthetic case in a 770 × 590 window on the
 1024 × 768 console at 96 DPI. The workflow viewport ended at y=505 and Next
 page occupied y=647–685. The thumbnail rows and export command conveyed page
-information, but the preview and its nearby controls gave no visible way to
-advance in the initial viewport. The saved Exported view also exposed an active
+information. The only paging controls followed the canvas beyond the initial
+viewport. The saved Exported view also exposed an active
 Next action with the whole-file verification controls. The case manifest and
 four managed original hashes matched after the observation. The native trees,
 captures and receipts are under `output/pws0815/r1-navigation-native`.
@@ -149,10 +149,33 @@ and unchanged selection after failure or cancellation. Strict typing,
 formatting, lint, localization, schemas, task graph, documentation, and
 release-inventory, import and portfolio validations passed.
 
+Prepared Setup replaced the exact first successor under the standard user
+and verified 3,219 installed files before launching R3. All 359 case files
+and 143 external rehearsal files matched across replacement. The additional
+case file since the first install was a rebuildable preview cache member
+from the first navigation observation. The offline VM stayed on the same
+active checkpoint with all 23 checkpoints retained. Setup scratch cleanup
+finished. See `output/pws0815/installed-successor-r3/receipt.json`.
+
+The installed comparison reopened the same synthetic case at native 96 DPI.
+At 770 × 590, Page 1 of 2 appeared above the controls and the initial viewport
+included both buttons before the preview. At 620 × 560, keyboard switching from
+Pages to Document hid the rail and placed visible focus on Next page with the
+count still visible. Space moved to page 2 and left focus on Previous page.
+Moving back left focus on Next page. Source showed the two distinct original
+pages in order, and saved Exported kept the whole-file checks and file picker.
+Normal close returned to the chooser and then exited. The case manifest and
+all four managed originals matched. See
+`output/pws0815/successor-final-navigation-native/receipt.json` and the matching
+captures. The installed comparison used Windows UI Automation and keyboard
+input. The earlier NVDA evidence remains scoped to its recorded candidate.
+
 ## Next development step
 
 PWS-0816 covers a separate roadmap requirement: splitting a page range into a
 verified derivative. The pure split/group operation in PWS-0110 preserves
 page membership, and R3's separate-PDF evidence covers checklist categories.
-Begin by checking the existing selected-page PDF plan against the ordinary
-Export PDF entry point and its fail-closed handling of unsupported modes.
+Begin by checking `build_pdf_export_plan_for_pages` against
+`OrganizerBackend.export_pages_pdf` and the ordinary Export PDF dialog.
+Use the selected case revision and ordered page IDs, and exercise unsupported
+modes and occupied destinations through the same verified derivative path.
