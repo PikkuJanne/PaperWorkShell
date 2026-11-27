@@ -92,7 +92,10 @@ def test_narrow_workbench_keeps_document_pages_and_recipe_reachable() -> None:
         application.processEvents()
 
 
-def test_compact_document_shows_page_count_and_navigation_before_scrolling() -> None:
+@pytest.mark.parametrize("width,height", [(620, 560), (770, 590)])
+def test_compact_document_shows_page_count_and_navigation_before_scrolling(
+    width: int, height: int
+) -> None:
     application = cast(QApplication, QApplication.instance() or QApplication([]))
     commands = OrganizerBackendCommands()
     worker = OrganizerBackendWorker(lambda: (_ for _ in ()).throw(AssertionError("no backend")))
@@ -104,13 +107,15 @@ def test_compact_document_shows_page_count_and_navigation_before_scrolling() -> 
         )
         for position in range(1, 7)
     )
-    window.resize(620, 560)
-    window._state_changed(OrganizerViewState(case_id, 1, pages, False, False, False))
+    window.resize(width, height)
+    window._state_changed(OrganizerViewState(None, None, (), False, False, False))
     window._set_controls_enabled(True)
     window.show()
     window.activateWindow()
     application.processEvents()
     try:
+        window._state_changed(OrganizerViewState(case_id, 1, pages, False, False, False))
+        application.processEvents()
         viewport = window._application_scroll.viewport()
         previous = window._trace_previous_button
         following = window._trace_next_button
@@ -120,6 +125,8 @@ def test_compact_document_shows_page_count_and_navigation_before_scrolling() -> 
 
         position = window._trace_page_position
         assert position.text() == "Page 1 of 6"
+        assert position.width() >= position.sizeHint().width() > 0
+        assert position.height() >= position.sizeHint().height() > 0
         assert viewport.rect().contains(QRect(position.mapTo(viewport, QPoint()), position.size()))
         assert not previous.isEnabled() and following.isEnabled()
 

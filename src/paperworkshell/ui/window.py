@@ -1711,10 +1711,10 @@ class PaperWorkShellWindow(QMainWindow):
         self._trace_page_position.setObjectName("tracePagePosition")
         self._trace_page_position.setTextFormat(Qt.TextFormat.PlainText)
         self._trace_page_position.hide()
+        layout.addWidget(self._trace_page_position)
         self._trace_previous_button.clicked.connect(lambda: self._select_trace_adjacent(-1))
         self._trace_next_button.clicked.connect(lambda: self._select_trace_adjacent(1))
         page_navigation.addWidget(self._trace_previous_button)
-        page_navigation.addWidget(self._trace_page_position)
         page_navigation.addWidget(self._trace_next_button)
         layout.addLayout(page_navigation)
 

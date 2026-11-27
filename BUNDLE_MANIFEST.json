@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 556955,
-      "sha256": "1bb83f7b6712b164f43e67f66e620c837a66d0ba3bc44a5b2401fdc765f90fc8"
+      "bytes": 556954,
+      "sha256": "5f16bcde6a5a5f29a93e5c00498552ae078b5b1b124dd148f729c8530f3ad685"
     },
     {
       "path": "TASKS.schema.json",
@@ -490,8 +490,8 @@
     },
     {
       "path": "packaging/windows/product-v1.json",
-      "bytes": 763,
-      "sha256": "343c19b59fb602b527a8b00d2302a299938d83f830318a3e67d026affdccc1cb"
+      "bytes": 766,
+      "sha256": "8e6e8c589ef0b605a301e9af6db499ea5d7ffd2d2e6b09a3e5d50c7666b5352a"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -710,8 +710,8 @@
     },
     {
       "path": "docs/development/pws0815-trace-page-navigation.md",
-      "bytes": 2398,
-      "sha256": "5ec9a908ab94c5d33c28335c612ee9d7aaef9004c42e3e24f7949fdc0a8fbf95"
+      "bytes": 7029,
+      "sha256": "5f5b60079c93cf9abb1cdcbc01f4871e26959ee09c53f7e3e8922940fbd984b6"
     }
   ],
   "validation": {

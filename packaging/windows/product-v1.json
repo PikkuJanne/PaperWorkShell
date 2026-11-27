@@ -8,7 +8,7 @@
   "official_distribution_price": "free, including commercial use",
   "version": "0.0.0",
   "channel": "engineering",
-  "candidate_id": "pws0815-trace-page-navigation-engineering",
+  "candidate_id": "pws0815-trace-page-navigation-engineering-r2",
   "os": "Windows 11",
   "minimum_os_build": 22000,
   "architecture": "x64",
