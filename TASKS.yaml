@@ -6066,8 +6066,15 @@ tasks:
     - The 2026-11-26 prepared R1 run verified a B8-to-R1 cross-build replacement on the
       offline Windows 11 Pro x64 26300.9711 standard-user desktop. Keep cases preserved all
       353 established case files. Setup verified 3219 payload files and launched R1.
-      See docs/development/pws0807-unsigned-completion.md. Clean-machine evidence and
-      actual installer-target disk exhaustion remain open.
+      See docs/development/pws0807-unsigned-completion.md.
+    - The 2026-11-27 clean PWS-Test checkpoint verified the exact unsigned
+      pws0807-diagnostics-engineering-r1 installer and ordinary Start menu launch on offline
+      Windows 11 Pro x64 26300.9711 with Smart App Control Off. Native install exited 0,
+      setup verified all 3219 payload files, and both desktop processes ran and exited
+      normally as the standard user. The active diagnostics R1 state was restored with all
+      358 case files matching. See docs/development/pws0807-unsigned-completion.md.
+      Exact R1 same-build repair, actual installer-target disk exhaustion, and broader
+      qualification remain open.
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy

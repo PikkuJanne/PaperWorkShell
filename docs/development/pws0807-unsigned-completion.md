@@ -128,15 +128,67 @@ runner's command policy rejected deletion of the empty permission-test folder.
 Its temporary deny rule was removed and the folder remains empty. The retained
 VM checkpoints and host artifacts still have their original identities.
 
+## PWS-0802 clean per-user installation and launch
+
+On 2026-11-27, the clean-install check passed for
+`pws0807-diagnostics-engineering-r1` from
+`e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec`. The exact 513,022,419-byte
+installer, receipt, and inventory identified by
+`output/pws0807/packaged-r1/qualified-build-handoff.json` matched their hashes
+on the host and in the guest. Authenticode reported `NotSigned` in both.
+The prepared setup launcher used the matching reviewed Microsoft runtime terms.
+
+The live R1 marker and all 358 case files matched the previous evidence before
+the VM was checkpointed. The restored
+`Clean-offline-before-PWS-with-passwords` checkpoint
+(`c3e64686-7b32-4247-b5bd-896c70f030d2`) ran Windows 11 Pro x64 build
+26300.9711. The Hyper-V adapter remained disconnected and the guest had zero
+up adapters. Smart App Control was Off. Defender real-time protection,
+firewall, UAC, Secure Boot, and vTPM were enabled. The checked locations had
+no PaperWorkShell install, registration, shortcuts, or app and case data.
+The checked development commands, registrations, and paths were empty apart
+from inert Python Store aliases. The limited interactive token in session 5
+had no Administrators SID or linked token and used elevation type 1. The
+first observer invocation exited 1 without a receipt. Running the same
+observer as an inbox PowerShell command produced the baseline receipt before
+setup, with Windows protection settings unchanged.
+
+Setup reported `operation=install`, native installer exit 0, no restart
+request, and 3,219 verified payload files. It installed under
+`%LOCALAPPDATA%\Programs\PaperWorkShell` with the per-user uninstall
+registration and Start menu shortcut. The checked machine-wide registration,
+program locations, and common shortcut were absent. In session 5, both the
+setup-started desktop and a new process opened through the installed
+**PaperWorkShell** Start menu shortcut showed a responsive foreground window
+under the verified standard-user token and closed normally with exit 0.
+The check created no case files and ended with zero owned processes or tasks
+on the clean test branch.
+
+The host receipts are in `output/pws0807/clean-r1-install-proof`.
+`clean-setup.json` has SHA-256
+`3ab218d3f1d5c6cbfa361535fdda95b85041c0ca7af2522ceec2c5487064d88b`.
+`clean-installed-final.json` binds the interactive baseline, setup, desktop
+inspection, and shortcut receipts with SHA-256
+`def5577c19b8c88339c982ccfa2e22161edee639ebb4e42362bb44eb69d54784`.
+The tested install is retained as
+`PWS0802-clean-diagnostics-R1-installed-20261127`
+(`974e7fb6-1cd1-4bbf-abfe-130da4cacd72`). The live VM was returned to
+`PWS0802-preserve-active-diagnostics-R1-20261127`
+(`c1d7e179-9827-4bdf-9d57-6efa56f7034c`). The R1 marker and all 358
+case files matched again, the VM remained offline, and all earlier checkpoints
+were retained. The final state receipt SHA-256 is
+`18cf8d4fd0e1b12f648143c18b9a1bb5222eaf08eab906756060fbb4e9730dff`.
+
+This covers clean per-user installation and ordinary launch of exact R1 on
+one Windows 11 Pro x64 guest with the observed execution policy. The earlier
+B8 replacement and R1 reuse observations retain their own starting states.
+Document workflows, same-build repair, uninstall, actual installer-target disk
+exhaustion, broader Windows coverage, and product acceptance remain separate.
+
 ## Next operation
 
 PWS-0802 and PWS-0807 remain in progress. PWS-0808 has the required product
-work as prerequisites. Begin with the clean Windows 11 x64 installation and
-standard-user launch observation for PWS-0802. The preserved
-`Clean-offline-before-PWS-with-passwords` checkpoint is a candidate baseline.
-Before using it, retain the live state and confirm that the baseline has the
-intended environment with neither PaperWorkShell nor any development runtime
-needed by the test. Use the prepared exact R1 installer, receipt and inventory
-if they remain the candidate under test. Record a clean operation independently
-of the observed replacement. Actual installer-target exhaustion, broader
-packaged matrix rows and final product acceptance remain open.
+work as prerequisites. The next PWS-0802 check is exact R1 same-build repair
+from the retained clean-install checkpoint. Reconfirm the offline checkpoint,
+installed marker, and standard-user session before the repair. Preserve the
+active diagnostics R1 state. Record the repair and its scope independently.

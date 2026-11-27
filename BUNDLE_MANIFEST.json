@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 546835,
-      "sha256": "79c6cd3d8c774954208f07fa1dbfcbb2061390afcdeb0b69af3fc65a477a2d56"
+      "bytes": 547388,
+      "sha256": "9ba006b591d3ff98e7ed9fd776a4d0e2537e1966ea3edec09a2e3b392ccbaacc"
     },
     {
       "path": "TASKS.schema.json",
@@ -680,8 +680,8 @@
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 8270,
-      "sha256": "5f85affd77f85b5659b7e5db7702299f5bc1c0f1cfcfdf919836d37f0e34b3d9"
+      "bytes": 11261,
+      "sha256": "355337d1934ca76c2845515232fe70f79388438cb4f76895361e42180bded672"
     }
   ],
   "validation": {
