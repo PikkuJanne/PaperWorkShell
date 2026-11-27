@@ -146,6 +146,11 @@ def test_keyboard_range_review_validates_positions_and_dispatches_reviewed_ids(
             app.processEvents()
             assert first.hasFocus()
             assert first.text() == "1" and last.text() == "3"
+            labels = {label.text().replace("&", ""): label for label in dialog.findChildren(QLabel)}
+            for name, field in (("First page", first), ("Last page", last)):
+                label = labels[name]
+                assert label.isVisible() and label.buddy() is field
+                assert label.width() > 0 and label.height() >= label.fontMetrics().height()
 
             first.setText("4")
             assert not choose.isEnabled()

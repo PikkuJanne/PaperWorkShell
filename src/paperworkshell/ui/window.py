@@ -40,7 +40,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -4843,8 +4842,6 @@ class PaperWorkShellWindow(QMainWindow):
         range_fields = QWidget()
         range_layout = QVBoxLayout(range_fields)
         range_layout.setContentsMargins(0, 0, 0, 0)
-        form = QFormLayout()
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         first_page = QLineEdit("1")
         first_page.setObjectName("exportFirstPage")
         first_page.setAccessibleName(tr("First page to export"))
@@ -4853,9 +4850,15 @@ class PaperWorkShellWindow(QMainWindow):
         last_page.setObjectName("exportLastPage")
         last_page.setAccessibleName(tr("Last page to export"))
         last_page.setMaxLength(max_digits + 1)
-        form.addRow(tr("&First page"), first_page)
-        form.addRow(tr("&Last page"), last_page)
-        range_layout.addLayout(form)
+        for field, title in (
+            (first_page, tr("&First page")),
+            (last_page, tr("&Last page")),
+        ):
+            label = QLabel(title)
+            label.setBuddy(field)
+            label.setWordWrap(True)
+            range_layout.addWidget(label)
+            range_layout.addWidget(field)
         range_status = QLabel()
         range_status.setObjectName("exportRangeStatus")
         range_status.setWordWrap(True)

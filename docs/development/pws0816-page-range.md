@@ -43,3 +43,30 @@ PWS-0816 source. The corpus, profile, and metrics match the retained TRACE
 receipt. The unit suite selects the new receipt and continues to check the
 exact implementation index and working bytes.
 [Scan-quality evidence procedure](scan-quality-evaluation.md#candidate-receipts-without-replacing-accepted-evidence)
+
+## Installed range and label observation
+
+`pws0816-page-range-engineering-r2` from
+`1ccc80bd8f9788da592fcb02c8aeb8463a74aeda` installed via prepared Setup in
+the offline standard-user guest. Setup verified 3,219 payload files and
+preserved 359 existing case files and 143 external rehearsal files. The
+guest stayed on the same active checkpoint with all 23 checkpoints.
+The installer SHA-256 is
+`99b5bc4869eb55b0772de8466f4ef6193354ff5aabaaf9c9d679d363a4683cb9`.
+
+The installed app reopened one four-page synthetic case after a saved reorder
+and rotation. Pages 2–3 produced a two-page PDF with rotations 0 and 90 degrees.
+Independent pikepdf reopening and PDFium render comparison matched the two
+selected originals in assembled order. The manifest changed only in export
+history, revision and update time. All three source and managed-original
+hashes matched. Invalid positions, Cancel, the occupied filename, and the
+unsupported searchable export with a visible mark preserved existing data.
+The unsupported message described recovery using compatible ranges. See
+`output/pws0816/installed-range-proof/b1c6af4f839f`.
+
+The application and UI Automation exposed both input names. The screenshot
+showed that the paired visual labels had empty bounds. The focused regression
+reproduced this after turning range mode on. Explicit labels in the vertical
+dialog layout restored their visible size and preserved keyboard focus and
+label relationships. The final installed check will verify this change on
+the retained case, then reopen and render a fresh single-page range.
