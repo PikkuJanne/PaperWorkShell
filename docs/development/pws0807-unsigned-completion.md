@@ -349,7 +349,7 @@ R1 installation. Edited page plans, restart persistence, checklist package
 outputs, saved summaries and the remaining candidate matrix still need their
 own observations.
 
-## Next operation
+## Previously planned operation
 
 Use the saved mixed-input scenario checkpoint for one installed page-plan
 test on R1. Reopen **R1 Primary Workflow**, move the PNG before the JPEG,
@@ -357,3 +357,11 @@ rotate the JPEG 90 degrees, save, and reopen after an application restart.
 Verify the persisted order and rotation through the app and an independently
 reopened fresh PDF. Retain the evidence on the host and return the VM to the
 verified active R1 checkpoint.
+
+## Full candidate matrix continuation
+
+The maintainer asked to finish PWS-0807 in this thread. The [R1 qualification
+ledger](pws0807-r1-qualification.md) records the installed page-plan test,
+native keyboard and screen-reader observations, the staged-runtime suites,
+the sample artifacts and the remaining disposition of the candidate.
+The earlier handoff above identifies the point from which this work resumed.

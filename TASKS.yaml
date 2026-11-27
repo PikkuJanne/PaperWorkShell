@@ -6485,7 +6485,12 @@ tasks:
       managed copies and manifest SHA-256 values matched. Both host readers reopened the
       22,408-byte ordinary PDF with three pages, and rendering confirmed the import order.
       See docs/development/pws0807-unsigned-completion.md and the mixed-input entry in
-      docs/release/RELEASE_EVIDENCE.md. Checklist package exports remain open.
+      docs/release/RELEASE_EVIDENCE.md. Checklist package exports remained open at this point.
+    - Installed R1 passed persisted mixed-source edits, schema v1/v2/v3 migration, keyboard
+      intake, four-category combined package and saved summary. Separate PDFs and ZIP timed
+      out and removed their temporary outputs. An independent exact-runtime control reproduced
+      the timeout. The R1 verdict and sample are preserved in docs/development/pws0807-r1-qualification.md.
+      A private successor must verify the affected installed operations within the original budget.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 product-completion gate

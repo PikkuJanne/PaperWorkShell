@@ -10,6 +10,14 @@
 | Source revision/tag | **TBD** |
 | Release interface revision | **TBD** |
 
+## Current PWS-0807 engineering evidence
+
+The [R1 qualification ledger](../development/pws0807-r1-qualification.md)
+and [matrix](../development/pws0807-rc-matrix.md) identify the tested
+engineering candidate, Windows environments, measured results, receipts
+and limitations. The draft metadata above applies to a future designated
+release. The tested build reports version 0.0.0 on the engineering channel.
+
 ## Unsigned product completion
 
 PWS-D044 makes the identified unsigned product candidate eligible for PWS-0808.

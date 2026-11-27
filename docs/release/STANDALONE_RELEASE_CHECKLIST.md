@@ -36,6 +36,11 @@ and [security policy](../../SECURITY.md) describe current behavior. The [evidenc
 links the separate TRACE B8 setup and PWS-0803 offline update rehearsals. Each checklist item
 requires exact-candidate evidence for its own scope.
 
+For engineering R1, use the [candidate qualification ledger](../development/pws0807-r1-qualification.md)
+to distinguish checks on the installed standard-user desktop, isolated
+candidate-runtime checks and byte-identical reader evidence. Final release
+owner sign-off belongs to PWS-0808.
+
 ## 1. Product boundary and independence
 
 - [ ] The primary document-package journey works without ThirdLife, sibling applications, a mandatory account, or a project-controlled server.

@@ -2,10 +2,14 @@
 
 PWS-0807 qualifies the exact unsigned Windows 11 x64 product candidate and its
 standalone release evidence under PWS-D044. This plan records candidate runs,
-scoped engineering evidence, and prerequisites. The product-completion candidate's
-identity, version and hashes remain TBD. [Task graph](../../TASKS.yaml) ·
+scoped engineering evidence, and prerequisites. The candidate selected for execution is engineering R1, version 0.0.0. [Task graph](../../TASKS.yaml) ·
 [Release evidence](../release/RELEASE_EVIDENCE.md) ·
 [Standalone checklist](../release/STANDALONE_RELEASE_CHECKLIST.md)
+
+The [R1 qualification ledger](pws0807-r1-qualification.md) records the current
+execution of this matrix, including exact guest versus staged-host results,
+application failures and unresolved assertions. The table below is the
+historical plan. Use the ledger for each new R1 observation.
 
 ## Candidate and environment inventory
 
@@ -40,8 +44,7 @@ against that candidate. [Windows qualification plan](../../packaging/windows/QUA
 
 ## Verification cells
 
-Every cell for the product-completion candidate remains pending until its
-exact identity and scoped evidence are established. Prior observations retain
+Each cell requires a result for the identified candidate and scenario. Prior observations retain
 their original verdicts. Record pass, fail, not run, or unsupported per actual scenario. An
 unsupported result requires a product reason, the visible behavior where
 applicable, and the documented in-app route. Record failed attempts and

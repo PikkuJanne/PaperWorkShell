@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 549463,
-      "sha256": "57b3dde16d87d7c8c4ce436059c58f8a75652fd4d6ffc46562d51b4d04c025b8"
+      "bytes": 549966,
+      "sha256": "bab73cdd23f5590ba3e3cfbe9c3a6d7fc5fdbaf6a2d84ed70820526dc661d09c"
     },
     {
       "path": "TASKS.schema.json",
@@ -65,18 +65,18 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 48334,
-      "sha256": "fa6515d667abf150567672971984571e3d18bc702b7c961cca3a7dd3d8df7052"
+      "bytes": 48742,
+      "sha256": "481d50b7caf7e3ede144c2fe85c8c34f34c95cb74047aef66a284aad7b390edf"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
-      "bytes": 24065,
-      "sha256": "31efc1aa22bf5e2585ce72c7fbbd1d2051f71e153a9dd82de4909d27e4dcbf04"
+      "bytes": 30763,
+      "sha256": "48095295060703bb8da6af675bf1e9a71b1648d5a953d1e6a58e6fbeae239d99"
     },
     {
       "path": "docs/release/STANDALONE_RELEASE_CHECKLIST.md",
-      "bytes": 11761,
-      "sha256": "663404e4e7573316b45596bd7de0f332444d141aed2cf7fd4799e7fb7f1fd69b"
+      "bytes": 12049,
+      "sha256": "9e17cceb873cfce8c48d7ea8eb49e95eedc97e8b6f258030e9fb06fc8f08def3"
     },
     {
       "path": "docs/portfolio/SOURCE_TRACEABILITY.md",
@@ -674,14 +674,19 @@
       "sha256": "3e5c489447693a91e5296ae31e93a98d2dcc0457351006a620724cf8c8e0aa5b"
     },
     {
+      "path": "docs/development/pws0807-r1-qualification.md",
+      "bytes": 13944,
+      "sha256": "dd77be0726f0bcfc9a47eafd5eb7d15c31574dfc93b1f033e045dc571bf95ab8"
+    },
+    {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 19668,
-      "sha256": "719b799f8b4c9d329fee074c53203a1a7fbbaaae47aad47baacdc14f4ecb809d"
+      "bytes": 19896,
+      "sha256": "6f62afb9cc4b00f7eb2d1f5a102b3c754796de9e52abc6831cf24073f92ef476"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 21315,
-      "sha256": "2c70ad63480c20c890d80ddd8a6a4cbf6c0038f4663f49ab46045e52303414ba"
+      "bytes": 21743,
+      "sha256": "ac65cf9885c3f2a95afd2097c86ddb885f24b159beafbace56ee3d57233eac4e"
     }
   ],
   "validation": {
