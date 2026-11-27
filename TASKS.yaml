@@ -5877,7 +5877,7 @@ tasks:
   kind: implementation
   priority: P0
   effort: XL
-  status: blocked
+  status: done
   critical_path: true
   depends_on:
   - PWS-0801
@@ -5927,21 +5927,20 @@ tasks:
   - distribution-integrity
   - windows
   - release
-  blocker:
-    reason: The remaining actual installer-target exhaustion check requires approval for a disposable
-      guest C-volume NTFS quota test under the PWS-0807 matrix.
-    evidence:
-    - docs/development/pws0807-unsigned-completion.md records exact R1 clean installation, repair,
-      preserve uninstall, reinstall and reopen, confirmed case removal, input refusal and provenance.
-    - The retained offline preserve-removed checkpoint 1621732b-33d6-4719-ab0f-d99fcc0e968c
-      and bounded helpers are ready. The host identity refusal and earlier read-only volume
-      capability check do not exercise the installed failure or recovery under PWS-D044.
-    requested_action: Authorize the temporary PWSTest quota on the guest system volume in a disposable offline
-      checkpoint branch, or identify another authorized disposable Windows 11 x64 target for this test.
+  blocker: null
   evidence:
-    completed_at: null
+    completed_at: '2026-11-27'
     revision: candidate:pws0807-diagnostics-engineering-r1
     commands:
+    - Select-QuotaBranch.ps1, Test-R1Quota.ps1, Preinstall.ps1, Collect-InstallLog.ps1,
+      Recover-R1.ps1 and join.py verified native error 112 at Setup initialization (64 KiB
+      available), disk exhaustion copying Qt6Gui.dll (64 MiB available), rollback, and
+      a successful fresh installation and desktop launch after quota restoration. All five
+      case files and three external files matched, followed by the restored active marker
+      and all 358 baseline case files. Joined receipt SHA-256
+      338652ea4b494c89a9ca599b6e5cda7ee5a7983425ba2b417efa64f69e2baa7e.
+    - validate-task-graph, validate-docs, validate-portfolio-boundary and git diff --check
+      passed. The three corresponding validator test modules passed 91 tests and 149 subtests.
     - "R9 actual build and data audit PASS - pws0802-internal-20261104-r9;512732779B;SHA256d29f7f6d081c0c43295ba8a3d5bb215344cefa6253a401be34ef0f74941bd9d4;NotSigned/internal. Receipt da8f1b8e69ccd5403758e1a83931121be485ff9fa6fe9cb17bd15f5958c7f426; inventoryfa337baa3ea03d251706a74ca20e61c1594d67822af4de41041026e03e6a0121/3195files/650130815B; independent5phaseaudit8e113985f492c35260f6f9f9320636b8571c58f1fea2cc296b04510a49409873. All956thirdparties/MS5objects9paths unchanged. NativeSystemDrive/guardedNotices fixes packaged; no PDF/COM/budgetfix. R7/R8 exact artifacts preserved."
     - "R9 actual standard-user episodes - Notices8aff2298deedbcd351220df7785ab79dacb8cf76ce6d96f9a4c1b277140075fd; firstnativeGUIinput85f3fea709eb0bff92c59ed937c8cb614872d588f8b3388675802bfce99e3e0c; interactiveRepair3b6c10c2d9867e28bf5f43f3ea829a4c78f3b5596dfed8b221263aefa05795f8; Cancel e8b55bc42efab32b6f873471b195dbf4abbc9d915987470c7dd78cf9d4028197; locked-caseconfirmeddeletion ae1040c87c90441b22068689f8b26bcb965aa68ce9051d53ace9208f3e5d415d; preserve75188e18537c4b8ae326fc15526eafcc7e8b3c10444e9c4140ec698e090e9065. All8strictmechanicalepisodes closed/noFallback/journal0. Ordinary verifiedPDF23444B/0fca8b80a936ba121763eece709db2ccc0632d2e86147f44e976e82747b2fa8a, not searchableOCRqualification. Two retainedcases/6externalsexact. Earlier episode reader gaps are superseded only by the separately bound finite supplements; failedtimeout/helperrecords retained. See currentx64ledger for exact remaining rows."
     - "R9 finite reader/preservation closeout - A9 full PWS_INSTALL_OPTION keyboard/NVDA reading and natural refusal1 rawd8fc47f0e45287367138b247d1ad3612c46cc4e34ac21d6897ec6a98e2309222/join8aaa2f06ffd865701512b5e2d021382b6f489faf7ecfa5a054ac46409414b697. A11 V3 raw73d0fb64ee2ac477164093886a81b33fa901835d3f2d3afd1df982fbe6f73ec9/strict62ef00e5bca5633c7c7a73414b8f7d9d65dec879bb338e9791cf05b1bbb2fb5c: actual spoken1available1unavailable, separateuncheckedconfirmation, confirmedlockedresult0deleted2remaining1failedpartial, named keyboardCancel1; reader0/preserve0/allclosed/noFallback/dataexact. Disclosed pointeractivation is notkeyboard-onlylaunch/universalAT. Independent case6a94ac1d264b59a0e6956af642b98ba2ed60ad0168a5f6fd17a6d5124603138e/workddc1cd36c7d235b208b903f9983ad5d4da0d42be2a244e68a4db04b7d54c1179 archives verified; ordinaryPDF strict3pagereopen. Exactgueststop0/emptylist9e4d3fafd62b86c20fdd30988046e50edeebd2aebd521cddd080af90c9bdf12d. Real lowdisk and trusted signing remain; prior following build/plan epochs retain historical scope."
@@ -5986,14 +5985,18 @@ tasks:
     - "Host R1 install/installed synthetic smoke/reinstall/corrected preserve-uninstall - PASS at HOST_NOT_CLEAN scope. R2 install, in-place repair, prior synthetic-case reopen, full smoke and preserve-uninstall - PASS; receipt 5d7d4f38b966f5f172e44e29fee412d7eb1e17f915a4c3494080df31377bebd8. No clean-machine, standard-account, GUI or public-signature claim."
     - "Production signing/refusal tests and real vendor Authenticode verifier probes - PASS at recorded epochs; no product was publicly signed. Actual Microsoft preparer invocation without authority refused MICROSOFT_RUNTIME_RIGHTS_REQUIRED before output."
     notes:
-    - 'Current 2026-11-26 scope under PWS-D044: qualify the exact unsigned installer and runtime.
+    - PWS-0802 completed for the exact unsigned diagnostics R1 installer on offline Windows
+      11 Pro x64 26300.9711 with Smart App Control Off. See
+      docs/development/pws0807-unsigned-completion.md and docs/release/RELEASE_EVIDENCE.md.
+      The remaining packaged workflow and product-completion gate belong to PWS-0807 and PWS-0808.
+    - '2026-11-26 scope under PWS-D044: qualify the exact unsigned installer and runtime.
       Existing R6, R7, R9, TRACE B8, and PWS-0807 R1 evidence applies within its recorded scope.
       The accepted Microsoft route and recipient terms remain documented in
       docs/development/pws0802-community-runtime-result.md and
       packaging/licenses/release-native/microsoft-msvc-runtime/COMMUNITY-2022-RECIPIENT-TERMS.txt.
-      The next packaging verification is clean standard-user installation and normal launch,
-      with exact-candidate preservation and removal checks. Real install-target disk exhaustion
-      still requires a bounded disposable environment. Prior signing requests are superseded.
+      The subsequent R1 records cover clean standard-user installation, normal launch,
+      exact-candidate preservation, removal and bounded installer-target disk exhaustion.
+      Prior signing requests are superseded.
       Any future publisher signing is optional work under a separately authorized distribution route.'
     - 'Historical maintainer reset 2026-11-04: PWS-0810 owns usable internal delivery and concrete
       functional repairs independently of this deferred public phase. This task remains blocked only
@@ -6090,8 +6093,7 @@ tasks:
       installation, registration and all three shortcuts. See docs/development/pws0807-unsigned-completion.md.
     - The R1 artifact audit verified 3219 payload files, 178 build inputs, 957 component records and
       both reproduced SBOMs. 328 focused source tests passed. The host lifecycle summary SHA-256 is
-      c39eda3f8562428e81121f07479e9c149247281879f8c3205f837861e3ea1d71. Actual installer-target
-      exhaustion and recovery still need execution on the separately authorized disposable branch.
+      c39eda3f8562428e81121f07479e9c149247281879f8c3205f837861e3ea1d71.
 - id: PWS-0803
   milestone: M8
   title: Implement authenticated update mechanism and component trust policy
@@ -6444,12 +6446,12 @@ tasks:
     revision: null
     commands: []
     notes:
-    - PWS-D044 allows final packaged results on an exact unsigned candidate. Reuse R1 diagnostics
-      within its recorded scope and continue clean install and ordinary standard-user launch.
+    - PWS-D044 allows final packaged results on an exact unsigned candidate. Apply the R1
+      diagnostics and installer results within their recorded scope.
       Optional network channel activation and publisher-signature checks are outside this matrix.
     - The previously tested guest lacked a bounded quota or test partition for the packaged
-      low-disk observation. Obtain an authorized isolated environment with that capability
-      for the affected check and continue the remaining matrix work independently.
+      low-disk observation. PWS-0802 subsequently exercised real NTFS quota enforcement
+      on the offline Pro guest. See docs/development/pws0807-unsigned-completion.md.
     - PWS-0806 observed support ZIP publication fail at two fixed local destinations on
       exact TRACE B8. The later R1 results cover the affected installed workflow within the
       scope described below. See docs/development/pws0806-documentation.md.
@@ -6458,13 +6460,12 @@ tasks:
       installed B8 writer save the exact reviewed ZIP. The source regression failed before the
       fix and 37 focused tests passed after it. See docs/development/pws0807-diagnostics-investigation.md.
     - The scenario matrix, environment inventory and verified synthetic rehearsal kit are recorded
-      in docs/development/pws0807-rc-matrix.md. The current offline Pro guest reports NTFS quota
-      capability in a read-only probe. Actual installer-target disk exhaustion still needs an
-      authorized disposable configuration. PWS-0802 owns the installation and packaging requirements.
+      in docs/development/pws0807-rc-matrix.md. PWS-0802 records the installed candidate,
+      guest quota, installer recovery and data-preservation results used by this matrix.
     - The exact B8 installed-runtime constrained-v1 smoke passed PDF/PNG intake, previews,
       verified output, OCR, unavailable-input and no-overwrite checks, and preservation.
       The receipt records final case/cache sizes and zero temporary residue. Peak resource
-      measurements, slow I/O, and disk exhaustion remain pending.
+      measurements, slow I/O, and disk exhaustion were outside that B8 smoke.
     - Exact unsigned R1 from e0eaf53142aab4e6ae2e07db1a6c37e050ac24ec passed the offline
       standard-user native picker save, preview SHA-256 and member checks, and occupied ZIP refusal
       with an open synthetic case. All 3219 installed payload files matched. The 353 baseline case
@@ -6477,8 +6478,8 @@ tasks:
       and five new synthetic case files matched. See docs/development/pws0807-unsigned-completion.md.
     - Prepared setup verified same-build reuse without an installer invocation and opened
       a new exact R1 process. The one-page synthetic case reopened with saved state and a
-      completed preview. All 358 case files matched. Continue clean-machine installation as
-      a separate starting state.
+      completed preview. All 358 case files matched. The subsequent clean installation
+      used its own verified starting state.
 - id: PWS-0808
   milestone: M8
   title: Run Milestone 8 v1.0 product-completion gate

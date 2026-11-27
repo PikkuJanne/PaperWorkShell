@@ -22,6 +22,10 @@ decision, genuinely missing authorization, or an external action Codex cannot pe
 the relevant work first. Codex owns setup and mechanical verification. Reserve human effort for
 necessary interaction or judgment and follow the [human-testing policy](docs/development/human-testing.md).
 
+The maintainer has authorized the PWS-0802 disposable guest quota test and all future
+PaperWorkShell guest quota tests. Apply quota settings inside the intended guest and
+retain the evidence before restoring its test state.
+
 Verify changed behavior with sufficient relevant evidence. Repeat an unsuccessful operation only
 when a changed condition or concrete diagnostic question can produce useful information. Keep
 historical evidence and verdicts with their original identity and scope. Use this policy for

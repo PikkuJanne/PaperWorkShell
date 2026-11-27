@@ -256,16 +256,52 @@ The VM was returned to the saved active diagnostics state, checkpoint
 matched. The offline test ended with zero owned guest tasks or application
 processes. The results apply to R1 on the documented Pro x64 configuration.
 
+## PWS-0802 installer-target disk exhaustion
+
+On 2026-11-27, the maintainer authorized this test and future guest quota
+tests. A disposable branch of the preserve-removed checkpoint
+`1621732b-33d6-4719-ab0f-d99fcc0e968c` retained the application-created
+case and three external files. NTFS enforced a quota for the standard user
+on guest C: while the volume had over 78 GB of physical space free.
+
+| Space available to PWSTest | Observed installer behavior |
+| --- | --- |
+| 64 KiB | Native Setup reported that it could not create a temporary file, displayed Windows error 112 and exited 1. The per-user product directory remained absent. |
+| 64 MiB | A control write reached precisely 67,108,864 bytes, then failed with error 112. After the control file was removed, R1 began installing and Windows refused its write of `runtime/Lib/site-packages/PySide6/Qt6Gui.dll` at the ordinary per-user location. Selecting **Cancel installation** initiated rollback. |
+
+After rollback the product directory, HKCU uninstall registration and normal
+shortcut were absent. The five managed files and the external source PDF,
+exported PDF and support ZIP matched their pre-install hashes. The 64 KiB
+observation establishes refusal during Setup initialization. The 64 MiB
+observation establishes failure during payload copying.
+
+The first quota-account lookup failed before enforcement. The verified trial
+used the qualified Windows account name. Its UI observer lost a window element
+at the copy error and recorded an incomplete result. The separate standard-user
+window capture and native installer log identified the failed file and rollback.
+The mid-copy installer's exit code was unobserved.
+
+After restoring the original quota settings on that same branch, the exact
+prepared setup exited 0 and verified all 3,219 installed files. The responsive
+standard-user desktop exited normally with code 0. The five managed files and
+three external files still matched. The host retained the receipts before the
+VM returned to active R1 checkpoint `999a5747-66e2-4565-baee-5e619dce8656`.
+The marker and all 358 baseline case files matched after restoration. The guest
+had zero active network adapters and zero owned application processes.
+
+The joined receipt is
+`output/pws0807/r1-installer-exhaustion/qualified-r1-disk-exhaustion.json`
+in the primary checkout. Its SHA-256 is
+`338652ea4b494c89a9ca599b6e5cda7ee5a7983425ba2b417efa64f69e2baa7e`.
+This completes PWS-0802 for the unsigned R1 installer on the tested Windows
+11 Pro x64 build 26300.9711 with Smart App Control Off. The release evidence
+index records the applicable installation and data-preservation results.
+
 ## Next operation
 
-The remaining PWS-0802 operation is real bounded exhaustion of the ordinary
-installer target. The release-candidate matrix requires a separately authorized
-disposable target. The prepared route applies an NTFS quota to PWSTest on
-guest C: on a disposable branch of `PWS0802-R1-removed-product-case-20261127`
-(`1621732b-33d6-4719-ab0f-d99fcc0e968c`). The starting state is the
-verified preserve uninstall with the application-created case and three external
-files. The helpers and negative host-identity control are in
-`output/pws0807/r1-installer-exhaustion`. The proposed test covers refusal
-before installation, exhaustion while writing the payload, recovery after the
-quota is lifted, and data preservation. Host preparation and volume capability
-are recorded. The guest quota operation awaits maintainer authorization.
+Continue PWS-0807 with one part of the installed primary workflow. On the
+offline R1 standard-user desktop, import the synthetic PDF, JPEG and PNG using
+the documented in-app actions and verify the original and managed-copy hashes.
+Produce one combined PDF and independently reopen it to check the expected
+page count and order. Retain the receipt outside the guest and restore the
+verified active R1 state. The rest of the product matrix stays with PWS-0807.

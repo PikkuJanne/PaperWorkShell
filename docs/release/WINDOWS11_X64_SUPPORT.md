@@ -18,6 +18,13 @@ to change that boundary.
 | Unsigned Windows 11 x64 product-completion candidate | Native x64 | Exact identity and remaining packaged checks are tracked in the [PWS-0807 matrix](../development/pws0807-rc-matrix.md). |
 | Earlier proposed execution on ARM64 | Outside scope | Earlier unrun scenario superseded by PWS-D043. No pass or future prerequisite is inferred. |
 
+On a disposable branch of the same Pro x64 guest, diagnostics R1 reported
+disk exhaustion at Setup initialization and while copying into the ordinary
+per-user install directory. Windows enforced the standard user's NTFS quota
+on the guest system volume. After quota restoration, the same installer verified
+all 3,219 payload files and launched the standard-user desktop.
+[R1 installer disk-exhaustion evidence](RELEASE_EVIDENCE.md#r1-installer-disk-exhaustion).
+
 The preserved accepted unsigned baseline is `pws0802-internal-20261103-r7`,
 512,713,704 bytes, SHA-256
 `a348150bd322c2c170dd015dc9a164023c645dcd8dea9ae209af265886de653a`.

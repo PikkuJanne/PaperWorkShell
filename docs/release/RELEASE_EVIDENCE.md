@@ -457,8 +457,42 @@ notation rather than real usernames or private absolute paths.
 
 A separate run preserved the bytes of a manually copied case. Its reopen
 reported `RECOVERY_SCAN_FAILED`. The successful reopen above used a case
-created by the installed R1 desktop. Actual disk exhaustion and recovery at
-R1's ordinary installation target require their own evidence.
+created by the installed R1 desktop.
+
+### R1 installer disk exhaustion
+
+An enforced NTFS quota limited the standard user's writes on the system
+volume of a disposable offline Windows 11 Pro x64 build 26300.9711 guest.
+With 65,536 bytes available to that user, native Setup reported Windows
+error 112 during temporary-file creation and exited 1 before creating the
+application directory. With 64 MiB available, installation reached the ordinary
+per-user target and failed copying `Qt6Gui.dll`. Cancel rolled back the partial
+installation. Five managed case files and three external files retained their
+pretest hashes. The first refusal measures Setup initialization. The installer
+wizard's total-payload-size check was outside that observation.
+
+The interactive observer lost its UI Automation element in the copy-error dialog
+and recorded an incomplete result. The captured error dialog, retained native log and
+post-failure inventory establish the copy failure, rollback and absent
+installation. The native exit code for this mid-copy attempt was unobserved.
+Restoring the quota configuration on the same guest branch allowed the exact
+prepared setup to install with native exit 0, verify all 3,219 files and open
+the normal desktop. The desktop exited 0 and the five managed and three
+external file hashes still matched.
+
+The joined host receipt
+`output/pws0807/r1-installer-exhaustion/qualified-r1-disk-exhaustion.json`
+has SHA-256 `338652ea4b494c89a9ca599b6e5cda7ee5a7983425ba2b417efa64f69e2baa7e`.
+It binds the following observations in `actual02` and the subsequent return to the
+offline active R1 checkpoint, where all 358 case files matched the original inventory.
+
+| Observation | Receipt SHA-256 |
+|---|---|
+| Initial temporary-file refusal, `pre01-result.json` | `bbd9c0414073d58965329fbc248b26d9970574b6af13db946c2137d6f0a9fed2` |
+| Copy-error window, `exhaustion-window.txt` | `f6cebf20f6574e490bb36bae170c06a44db0fdb2d5b954836174212f98891ed6` |
+| Retained native log identity, `retained-native-log-identity.json` | `ea3e94da8934714c9032b3041ba09911c3387b50642ed9381fe787f6f6d13972` |
+| Restored installation, `recovery.json` | `d7358c0df1e7f8c0aa0f3196dbe811e79fccf7c0283eeab9cb83629d2de2b96d` |
+| Data after recovery, `preservation-after-recovery.json` | `88afb6f58221c0245c54cde77132233aac169adfbb4c0bf641f7c1930af81a4d` |
 
 ## 4. Data-location and preservation evidence
 

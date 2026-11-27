@@ -171,8 +171,9 @@ VM retirement is separate from the actual product-uninstall proof.
 ## Exact remaining x64 observations and external gates
 
 The table retains the 4 November gap inventory. PWS-D044 superseded the A2
-publisher-signing requirement on 2026-11-26. The live low-disk gap and exact
-unsigned candidate checks are tracked in the [PWS-0807 matrix](pws0807-rc-matrix.md).
+publisher-signing requirement on 2026-11-26. The later R1 test used an enforced
+standard-user NTFS quota on the offline Windows 11 Pro guest. Its results are in
+the [R1 installer disk-exhaustion record](../release/RELEASE_EVIDENCE.md#r1-installer-disk-exhaustion).
 
 | Historical item or criterion | Observation or input missing at that checkpoint |
 |---|---|

@@ -1,6 +1,8 @@
 # PWS-0802 Windows installer qualification plan
 
-**Status: partially qualified unsigned Windows 11 x64 engineering candidate.**
+**Current installer qualification:** unsigned diagnostics R1 on Windows 11 Pro
+x64 build 26300.9711. The [R1 qualification record](../../docs/development/pws0807-unsigned-completion.md)
+binds the installer lifecycle and failure checks to the exact bytes and guest.
 The [4 November x64 inventory](../../docs/development/pws0802-x64-qualification-20261104.md)
 maps every PWS-0802 acceptance and verification item to its actual evidence and
 remaining observation. It supersedes this plan's former blanket `NOT RUN` matrix.
@@ -159,7 +161,7 @@ acceptance. Storage unit/integration checks provide separate supporting evidence
 | Busy app/worker/case | Safe refusal; no forced active-data deletion | Accepted busy/exclusion evidence retained. R9 owned manifest lock yields truthful failed/partial retention, with all owned jobs closed and journal0; no forced deletion. |
 | Unsafe/unavailable case | Unsupported/unsafe data retained truthfully | R9 future-schema synthetic case is unavailable and retained exactly; two available/one unavailable inventory observed. Native unsafe/alias tests retain their own scope. |
 | Interrupted/denied removal | Truthful partial result; recoverable state | R9 bounded sharing-denial deletion mechanically passes with exact imported/future retention and truthful partial result. Power-loss/general rollback is not claimed. |
-| Low disk during install/repair | No false success; existing cases preserved | Actual packaged low-disk observation missing. Require a bounded disposable-guest capability; source checks or a mock do not count as a pass. |
+| Low disk during install/repair | Report failure accurately and preserve existing cases and external files | On the disposable Pro x64 guest, R1 refused Setup initialization with error 112 at 65,536 bytes available to the user. At 64 MiB an actual copy to the fixed install target failed. Cancel rolled back the partial installation and the five managed and three external files matched. [R1 quota evidence](../../docs/release/RELEASE_EVIDENCE.md#r1-installer-disk-exhaustion) |
 | Optional engine/language data | Exact shipped resources/notices removed; cases unaffected | Bundled engine/English-resource inventory and preserve removal observed. No optional installer component selector is supported; independently supplied language data needs category-specific disposition evidence. |
 | Restart behavior | Requests and supported limits match documentation | Fixed no-restart route exits naturally in accepted runs; static restart/forced-close overrides are refused. No actual reboot is claimed. Both pending-rename values and two global reboot indicators were absent in the bounded removed snapshot40868e40. |
 | Silent options | Only supported safe switches; preserve data by default | Exact quiet install/repair/preserve-removal sequence observed. Other combinations remain unsupported. |
@@ -256,10 +258,11 @@ controls. No signed-artifact claim is permitted until these checks actually pass
 
 ## Remaining scoped qualification
 
-The [current finite x64 ledger](../../docs/development/pws0802-x64-qualification-20261104.md#exact-remaining-x64-observations-and-external-gates)
-identifies actual ordinary-target disk-full/recovery as a remaining R9-era gap.
-Qualify clean installation and the checks affected by changes on the exact unsigned
-completion candidate. Finite A9/A11 reader checks,
+The [finite x64 ledger](../../docs/development/pws0802-x64-qualification-20261104.md#exact-remaining-x64-observations-and-external-gates)
+records the R9-era gap. The later [diagnostics R1 results](../../docs/release/RELEASE_EVIDENCE.md#r1-installer-disk-exhaustion)
+cover actual enforcement at its ordinary installation target, rollback of the
+partial install, and successful installation and launch after quota restoration.
+Qualify affected checks for any subsequent candidate. Finite A9/A11 reader checks,
 removed-state comparisons and independent archive reviews now pass at their stated
 scope. Codex owns the remaining environment preparation, operation and evidence.
 A general manual-testing assignment or another reader replay is not required.
