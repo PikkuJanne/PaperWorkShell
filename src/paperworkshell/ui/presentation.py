@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Final, cast
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, Slot
-from PySide6.QtGui import QPainter, QPaintEvent, QPalette
+from PySide6.QtGui import QPainter, QPaintEvent, QPalette, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QStyleOption,
     QStyleOptionButton,
     QStyleOptionMenuItem,
+    QTabBar,
+    QTabWidget,
     QWidget,
 )
 
@@ -87,6 +89,29 @@ class ElidingTextLabel(QLabel):
             ),
         )
         painter.end()
+
+
+class FocusVisibleTabBar(QTabBar):
+    """Keep the selected tab's keyboard focus visible in native contrast themes."""
+
+    @classmethod
+    def install_on(cls, tabs: QTabWidget) -> None:
+        bar = cls(tabs)
+        bar.setObjectName(tabs.tabBar().objectName())
+        tabs.setTabBar(bar)
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        super().paintEvent(event)
+        if self.hasFocus() and self.currentIndex() >= 0:
+            outline = self.tabRect(self.currentIndex()).adjusted(2, 2, -2, -2)
+            painter = QPainter(self)
+            # The system selection pair makes the dash and its gaps visible even
+            # when a selected tab already uses the highlight as its background.
+            painter.setPen(QPen(self.palette().highlightedText(), 2))
+            painter.drawRect(outline)
+            painter.setPen(QPen(self.palette().highlight(), 2, Qt.PenStyle.DashLine))
+            painter.drawRect(outline)
+            painter.end()
 
 
 class AccessibleNativeStyle(QProxyStyle):
