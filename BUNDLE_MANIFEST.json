@@ -30,8 +30,8 @@
     },
     {
       "path": "TASKS.yaml",
-      "bytes": 558006,
-      "sha256": "a17afe674003c3864a682ba8bbd959a88cfc3eef1f8f39fbb123fd0fcc4cf03a"
+      "bytes": 561303,
+      "sha256": "f52c04914f9c89e4803a852a3fb9fb76ed404187c73b36c32c14634d2fc1e12d"
     },
     {
       "path": "TASKS.schema.json",
@@ -715,18 +715,20 @@
     },
     {
       "path": "docs/development/pws0816-page-range.md",
-      "bytes": 4227,
-      "sha256": "b6fdb1f25faeaaaeedf45320b7cb927279b2323fba59f9bb7bfe42f5b6224f30"
+      "bytes": 6779,
+      "sha256": "ee7eb9d6cd411c866be2f55234361499b25994db0dbc5d42723ed4dc9cad2caa"
     }
   ],
   "validation": {
     "json_schema": "passed",
     "dag": "passed",
-    "task_count": 89,
-    "dependency_edge_count": 262,
+    "task_count": 90,
+    "dependency_edge_count": 265,
     "milestone_count": 9,
     "gate_task_count": 9,
-    "ready_tasks": []
+    "ready_tasks": [
+      "PWS-0817"
+    ]
   },
   "notes": [
     "2026-11-26 unsigned product completion: PWS-D044 allows an exact unsigned Windows 11 x64 candidate to satisfy PWS-0808. TASKS.yaml and the current PWS-0807 continuation record the local R1 observations and remaining qualification. Earlier notes retain their historical scope.",

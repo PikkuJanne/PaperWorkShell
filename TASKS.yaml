@@ -7731,7 +7731,7 @@ tasks:
   kind: implementation
   priority: P1
   effort: M
-  status: in_progress
+  status: done
   critical_path: false
   depends_on:
   - PWS-0110
@@ -7764,11 +7764,89 @@ tasks:
   - accessibility
   blocker: null
   evidence:
-    completed_at: null
-    revision: null
-    commands: []
+    completed_at: '2026-11-27'
+    revision: candidate:pws0816-page-range-engineering-r3
+    commands:
+    - >-
+      The constrained Windows production-backend regression independently reopened
+      and rendered the reordered two-page range, and exercised invalid and stale
+      selection, cancellation, and no-replace publication.
+    - >-
+      Installed R2 saved and independently verified pages 2–3. Its native checks
+      also verified invalid positions, dialog cancellation, destination collision,
+      and refusal of the unsupported searchable and marked combination.
+    - >-
+      R3 prepared Setup verified all 3,219 installed files and compared 372 case
+      files and 143 external rehearsal files through replacement. The installed
+      dialog showed both range labels and supported keyboard selection. The
+      singleton export reopened and rendered pixel-identically to the selected
+      original with its saved rotation.
+    - >-
+      372 accessibility tests, focused service and dialog suites, registered
+      static and repository checks, and the exact R3 scan-quality evidence
+      validation passed.
     notes:
     - ROADMAP.md sections 1.4 and M1 call for splitting. PWS-0110 covers pure group
       intent. PWS-0407 and the R3 matrix cover category-based separate PDF export.
       The PWS-0815 installed dialog observation confirmed whole-packet output only.
       docs/development/pws0816-page-range.md records the correction and verification.
+    - >-
+      Final source 1e21c225c71a8776f458aba634bd85f7bec154b0 and unsigned installer
+      SHA-256 ee240e88d473c6a438a33fe84e63684b2af4ff1855762f5fa39cbf60c0b485fb.
+
+- id: PWS-0817
+  milestone: M8
+  title: Export marked forms and separate searchable scans in one PDF
+  kind: implementation
+  priority: P1
+  effort: L
+  status: ready
+  critical_path: false
+  depends_on:
+  - PWS-0206
+  - PWS-0307
+  - PWS-0816
+  decision_refs:
+  - PWS-D005
+  - PWS-D008
+  - PWS-D009
+  - PWS-D013
+  - PWS-D016
+  - PWS-D018
+  - PWS-D022
+  - PWS-D029
+  - PWS-D030
+  - PWS-D041
+  objective: Support the one-file packet workflow when a born-digital form has
+    supported visual marks and distinct evidence pages need local OCR.
+  deliverables:
+  - Verified ordinary searchable PDF output containing the supported marks and
+    searchable scanned evidence in assembled order.
+  - An installed synthetic example with independent render and text checks.
+  acceptance_criteria:
+  - A selected packet with marked born-digital PDF pages and separately scanned
+    evidence pages can be saved to one verified searchable PDF.
+  - The output retains the form's digital text and visible marks and adds searchable
+    text to eligible scanned evidence. The selected page order and originals stay intact.
+  - Existing signed-source, active removal, cancellation, no-replace, and verification checks
+    apply. Unsupported same-page combinations retain actionable failure.
+  verification:
+  - Exercise the installed synthetic marked form and separate scan through Export PDF.
+    Reopen and render the output and independently check its text and page order.
+  - Exercise failure and cancellation with the constrained resource profile.
+  risk_tags:
+  - export
+  - ocr
+  - overlays
+  - data-integrity
+  blocker: null
+  evidence:
+    completed_at: null
+    revision: null
+    commands: []
+    notes:
+    - ROADMAP.md sections 1.1 and 1.3 describe visual form completion and scan
+      improvement in a workflow that includes one combined PDF.
+    - The ordinary export combination guard currently refuses visible marks with
+      the searchable option anywhere in the selection. PWS-0816 observed this
+      refusal and added separate compatible range exports.

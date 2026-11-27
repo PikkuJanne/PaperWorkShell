@@ -68,5 +68,52 @@ The application and UI Automation exposed both input names. The screenshot
 showed that the paired visual labels had empty bounds. The focused regression
 reproduced this after turning range mode on. Explicit labels in the vertical
 dialog layout restored their visible size and preserved keyboard focus and
-label relationships. The final installed check will verify this change on
-the retained case, then reopen and render a fresh single-page range.
+label relationships.
+
+## Final engineering candidate
+
+`pws0816-page-range-engineering-r3` was built from
+`1e21c225c71a8776f458aba634bd85f7bec154b0`. The private unsigned installer
+is 513,030,240 bytes, SHA-256
+`ee240e88d473c6a438a33fe84e63684b2af4ff1855762f5fa39cbf60c0b485fb`.
+The prepared Setup handoff SHA-256 is
+`5ccfdb740940c0c416ec3f9a1add4b8c585c5474ad89c8549bd95833ea5b6d1e`.
+Its bundle is under
+`output/pws0816/build-preparation/pws0816-page-range-engineering-r3`.
+The build bound 345 application files to Git and verified 3,219 payload
+members. The R2-to-R3 application diff is limited to `ui/window.py`, so the
+record keeps the earlier export and refusal observations with R2.
+
+The final source passed 372 accessibility tests, 21 focused dialog tests,
+and the registered formatting, lint, typing, and repository validators.
+The exact R3 source also supplied a separate passing scan-quality receipt.
+Its strict implementation binding supports the current unit-suite default.
+
+Prepared Setup replaced exact R2 under the standard desktop account and
+verified 3,219 installed files. All 372 existing case files and 143 external
+rehearsal files matched across replacement. All 23 checkpoints were retained.
+The receipt is `output/pws0816/installed-successor-r3/receipt.json`.
+
+The final installed dialog showed First page and Last page above their fields.
+Native bounds placed both labels and fields inside the viewport, and Tab
+reached Last page. The same retained case exported only assembled page 3.
+Independent reopening found one page at 90 degrees. Its rendered pixels
+matched both the rotated original and page 2 of the earlier verified range.
+The manifest changed only in export history, revision, and update time.
+The case closed normally. Evidence and the independent PDF check are under
+`output/pws0816/installed-range-proof/r3-5195d2e8f4c9`.
+
+The first observer stopped on a transient accessibility query after creating
+the rehearsal case. A subsequent observation saved the reorder and rotation,
+then encountered an exclusive manifest read. The completed R2 run resumed
+from that saved case and used those actual edits. Tool policy blocked a
+cleanup command for the first observer's synthetic scratch folder. The folder
+remains in the test guest and the transferred evidence is retained.
+
+## Next development step
+
+PWS-0817 covers the one-file packet with a marked digital form and separate
+searchable scans. The installed PWS-0816 check confirmed that an OCR request
+with a visible mark in scope is refused. Begin with a synthetic marked
+born-digital form and a distinct scan. Trace the existing flattened form
+and searchable scan plans into one verified ordered derivative.
