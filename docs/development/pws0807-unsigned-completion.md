@@ -264,7 +264,7 @@ tests. A disposable branch of the preserve-removed checkpoint
 case and three external files. NTFS enforced a quota for the standard user
 on guest C: while the volume had over 78 GB of physical space free.
 
-| Space available to PWSTest | Observed installer behavior |
+| Space available to the standard user | Observed installer behavior |
 | --- | --- |
 | 64 KiB | Native Setup reported that it could not create a temporary file, displayed Windows error 112 and exited 1. The per-user product directory remained absent. |
 | 64 MiB | A control write reached precisely 67,108,864 bytes, then failed with error 112. After the control file was removed, R1 began installing and Windows refused its write of `runtime/Lib/site-packages/PySide6/Qt6Gui.dll` at the ordinary per-user location. Selecting **Cancel installation** initiated rollback. |

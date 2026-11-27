@@ -12,10 +12,11 @@
 
 ## Current PWS-0807 engineering evidence
 
-The [R1 qualification ledger](../development/pws0807-r1-qualification.md)
-and [matrix](../development/pws0807-rc-matrix.md) identify the tested
-engineering candidate, Windows environments, measured results, receipts
-and limitations. The draft metadata above applies to a future designated
+The [R2 qualification ledger](../development/pws0807-r2-qualification.md)
+and [matrix](../development/pws0807-rc-matrix.md) identify the current
+engineering candidate, Windows environments, measured results and limitations.
+The [R1 ledger](../development/pws0807-r1-qualification.md) preserves the
+failed split and ZIP exports and the comparison leading to the R2 repair. The draft metadata above applies to a future designated
 release. The tested build reports version 0.0.0 on the engineering channel.
 
 ## Unsigned product completion

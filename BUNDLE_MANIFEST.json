@@ -65,8 +65,8 @@
     },
     {
       "path": "docs/release/RELEASE_EVIDENCE.md",
-      "bytes": 48742,
-      "sha256": "481d50b7caf7e3ede144c2fe85c8c34f34c95cb74047aef66a284aad7b390edf"
+      "bytes": 48881,
+      "sha256": "90a84cb1ce66cccb94843d95c2bac2795ceb9850478d34576a8e666c2a14a5a0"
     },
     {
       "path": "docs/release/RELEASE_INTERFACE.md",
@@ -590,8 +590,8 @@
     },
     {
       "path": "docs/release/WINDOWS11_X64_SUPPORT.md",
-      "bytes": 9893,
-      "sha256": "1b964db2118c976065b3c894953df84c422072ef2bf1e0ef2534d5a274449624"
+      "bytes": 10279,
+      "sha256": "1dc7aa04122a63d4cb32bfab0aca81d1d56a5d997068a388b81a8beb7c8fd76e"
     },
     {
       "path": "docs/development/pws0810-internal-delivery-20261104.md",
@@ -679,14 +679,19 @@
       "sha256": "dd77be0726f0bcfc9a47eafd5eb7d15c31574dfc93b1f033e045dc571bf95ab8"
     },
     {
+      "path": "docs/development/pws0807-r2-qualification.md",
+      "bytes": 15127,
+      "sha256": "933ebdb303412a39a0bdc334aeb48b5c968d18fd19995dac22f58cfe2582a170"
+    },
+    {
       "path": "docs/development/pws0807-rc-matrix.md",
-      "bytes": 19896,
-      "sha256": "6f62afb9cc4b00f7eb2d1f5a102b3c754796de9e52abc6831cf24073f92ef476"
+      "bytes": 19978,
+      "sha256": "c7966cdb584f643c96b584cc8dad96ec45fe9038736b3c596cb86a26aeee8923"
     },
     {
       "path": "docs/development/pws0807-unsigned-completion.md",
-      "bytes": 21743,
-      "sha256": "ac65cf9885c3f2a95afd2097c86ddb885f24b159beafbace56ee3d57233eac4e"
+      "bytes": 21753,
+      "sha256": "cbdd6725ae8afa2bad2e6fd76d135862f2b0b95abd681aa88059fc4ed654f768"
     }
   ],
   "validation": {
