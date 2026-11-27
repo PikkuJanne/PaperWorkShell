@@ -4,10 +4,13 @@
 
 [R3 qualification](../gates/m8-product-completion-gate.md) applies to the frozen
 unsigned R3 engineering package, its recorded workflows and its tested Windows
-configuration. The original gate report and its receipt stay with that
-candidate. The accepted signing policy in [ADR 0023](../adr/0023-unsigned-product-completion.md)
-and the proven [automated setup](pws0814-automated-setup.md) apply to ongoing
-development.
+configuration. The installed evidence covers Windows 11 Pro x64 build
+26300.9711 with Smart App Control Off, including offline intake and export,
+maintenance, accessibility, and the separately bounded disk-full refusal and
+recovery. The original gate report and its receipt stay with that candidate.
+The accepted signing policy and the proven automated setup apply to ongoing
+development. [ADR 0023](../adr/0023-unsigned-product-completion.md) ·
+[Automated setup](pws0814-automated-setup.md)
 
 The [second-PC feedback](pws0811-repairs-20261106.md#second-pc-human-result-and-feedback--2026-11-25)
 records difficulty discovering additional pages in a one-page preview. The
@@ -96,7 +99,9 @@ syntax rejected by the guest's Windows PowerShell, and the second referenced a
 historical export scratch folder that was absent from the restored R1 baseline.
 The corrected helper used the live synthetic rehearsal inventory. Its install
 and retention receipts completed before the final cleanup encountered the
-read-only attribute copied from the frozen bundle.
+read-only attribute copied from the frozen bundle. The six digest-bound
+staged copies were removed separately. See
+`output/pws0815/first-setup-scratch-cleanup.json`.
 
 The exact first successor moved both paging buttons above the canvas in the
 same compact native window. Next was enabled at y=300–338, within the initial
@@ -122,6 +127,27 @@ canvas could scroll the new header past the top of the viewport. The third build
 prefers an enabled paging action when the page rail is unavailable and when the
 user switches back to Document. The geometry and focus assertions cover both
 transitions.
+
+The second unsigned installer is retained with SHA-256
+`8882c4a9b8880c02fc7509ec4bab28c823af23e61ada323f6bdc6577b9790c37`.
+The third build includes both fixes and is used for the installed comparison.
+
+## Final engineering build
+
+`pws0815-trace-page-navigation-engineering-r3` was built from
+`17688e3467fac2edf3f97ad070b8ad4589a629dd`. Setup is 513,024,448 bytes,
+SHA-256 `bceed6f3e02f6a827a93fd0b9f4405f5c2e44d4507f6cb237d6f346d07d7e872`,
+with observed Authenticode status `NotSigned`. The prepared bundle and receipts
+are under `output/pws0815/build-preparation/pws0815-trace-page-navigation-engineering-r3`.
+The handoff SHA-256 is `d1da51f150432cb1ff133d29ef22f1d8e5f60b4c9780f4a1c98cf65a1cbc5b76`.
+
+The offline build verified 345 exact application files and 3,219 payload
+members. All 175 external input rows matched the first PWS-0815 candidate.
+The 63 affected workflow tests and 370 accessibility tests passed. The two
+older compact recovery assertions now check for the enabled Next page action
+and unchanged selection after failure or cancellation. Strict typing,
+formatting, lint, localization, schemas, task graph, documentation, and
+release-inventory, import and portfolio validations passed.
 
 ## Next development step
 

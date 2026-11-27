@@ -796,8 +796,9 @@ def test_status_and_safe_error_are_visible_and_focusable_on_each_workflow_page()
         assert window._stack.currentWidget() is window._organizer_page
         assert window._status_surface.isVisible()
         assert window._error_label.isVisible()
-        target = window._page_view if window._page_view.isVisible() else window._trace_document
-        assert target.isVisible() and app.focusWidget() is target
+        target = window._page_view if window._page_view.isVisible() else window._trace_next_button
+        assert target.isVisible() and target.isEnabled() and app.focusWidget() is target
+        assert window._selected_page_id() == PAGE_ONE
 
 
 def test_state_updates_preserve_focus_and_hidden_cancel_moves_focus_safely() -> None:
@@ -835,8 +836,9 @@ def test_state_updates_preserve_focus_and_hidden_cancel_moves_focus_safely() -> 
         app.processEvents()
         assert not window._cancel_button.isVisible()
         assert app.focusWidget() is not window._cancel_button
-        target = window._page_view if window._page_view.isVisible() else window._trace_document
-        assert target.isVisible() and app.focusWidget() is target
+        target = window._page_view if window._page_view.isVisible() else window._trace_next_button
+        assert target.isVisible() and target.isEnabled() and app.focusWidget() is target
+        assert window._selected_page_id() == PAGE_ONE
 
 
 def test_recovered_case_has_visible_and_announced_review_status() -> None:

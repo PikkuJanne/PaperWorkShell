@@ -139,8 +139,8 @@ def test_compact_document_shows_page_count_and_navigation_before_scrolling(
             QTest.keyClick(document_control, Qt.Key.Key_Space)
             application.processEvents()
             assert following.hasFocus()
-            for control in (position, following):
-                visible_bounds = QRect(control.mapTo(viewport, QPoint()), control.size())
+            for page_control in (position, following):
+                visible_bounds = QRect(page_control.mapTo(viewport, QPoint()), page_control.size())
                 assert viewport.rect().contains(visible_bounds)
 
         following.setFocus()
