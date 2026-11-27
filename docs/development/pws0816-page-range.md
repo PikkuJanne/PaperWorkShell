@@ -35,3 +35,11 @@ searchable service tests passed, including applicable unsupported processing
 combinations. The native accessibility suite passed 372 tests. It includes
 keyboard range review, refusal of invalid positions before the destination
 picker, and cancellation of the range dialog.
+
+The preceding hosted core run failed when the checked-in scan-quality fixture
+was compared against a newer implementation index. The integration lane passed.
+The existing evaluator recorded and validated a separate receipt on the frozen
+PWS-0816 source. The corpus, profile, and metrics match the retained TRACE
+receipt. The unit suite selects the new receipt and continues to check the
+exact implementation index and working bytes.
+[Scan-quality evidence procedure](scan-quality-evaluation.md#candidate-receipts-without-replacing-accepted-evidence)
