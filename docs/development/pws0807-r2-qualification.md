@@ -341,3 +341,29 @@ artifact bindings. The joined receipt is
 | M5 — compression and compatibility | The candidate reproduced the six reference PDFs and their ZIP. The ledger distinguishes current Windows reader runs, byte-identical earlier viewer results and impossible-target refusal. |
 | M6 — permanent redaction | The one-affected-page profile passed the six runtime checks. Independent examination and ten retained reader saves cover the separate release profile. Fourteen failed/unknown-method cases verified blocked publication. |
 | M7 — accessibility, localization and assisted mode | Packaged Qt accessibility and input checks, the actual NVDA recording, installed keyboard workflows, and focused consent, retention and removal controls cover the affected behavior. Earlier human usability judgments remain scoped to their originally tested material. |
+
+## Clean-install removal rehearsal
+
+On the separate clean Windows 11 Pro x64 guest branch, native setup refused
+a changed installer, mismatched inventory, unsafe path and wrong receipt
+digest. The install target remained absent. The authentic R2 installation
+then verified all 3,219 payload files (650,883,055 bytes) and opened the
+standard user's empty case chooser.
+
+The standard user imported the frozen 743-byte removal fixture and saved
+one unapplied mark at left 10%, top 45%, width 85% and height 10%.
+Destination selection remained disabled until explicit review confirmation.
+The installed result reported one affected page, six passed methods and
+`REDACTION_EXPORT_COMPLETE`. The saved unsigned derivative was 34,084 bytes,
+SHA-256 `33a6cc1dbfee6fca8d7fe940e5f0ced6e22090e9046fbd9a00481ac0355b8e8c`.
+The external input and managed original retained SHA-256
+`7858323c5907cad84c96d857cc491b4e070f334c3c355d7bfdf7b84b45858168`.
+The actual dialog report, derivative and verified host transfer were retained
+before returning to the clean starting checkpoint. R2's high-contrast focus
+failure remains its disposition.
+
+Independent host reopening found one image-only page with empty text
+extraction. At 200 dpi the rendered pixels matched the expected derivative.
+Independent OCR recovered the retained marker only. The actual-file
+verification receipt has SHA-256
+`79bf66211e4a37afddf6a9ce3b936851e9a8c698a399bf86083f70c9f2cb9e86`.

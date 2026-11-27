@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Document status | **DRAFT TEMPLATE â€” complete only for an exact packaged M8 candidate** |
+| Document status | **DRAFT TEMPLATE — complete only for an exact packaged M8 candidate** |
 | Product | PaperWorkShell |
 | Release version | **TBD** |
 | Release channel | **TBD** |
@@ -10,7 +10,20 @@
 | Source revision/tag | **TBD** |
 | Release interface revision | **TBD** |
 
-## Current PWS-0807 engineering evidence
+## Current PWS-0807 engineering candidate
+
+| Engineering artifact | R3 value |
+| --- | --- |
+| Windows 11 x64 installer | `pws0807-tab-focus-engineering-r3` 0.0.0, 513,023,918 bytes, Authenticode `NotSigned`, SHA-256 `7791cef6be0062319a9c9f39a4bf130ded8f3914485eb50ab4e07d182c992889` |
+| Source and build handoff | Commit `54e0b916ac069ce00a0ce200c43e07f3a76d1784`, handoff SHA-256 `71819c9b00b33be65ecdde772020850cde32517a6fb08084c244feab82640755` |
+| Installer receipt and installed marker | Receipt `057407a387e55bacff420deec7e1cc0689c3dffa09317b280f2b5f8f391b9b74`, marker `5e564b0fef1b5e0ebe30ab19bdfe1d8c65872420889ac35c82d7237c73ab5f1e` |
+| Synthetic sample and manifest | 4,173,788-byte ZIP, SHA-256 `027410d15b8a62874d535fca5fdc625e46e272667a07b3c8096920f217b4f468`, manifest `a51a4ccf34b47793e4495b00e9300479264ad0f2f33780caf4722aea887eee90` |
+
+The [R3 qualification ledger](../development/pws0807-r3-qualification.md)
+records the actual starting environments, measurement methods and candidate
+limitations. The template metadata above applies to a future designated release.
+
+## Earlier R2 engineering evidence
 
 The [R2 qualification ledger](../development/pws0807-r2-qualification.md)
 records its installed Windows results, including the 200% Aquatic keyboard-focus failure. The
@@ -686,7 +699,7 @@ untested environment.
 | Accessibility acceptance | Pending | **TBD** |
 | Offline acceptance | Pending | **TBD** |
 | Standalone integrity without ThirdLife | Pending | **TBD** |
-| Ready for future B4 review | **No â€” draft template** | Complete only after the standalone release gate |
+| Ready for future B4 review | **No — draft template** | Complete only after the standalone release gate |
 
 ## 16. Approval
 

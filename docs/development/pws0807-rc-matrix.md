@@ -2,13 +2,16 @@
 
 PWS-0807 qualifies the exact unsigned Windows 11 x64 product candidate and its
 standalone release evidence under PWS-D044. This plan records candidate runs,
-scoped engineering evidence, and prerequisites. Unsigned engineering R2, version 0.0.0, failed the selected-tab focus check at 200% in Windows Aquatic. A successor must pass the installed check. [Task graph](../../TASKS.yaml) ·
+scoped engineering evidence, and prerequisites. The selected candidate is unsigned
+`pws0807-tab-focus-engineering-r3`, version 0.0.0. R2's selected-tab focus
+failure at 200% in Windows Aquatic remains in its original ledger. [Task graph](../../TASKS.yaml) ·
 [Release evidence](../release/RELEASE_EVIDENCE.md) ·
 [Standalone checklist](../release/STANDALONE_RELEASE_CHECKLIST.md)
 
-The [R2 qualification ledger](pws0807-r2-qualification.md) identifies the successor
-installer, replacement and installed workflow results, and measurements on its
-staged runtime. The [R1 ledger](pws0807-r1-qualification.md) preserves the two
+The [R3 qualification ledger](pws0807-r3-qualification.md) records the current
+artifact, synthetic sample, actual component and installed results. The
+[R2 qualification ledger](pws0807-r2-qualification.md) records the predecessor's
+replacement, workflow and resource evidence. The [R1 ledger](pws0807-r1-qualification.md) preserves the two
 package timeouts that prompted the repair. The tables below retain each
 starting environment and the required outcome for each area.
 
