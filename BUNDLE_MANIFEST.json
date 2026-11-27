@@ -491,7 +491,7 @@
     {
       "path": "packaging/windows/product-v1.json",
       "bytes": 766,
-      "sha256": "8e6e8c589ef0b605a301e9af6db499ea5d7ffd2d2e6b09a3e5d50c7666b5352a"
+      "sha256": "413ac300caccdde9f2737e86deb205cfa8de9299d9fbff9b776c08ec42636b2d"
     },
     {
       "path": "packaging/windows/inno-setup-7.1.1-review.json",
@@ -710,8 +710,8 @@
     },
     {
       "path": "docs/development/pws0815-trace-page-navigation.md",
-      "bytes": 7029,
-      "sha256": "5f5b60079c93cf9abb1cdcbc01f4871e26959ee09c53f7e3e8922940fbd984b6"
+      "bytes": 7870,
+      "sha256": "b5ceaf4695de105dc22d4df574e6d45c4afe6ecbd62915f02d2814a604f56de1"
     }
   ],
   "validation": {

@@ -8835,6 +8835,8 @@ class PaperWorkShellWindow(QMainWindow):
             if self._model.rowCount() > 0:
                 candidates = (
                     self._page_view,
+                    self._trace_next_button,
+                    self._trace_previous_button,
                     self._trace_document_stack.currentWidget(),
                     self._import_button,
                     self._close_case_button,

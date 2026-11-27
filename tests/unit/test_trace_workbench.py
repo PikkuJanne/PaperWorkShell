@@ -129,6 +129,8 @@ def test_compact_document_shows_page_count_and_navigation_before_scrolling(
         assert position.height() >= position.sizeHint().height() > 0
         assert viewport.rect().contains(QRect(position.mapTo(viewport, QPoint()), position.size()))
         assert not previous.isEnabled() and following.isEnabled()
+        if not window._page_view.isVisible():
+            assert following.hasFocus()
 
         following.setFocus()
         QTest.keyClick(following, Qt.Key.Key_Space)

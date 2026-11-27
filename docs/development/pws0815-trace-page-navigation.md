@@ -109,6 +109,19 @@ layout directly above the paging actions so Qt sizes it on show. Both test
 variants then passed. The failed installed observation remains under
 `output/pws0815/successor-navigation-native`.
 
+The first installed build separately verified keyboard traversal from page 1 to
+2 and back, reverse-button focus at each end, selection of the matching source,
+and saved Exported controls. The ordinary Export PDF dialog offered whole-packet
+output, with both pages listed. It had no selected range control. The dialog
+was cancelled. The case manifest and its four managed originals matched.
+See `output/pws0815/successor-navigation-keys`.
+
+The second build corrected label sizing. The expanded source run also revealed
+that, with the page rail hidden in the compact layout, the initial focus on the
+canvas could scroll the new header past the top of the viewport. The third build
+prefers an enabled paging action in that layout when the page rail is unavailable.
+The geometry and focus assertions cover the chooser-to-workbench transition.
+
 ## Next development step
 
 PWS-0816 covers a separate roadmap requirement: splitting a page range into a
